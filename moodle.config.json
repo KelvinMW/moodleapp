@@ -1,6 +1,6 @@
 {
-    "app_id": "com.oxfamelaerning.somaliland",
-    "appname": "Oxfam Trainings",
+    "app_id": "com.oxfamelearning.oxfamelearning",
+    "appname": "oxfamelearning",
     "versioncode": 3950,
     "versionname": "3.9.5",
     "cache_update_frequency_usually": 420000,
@@ -96,7 +96,7 @@
     "forceLoginLogo": false,
     "ioswebviewscheme": "moodleappfs",
     "appstores": {
-        "android": "com.oxfamelaerning.somaliland",
+        "android": "com.oxfamelearning.oxfamelearning",
         "ios": "id633359593"
     }
 }

@@ -753,7 +753,7 @@ export class CoreSitesProvider {
             const storesConfig: CoreStoreConfig = {
                 android: config.tool_mobile_androidappid,
                 ios: config.tool_mobile_iosappid,
-                mobile: config.tool_mobile_setuplink || 'https://download.moodle.org/mobile/',
+                mobile: config.tool_mobile_setuplink || 'https://download.oxfam.org/mobile/',
                 default: config.tool_mobile_setuplink,
             };
 
