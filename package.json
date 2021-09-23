@@ -1,10 +1,10 @@
 {
-  "name": "moodlemobile",
+  "name": "oxfamelearning",
   "version": "3.9.5",
-  "description": "The official app for Moodle.",
+  "description": "The official app for Oxfam",
   "author": {
-    "name": "Moodle Pty Ltd.",
-    "email": "mobile@moodle.com"
+    "name": "Official Oxfam Learing App.",
+    "email": "elearning@oxfam.org"
   },
   "repository": {
     "type": "git",
@@ -191,7 +191,7 @@
       },
       "cordova-plugin-chooser": {},
       "cordova-plugin-customurlscheme": {
-        "URL_SCHEME": "moodlemobile",
+        "URL_SCHEME": "oxfamelearning",
         "ANDROID_SCHEME": " ",
         "ANDROID_HOST": " ",
         "ANDROID_PATHPREFIX": "/"
