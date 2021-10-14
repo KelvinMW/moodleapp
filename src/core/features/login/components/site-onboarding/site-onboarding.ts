@@ -79,7 +79,7 @@ export class CoreLoginSiteOnboardingComponent {
 
         this.saveOnboardingDone();
 
-        CoreUtils.openInBrowser('https://moodle.com/getstarted/');
+        CoreUtils.openInBrowser('https://docs.oxfam.org/getstarted/');
 
         ModalController.dismiss();
     }

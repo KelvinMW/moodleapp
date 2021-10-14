@@ -231,7 +231,7 @@ export class CoreUrlUtilsProvider {
      * @return Promise resolved with the Moodle docs URL.
      */
     async getDocsUrl(release?: string, page: string = 'Mobile_app'): Promise<string> {
-        let docsUrl = 'https://docs.moodle.org/en/' + page;
+        let docsUrl = 'https://docs.oxfamapp.org/en/' + page;
 
         if (typeof release != 'undefined') {
             const version = CoreSites.getMajorReleaseNumber(release).replace('.', '');
@@ -239,7 +239,7 @@ export class CoreUrlUtilsProvider {
             // Check is a valid number.
             if (Number(version) >= 24) {
                 // Append release number.
-                docsUrl = docsUrl.replace('https://docs.moodle.org/', 'https://docs.moodle.org/' + version + '/');
+                docsUrl = docsUrl.replace('https://docs.oxfamapp.org/', 'https://docs.oxfamapp.org/' + version + '/');
             }
         }
 

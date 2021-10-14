@@ -38,8 +38,8 @@ export class CoreLoginSiteHelpComponent {
         this.canScanQR = CoreUtils.canScanQR();
         this.urlImageHtml = CoreLoginHelperProvider.FAQ_URL_IMAGE_HTML;
         this.qrCodeImageHtml = CoreLoginHelperProvider.FAQ_QRCODE_IMAGE_HTML;
-        this.setupLinkHtml = '<a href="https://moodle.com/getstarted/" title="' +
-            Translate.instant('core.login.faqsetupsitelinktitle') + '">https://moodle.com/getstarted/</a>';
+        this.setupLinkHtml = '<a href="https://docs.oxfam.org/getstarted/" title="' +
+            Translate.instant('core.login.faqsetupsitelinktitle') + '">https://docs.oxfam.org/getstarted/</a>';
     }
 
     /**

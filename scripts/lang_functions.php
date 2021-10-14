@@ -458,7 +458,7 @@ If your Moodle site has been configured correctly, you can use this app to:
 - view your course grades
 - and more!
 
-Please see http://docs.moodle.org/en/Mobile_app for all the latest information.
+Please see http://docs.oxfamapp.org/en/Mobile_app for all the latest information.
 
 We’d really appreciate any good reviews about the functionality so far, and your suggestions on what else you want this app to do!
 
