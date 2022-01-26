@@ -6,7 +6,7 @@
         > ion-icon {
             color: white;
             border-radius: 50%;
-            padding: 6px;
+            padding: 0.7rem;
         }
 
         &.addon-calendar-eventtype-category > ion-icon {
@@ -25,4 +25,5 @@
             background-color: var(--addon-calendar-event-site-color);
         }
     }
+
 }

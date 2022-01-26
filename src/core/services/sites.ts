@@ -27,7 +27,6 @@ import { CoreConstants } from '@/core/constants';
 import {
     CoreSite,
     CoreSiteWSPreSets,
-    LocalMobileResponse,
     CoreSiteInfo,
     CoreSiteConfig,
     CoreSitePublicConfigResponse,
@@ -55,6 +54,8 @@ import { CoreSitesFactory } from './sites-factory';
 import { CoreText } from '@singletons/text';
 import { CoreLoginHelper } from '@features/login/services/login-helper';
 import { CoreErrorWithTitle } from '@classes/errors/errorwithtitle';
+import { CoreAjaxError } from '@classes/errors/ajaxerror';
+import { CoreAjaxWSError } from '@classes/errors/ajaxwserror';
 
 export const CORE_SITE_SCHEMAS = new InjectionToken<CoreSiteSchema[]>('CORE_SITE_SCHEMAS');
 
@@ -73,7 +74,6 @@ export class CoreSitesProvider {
     protected static readonly INVALID_VERSION = -1;
 
     protected logger: CoreLogger;
-    protected services = {};
     protected sessionRestored = false;
     protected currentSite?: CoreSite;
     protected sites: { [s: string]: CoreSite } = {};
@@ -121,7 +121,7 @@ export class CoreSitesProvider {
         const demoSites = CoreConstants.CONFIG.demo_sites;
         name = name.toLowerCase();
 
-        if (typeof demoSites != 'undefined' && typeof demoSites[name] != 'undefined') {
+        if (demoSites !== undefined && demoSites[name] !== undefined) {
             return demoSites[name];
         }
     }
@@ -182,38 +182,33 @@ export class CoreSitesProvider {
      * @return A promise resolved when the site is checked.
      */
     async checkSiteWithProtocol(siteUrl: string, protocol: string): Promise<CoreSiteCheckResponse> {
-        let publicConfig: CoreSitePublicConfigResponse | undefined;
-
         // Now, replace the siteUrl with the protocol.
         siteUrl = siteUrl.replace(/^https?:\/\//i, protocol);
 
-        try {
-            await this.siteExists(siteUrl);
-        } catch (error) {
-            // Do not continue checking if WS are not enabled.
-            if (error.errorcode == 'enablewsdescription') {
-                error.critical = true;
+        // Create a temporary site to fetch site info.
+        let temporarySite = CoreSitesFactory.makeSite(undefined, siteUrl);
+        let config: CoreSitePublicConfigResponse | undefined;
 
-                throw error;
+        try {
+            config = await temporarySite.getPublicConfig();
+        } catch (error) {
+            const treatedError = await this.treatGetPublicConfigError(temporarySite.getURL(), error);
+            if (treatedError.critical) {
+                throw treatedError; // App received a WS error, stop.
             }
 
-            // Site doesn't exist. Try to add or remove 'www'.
-            const treatedUrl = CoreUrlUtils.addOrRemoveWWW(siteUrl);
+            // Try to add or remove 'www'.
+            temporarySite = CoreSitesFactory.makeSite(undefined, CoreUrlUtils.addOrRemoveWWW(siteUrl));
 
             try {
-                await this.siteExists(treatedUrl);
-
-                // Success, use this new URL as site url.
-                siteUrl = treatedUrl;
+                config = await temporarySite.getPublicConfig();
             } catch (secondError) {
-                // Do not continue checking if WS are not enabled.
-                if (secondError.errorcode == 'enablewsdescription') {
-                    secondError.critical = true;
-
-                    throw secondError;
+                const treatedSecondError = await this.treatGetPublicConfigError(temporarySite.getURL(), secondError);
+                if (treatedSecondError.critical) {
+                    throw treatedSecondError; // App received a WS error, stop.
                 }
 
-                // Return the error.
+                // App didn't receive a WS response, probably cannot connect. Prioritize first error if it's valid.
                 if (CoreTextUtils.getErrorMessageFromError(error)) {
                     throw error;
                 } else {
@@ -222,82 +217,71 @@ export class CoreSitesProvider {
             }
         }
 
-        // Site exists. Create a temporary site to check if local_mobile is installed.
-        const temporarySite = CoreSitesFactory.makeSite(undefined, siteUrl);
-        let data: LocalMobileResponse;
-
-        try {
-            data = await temporarySite.checkLocalMobilePlugin();
-        } catch (error) {
-            // Local mobile check returned an error. This only happens if the plugin is installed and it returns an error.
+        // Check that the user can authenticate.
+        if (!config.enablewebservices) {
             throw new CoreSiteError({
-                message: error.message,
+                message: Translate.instant('core.login.webservicesnotenabled'),
+                critical: true,
+            });
+        } else if (!config.enablemobilewebservice) {
+            throw new CoreSiteError({
+                message: Translate.instant('core.login.mobileservicesnotenabled'),
+                critical: true,
+            });
+        } else if (config.maintenanceenabled) {
+            let message = Translate.instant('core.sitemaintenance');
+            if (config.maintenancemessage) {
+                message += config.maintenancemessage;
+            }
+
+            throw new CoreSiteError({
+                message,
                 critical: true,
             });
         }
 
-        data.service = data.service || CoreConstants.CONFIG.wsservice;
-        this.services[siteUrl] = data.service; // No need to store it in DB.
-
-        if (data.coreSupported || (data.code != CoreConstants.LOGIN_SSO_CODE && data.code != CoreConstants.LOGIN_SSO_INAPP_CODE)) {
-            // SSO using local_mobile not needed, try to get the site public config.
-            try {
-                const config = await temporarySite.getPublicConfig();
-
-                publicConfig = config;
-
-                // Check that the user can authenticate.
-                if (!config.enablewebservices) {
-                    throw new CoreSiteError({
-                        message: Translate.instant('core.login.webservicesnotenabled'),
-                    });
-                } else if (!config.enablemobilewebservice) {
-                    throw new CoreSiteError({
-                        message: Translate.instant('core.login.mobileservicesnotenabled'),
-                    });
-                } else if (config.maintenanceenabled) {
-                    let message = Translate.instant('core.sitemaintenance');
-                    if (config.maintenancemessage) {
-                        message += config.maintenancemessage;
-                    }
-
-                    throw new CoreSiteError({
-                        message,
-                    });
-                }
-
-                // Everything ok.
-                if (data.code === 0) {
-                    data.code = config.typeoflogin;
-                }
-            } catch (error) {
-                // Error, check if not supported.
-                if (error.available === 1) {
-                    // Service supported but an error happened. Return error.
-                    if (error.errorcode == 'codingerror') {
-                        // This could be caused by a redirect. Check if it's the case.
-                        const redirect = await CoreUtils.checkRedirect(siteUrl);
-
-                        if (redirect) {
-                            error.error = Translate.instant('core.login.sitehasredirect');
-                        } else {
-                            // We can't be sure if there is a redirect or not. Display cannot connect error.
-                            error.error = Translate.instant('core.cannotconnecttrouble');
-                        }
-                    }
-
-                    throw new CoreSiteError({
-                        message: error.error,
-                        errorcode: error.errorcode,
-                        critical: true,
-                    });
-                }
-            }
-        }
-
         siteUrl = temporarySite.getURL();
 
-        return { siteUrl, code: data.code, warning: data.warning, service: data.service, config: publicConfig };
+        return { siteUrl, code: config?.typeoflogin || 0, service: CoreConstants.CONFIG.wsservice, config };
+    }
+
+    /**
+     * Treat an error returned by getPublicConfig in checkSiteWithProtocol. Converts the error to a CoreSiteError.
+     *
+     * @param siteUrl Site URL.
+     * @param error Error returned.
+     * @return Promise resolved with the treated error.
+     */
+    protected async treatGetPublicConfigError(siteUrl: string, error: CoreAjaxError | CoreAjaxWSError): Promise<CoreSiteError> {
+        if (!('errorcode' in error)) {
+            // The WS didn't return data, probably cannot connect.
+            return new CoreSiteError({
+                message: error.message || '',
+                critical: false, // Allow fallback to http if siteUrl uses https.
+            });
+        }
+
+        // Service supported but an error happened. Return error.
+        if (error.errorcode === 'codingerror') {
+            // This could be caused by a redirect. Check if it's the case.
+            const redirect = await CoreUtils.checkRedirect(siteUrl);
+
+            if (redirect) {
+                error.message = Translate.instant('core.login.sitehasredirect');
+            } else {
+                // We can't be sure if there is a redirect or not. Display cannot connect error.
+                error.message = Translate.instant('core.cannotconnecttrouble');
+            }
+        } else if (error.errorcode === 'invalidrecord') {
+            // WebService not found, site not supported.
+            error.message = Translate.instant('core.login.invalidmoodleversion', { $a: CoreSite.MINIMUM_MOODLE_VERSION });
+        }
+
+        return new CoreSiteError({
+            message: error.message,
+            errorcode: error.errorcode,
+            critical: true,
+        });
     }
 
     /**
@@ -305,6 +289,7 @@ export class CoreSitesProvider {
      *
      * @param siteUrl URL of the site to check.
      * @return A promise to be resolved if the site exists.
+     * @deprecated since app 4.0. Now the app calls uses tool_mobile_get_public_config to check if site exists.
      */
     async siteExists(siteUrl: string): Promise<void> {
         let data: CoreSitesLoginTokenResponse;
@@ -332,7 +317,7 @@ export class CoreSitesProvider {
         if (data.errorcode && (data.errorcode == 'enablewsdescription' || data.errorcode == 'requirecorrectaccess')) {
             throw new CoreSiteError({
                 errorcode: data.errorcode,
-                message: data.error!,
+                message: data.error ?? '',
             });
         }
 
@@ -367,10 +352,7 @@ export class CoreSitesProvider {
             throw new CoreNetworkError();
         }
 
-        if (!service) {
-            service = this.determineService(siteUrl);
-        }
-
+        service = service || CoreConstants.CONFIG.wsservice;
         const params = {
             username,
             password,
@@ -385,13 +367,13 @@ export class CoreSitesProvider {
             throw new CoreError(Translate.instant('core.cannotconnecttrouble'));
         }
 
-        if (typeof data == 'undefined') {
+        if (data === undefined) {
             throw new CoreError(Translate.instant('core.cannotconnecttrouble'));
         } else {
-            if (typeof data.token != 'undefined') {
+            if (data.token !== undefined) {
                 return { token: data.token, siteUrl, privateToken: data.privatetoken };
             } else {
-                if (typeof data.error != 'undefined') {
+                if (data.error !== undefined) {
                     // We only allow one retry (to avoid loops).
                     if (!retry && data.errorcode == 'requirecorrectaccess') {
                         siteUrl = CoreUrlUtils.addOrRemoveWWW(siteUrl);
@@ -449,7 +431,7 @@ export class CoreSitesProvider {
 
             const result = this.isValidMoodleVersion(info);
             if (result != CoreSitesProvider.VALID_VERSION) {
-                return this.treatInvalidAppVersion(result, siteUrl);
+                return this.treatInvalidAppVersion(result);
             }
 
             const siteId = this.createSiteID(info.siteurl, info.username);
@@ -489,7 +471,7 @@ export class CoreSitesProvider {
                 }
             }
 
-            if (typeof config != 'undefined') {
+            if (config !== undefined) {
                 candidateSite.setConfig(config);
             }
 
@@ -513,7 +495,7 @@ export class CoreSitesProvider {
         } catch (error) {
             // Error invaliddevice is returned by Workplace server meaning the same as connecttoworkplaceapp.
             if (error && error.errorcode == 'invaliddevice') {
-                return this.treatInvalidAppVersion(CoreSitesProvider.WORKPLACE_APP, siteUrl);
+                return this.treatInvalidAppVersion(CoreSitesProvider.WORKPLACE_APP);
             }
 
             throw error;
@@ -524,14 +506,13 @@ export class CoreSitesProvider {
      * Having the result of isValidMoodleVersion, it treats the error message to be shown.
      *
      * @param result Result returned by isValidMoodleVersion function.
-     * @param siteUrl The site url.
      * @param siteId If site is already added, it will invalidate the token.
      * @return A promise rejected with the error info.
      */
-    protected async treatInvalidAppVersion(result: number, siteUrl: string, siteId?: string): Promise<never> {
+    protected async treatInvalidAppVersion(result: number, siteId?: string): Promise<never> {
         let errorCode: string | undefined;
         let errorKey: string | undefined;
-        let translateParams;
+        let translateParams = {};
 
         switch (result) {
             case CoreSitesProvider.MOODLE_APP:
@@ -549,7 +530,7 @@ export class CoreSitesProvider {
         }
 
         if (siteId) {
-            await this.setSiteLoggedOut(siteId, true);
+            await this.setSiteLoggedOut(siteId);
         }
 
         throw new CoreSiteError({
@@ -573,25 +554,10 @@ export class CoreSitesProvider {
     /**
      * Function for determine which service we should use (default or extended plugin).
      *
-     * @param siteUrl The site URL.
      * @return The service shortname.
+     * @deprecated since app 4.0
      */
-    determineService(siteUrl: string): string {
-        // We need to try siteUrl in both https or http (due to loginhttps setting).
-
-        // First http://
-        siteUrl = siteUrl.replace('https://', 'http://');
-        if (this.services[siteUrl]) {
-            return this.services[siteUrl];
-        }
-
-        // Now https://
-        siteUrl = siteUrl.replace('http://', 'https://');
-        if (this.services[siteUrl]) {
-            return this.services[siteUrl];
-        }
-
-        // Return default service.
+    determineService(): string {
         return CoreConstants.CONFIG.wsservice;
     }
 
@@ -606,14 +572,11 @@ export class CoreSitesProvider {
             return CoreSitesProvider.INVALID_VERSION;
         }
 
-        const version31 = 2016052300;
-        const release31 = CoreSite.MINIMUM_MOODLE_VERSION;
-
         // Try to validate by version.
         if (info.version) {
             const version = parseInt(info.version, 10);
             if (!isNaN(version)) {
-                if (version >= version31) {
+                if (version >= CoreSite.MOODLE_RELEASES[CoreSite.MINIMUM_MOODLE_VERSION]) {
                     return this.validateWorkplaceVersion(info);
                 }
             }
@@ -622,7 +585,7 @@ export class CoreSitesProvider {
         // We couldn't validate by version number. Let's try to validate by release number.
         const release = this.getReleaseNumber(info.release || '');
         if (release) {
-            if (release >= release31) {
+            if (release >= CoreSite.MINIMUM_MOODLE_VERSION) {
                 return this.validateWorkplaceVersion(info);
             }
         }
@@ -761,31 +724,33 @@ export class CoreSitesProvider {
 
             const siteId = this.getCurrentSiteId();
             const downloadUrl = CoreApp.getAppStoreUrl(storesConfig);
+            let promise: Promise<unknown>;
 
             if (downloadUrl != null) {
                 // Do not block interface.
-                CoreDomUtils.showConfirm(
+                promise = CoreDomUtils.showConfirm(
                     Translate.instant('core.updaterequireddesc', { $a: config.tool_mobile_minimumversion }),
                     Translate.instant('core.updaterequired'),
                     Translate.instant('core.download'),
                     Translate.instant(siteId ? 'core.mainmenu.logout' : 'core.cancel'),
-                ).then(() => CoreUtils.openInBrowser(downloadUrl)).catch(() => {
+                ).then(() => CoreUtils.openInBrowser(downloadUrl, { showBrowserWarning: false })).catch(() => {
                     // Do nothing.
                 });
             } else {
-                CoreDomUtils.showAlert(
+                // Do not block interface.
+                promise = CoreDomUtils.showAlert(
                     Translate.instant('core.updaterequired'),
                     Translate.instant('core.updaterequireddesc', { $a: config.tool_mobile_minimumversion }),
-                );
+                ).then((alert) => alert.onWillDismiss());
             }
 
-            if (siteId) {
-                // Logout the currentSite.
-                await this.logout();
-
-                // Always expire the token.
-                await this.setSiteLoggedOut(siteId, true);
-            }
+            promise.finally(() => {
+                if (siteId) {
+                    // Logout the currentSite and expire the token.
+                    this.logout();
+                    this.setSiteLoggedOut(siteId);
+                }
+            });
 
             throw new CoreError('Current app version is lower than required version.');
         }
@@ -842,46 +807,49 @@ export class CoreSitesProvider {
             return false;
         }
 
-        // Check if local_mobile was installed to Moodle.
+        this.login(siteId);
+        // Get some data in background, don't block the UI.
+        this.getPublicConfigAndCheckApplication(site);
+        this.updateSiteInfo(siteId);
+
+        return true;
+    }
+
+    /**
+     * Get site public config and check if app can access the site.
+     *
+     * @param site Site.
+     * @return Promise resolved when done.
+     */
+    protected async getPublicConfigAndCheckApplication(site: CoreSite): Promise<void> {
         try {
-            await site.checkIfLocalMobileInstalledAndNotUsed();
+            const config = await site.getPublicConfig();
 
-            // Local mobile was added. Throw invalid session to force reconnect and create a new token.
-            CoreEvents.trigger(CoreEvents.SESSION_EXPIRED, {
-                pageName,
-                options: pageOptions,
-            }, siteId);
-
-            return false;
-        } catch (error) {
-            let config: CoreSitePublicConfigResponse | undefined;
-
-            try {
-                config = await site.getPublicConfig();
-            } catch (error) {
-                // Error getting config, probably the site doesn't have the WS
-            }
-
-            try {
-                await this.checkApplication(config);
-
-                this.login(siteId);
-                // Update site info. We don't block the UI.
-                this.updateSiteInfo(siteId);
-
-                return true;
-            } catch (error) {
-                return false;
-            }
+            await this.checkApplication(config);
+        } catch {
+            // Ignore errors, maybe the user is offline.
         }
     }
 
     /**
-     * Get current site.
+     * Get current site or undefined if none.
+     *
+     * @return Current site or undefined if none.
+     */
+    getCurrentSite(): CoreSite | undefined {
+        return this.currentSite;
+    }
+
+    /**
+     * Get current site or fail if none.
      *
      * @return Current site.
      */
-    getCurrentSite(): CoreSite | undefined {
+    getRequiredCurrentSite(): CoreSite {
+        if (!this.currentSite) {
+            throw new CoreError('You aren\'t authenticated in any site.');
+        }
+
         return this.currentSite;
     }
 
@@ -926,7 +894,7 @@ export class CoreSitesProvider {
      * @return Whether the user is logged in a site.
      */
     isLoggedIn(): boolean {
-        return typeof this.currentSite != 'undefined' && typeof this.currentSite.token != 'undefined' &&
+        return this.currentSite !== undefined && this.currentSite.token !== undefined &&
             this.currentSite.token != '';
     }
 
@@ -939,7 +907,7 @@ export class CoreSitesProvider {
     async deleteSite(siteId: string): Promise<void> {
         this.logger.debug(`Delete site ${siteId}`);
 
-        if (typeof this.currentSite != 'undefined' && this.currentSite.id == siteId) {
+        if (this.currentSite !== undefined && this.currentSite.id == siteId) {
             this.logout();
         }
 
@@ -991,14 +959,18 @@ export class CoreSitesProvider {
             throw new CoreError('No current site found.');
         } else if (this.currentSite && this.currentSite.getId() == siteId) {
             return this.currentSite;
-        } else if (typeof this.sites[siteId] != 'undefined') {
+        } else if (this.sites[siteId] !== undefined) {
             return this.sites[siteId];
         } else {
             // Retrieve and create the site.
             const db = await this.appDB;
-            const data = await db.getRecord<SiteDBEntry>(SITES_TABLE_NAME, { id: siteId });
+            try {
+                const data = await db.getRecord<SiteDBEntry>(SITES_TABLE_NAME, { id: siteId });
 
-            return this.makeSiteFromSiteListEntry(data);
+                return this.makeSiteFromSiteListEntry(data);
+            } catch {
+                throw new CoreError('SiteId not found');
+            }
         }
     }
 
@@ -1012,7 +984,7 @@ export class CoreSitesProvider {
         const db = await this.appDB;
         const data = await db.getRecord<SiteDBEntry>(SITES_TABLE_NAME, { siteUrl });
 
-        if (typeof this.sites[data.id] != 'undefined') {
+        if (this.sites[data.id] !== undefined) {
             return this.sites[data.id];
         }
 
@@ -1083,8 +1055,10 @@ export class CoreSitesProvider {
      * @param siteId The site ID. If not defined, current site (if available).
      * @return Promise resolved with site home ID.
      */
-    getSiteHomeId(siteId?: string): Promise<number> {
-        return this.getSite(siteId).then((site) => site.getSiteHomeId());
+    async getSiteHomeId(siteId?: string): Promise<number> {
+        const site = await this.getSite(siteId);
+
+        return site.getSiteHomeId();
     }
 
     /**
@@ -1105,6 +1079,7 @@ export class CoreSitesProvider {
                 const basicInfo: CoreSiteBasicInfo = {
                     id: site.id,
                     siteUrl: site.siteUrl,
+                    siteUrlWithoutProtocol: site.siteUrl.replace(/^https?:\/\//, '').toLowerCase(),
                     fullName: siteInfo?.fullname,
                     siteName: CoreConstants.CONFIG.sitename == '' ? siteInfo?.sitename: CoreConstants.CONFIG.sitename,
                     avatar: siteInfo?.userpictureurl,
@@ -1118,7 +1093,7 @@ export class CoreSitesProvider {
     }
 
     /**
-     * Get the list of sites stored, sorted by URL and full name.
+     * Get the list of sites stored, sorted by sitename, URL and fullname.
      *
      * @param ids IDs of the sites to get. If not defined, return all sites.
      * @return Promise resolved when the sites are retrieved.
@@ -1126,26 +1101,28 @@ export class CoreSitesProvider {
     async getSortedSites(ids?: string[]): Promise<CoreSiteBasicInfo[]> {
         const sites = await this.getSites(ids);
 
-        // Sort sites by url and ful lname.
+        // Sort sites by site name, url and then fullname.
         sites.sort((a, b) => {
-            // First compare by site url without the protocol.
-            const urlA = a.siteUrl.replace(/^https?:\/\//, '').toLowerCase();
-            const urlB = b.siteUrl.replace(/^https?:\/\//, '').toLowerCase();
-            const compare = urlA.localeCompare(urlB);
+            // First compare by site name.
+            let textA = CoreTextUtils.cleanTags(a.siteName).toLowerCase().trim();
+            let textB = CoreTextUtils.cleanTags(b.siteName).toLowerCase().trim();
 
+            let compare = textA.localeCompare(textB);
             if (compare !== 0) {
                 return compare;
             }
 
-            // If site url is the same, use fullname instead.
-            const fullNameA = a.fullName?.toLowerCase().trim();
-            const fullNameB = b.fullName?.toLowerCase().trim();
-
-            if (!fullNameA || !fullNameB) {
-                return 0;
+            // If site name is the same, use site url without the protocol.
+            compare = a.siteUrlWithoutProtocol.localeCompare(b.siteUrlWithoutProtocol);
+            if (compare !== 0) {
+                return compare;
             }
 
-            return fullNameA.localeCompare(fullNameB);
+            // Finally use fullname.
+            textA = a.fullName?.toLowerCase().trim() || '';
+            textB = b.fullName?.toLowerCase().trim() || '';
+
+            return textA.localeCompare(textB);
         });
 
         return sites;
@@ -1173,6 +1150,17 @@ export class CoreSitesProvider {
         const sites = await db.getAllRecords<SiteDBEntry>(SITES_TABLE_NAME);
 
         return sites.map((site) => site.id);
+    }
+
+    /**
+     * Get instances of all stored sites.
+     *
+     * @return Promise resolved when the sites are retrieved.
+     */
+    async getSitesInstances(): Promise<CoreSite[]> {
+        const siteIds = await this.getSitesIds();
+
+        return await Promise.all(siteIds.map(async (siteId) => await this.getSite(siteId)));
     }
 
     /**
@@ -1210,7 +1198,7 @@ export class CoreSitesProvider {
         this.currentSite = undefined;
 
         if (siteConfig && siteConfig.tool_mobile_forcelogout == '1') {
-            promises.push(this.setSiteLoggedOut(siteId, true));
+            promises.push(this.setSiteLoggedOut(siteId));
         }
 
         promises.push(this.removeStoredCurrentSite());
@@ -1240,34 +1228,24 @@ export class CoreSitesProvider {
             this.logger.debug(`Restore session in site ${siteId}`);
 
             await this.loadSite(siteId);
-        } catch (err) {
+        } catch {
             // No current session.
         }
     }
 
     /**
-     * Mark or unmark a site as logged out so the user needs to authenticate again.
+     * Mark a site as logged out so the user needs to authenticate again.
      *
      * @param siteId ID of the site.
-     * @param loggedOut True to set the site as logged out, false otherwise.
      * @return Promise resolved when done.
      */
-    async setSiteLoggedOut(siteId: string, loggedOut: boolean): Promise<void> {
+    protected async setSiteLoggedOut(siteId: string): Promise<void> {
         const db = await this.appDB;
         const site = await this.getSite(siteId);
-        const newValues: Partial<SiteDBEntry> = {
-            loggedOut: loggedOut ? 1 : 0,
-        };
 
-        if (loggedOut) {
-            // Erase the token for security.
-            newValues.token = '';
-            site.token = '';
-        }
+        site.setLoggedOut(true);
 
-        site.setLoggedOut(loggedOut);
-
-        await db.updateRecords(SITES_TABLE_NAME, newValues, { id: siteId });
+        await db.updateRecords(SITES_TABLE_NAME, { loggedOut: 1 }, { id: siteId });
     }
 
     /**
@@ -1334,7 +1312,7 @@ export class CoreSitesProvider {
             const versionCheck = this.isValidMoodleVersion(info);
             if (versionCheck != CoreSitesProvider.VALID_VERSION) {
                 // The Moodle version is not supported, reject.
-                return this.treatInvalidAppVersion(versionCheck, site.getURL(), site.getId());
+                return this.treatInvalidAppVersion(versionCheck, site.getId());
             }
 
             // Try to get the site config.
@@ -1351,7 +1329,7 @@ export class CoreSitesProvider {
                 loggedOut: site.isLoggedOut() ? 1 : 0,
             };
 
-            if (typeof config != 'undefined') {
+            if (config !== undefined) {
                 site.setConfig(config);
                 newValues.config = JSON.stringify(config);
             }
@@ -1363,7 +1341,7 @@ export class CoreSitesProvider {
             } finally {
                 CoreEvents.trigger(CoreEvents.SITE_UPDATED, info, siteId);
             }
-        } catch (error) {
+        } catch {
             // Ignore that we cannot fetch site info. Probably the auth token is invalid.
         }
     }
@@ -1436,7 +1414,7 @@ export class CoreSitesProvider {
             await Promise.all(promises);
 
             return ids;
-        } catch (error) {
+        } catch {
             // Shouldn't happen.
             return [];
         }
@@ -1484,11 +1462,6 @@ export class CoreSitesProvider {
      * @return Promise resolved with config if available.
      */
     protected async getSiteConfig(site: CoreSite): Promise<CoreSiteConfig | undefined> {
-        if (!site.wsAvailable('tool_mobile_get_config')) {
-            // WS not available, cannot get config.
-            return;
-        }
-
         return await site.getConfig(undefined, true);
     }
 
@@ -1499,21 +1472,22 @@ export class CoreSitesProvider {
      * @param siteId The site ID. If not defined, current site (if available).
      * @return Promise resolved with true if disabled.
      */
-    isFeatureDisabled(name: string, siteId?: string): Promise<boolean> {
-        return this.getSite(siteId).then((site) => site.isFeatureDisabled(name));
+    async isFeatureDisabled(name: string, siteId?: string): Promise<boolean> {
+        const site = await this.getSite(siteId);
+
+        return site.isFeatureDisabled(name);
     }
 
     /**
      * Check if a WS is available in the current site, if any.
      *
      * @param method WS name.
-     * @param checkPrefix When true also checks with the compatibility prefix.
      * @return Whether the WS is available.
      */
-    wsAvailableInCurrentSite(method: string, checkPrefix: boolean = true): boolean {
+    wsAvailableInCurrentSite(method: string): boolean {
         const site = this.getCurrentSite();
 
-        return site ? site.wsAvailable(method, checkPrefix) : false;
+        return site ? site.wsAvailable(method) : false;
     }
 
     /**
@@ -1554,7 +1528,9 @@ export class CoreSitesProvider {
             return Promise.resolve();
         }
 
-        if (this.siteSchemasMigration[site.id]) {
+        const siteId = site.id;
+
+        if (this.siteSchemasMigration[site.id] !== undefined) {
             return this.siteSchemasMigration[site.id];
         }
 
@@ -1567,7 +1543,7 @@ export class CoreSitesProvider {
         this.siteSchemasMigration[site.id] = promise;
 
         return promise.finally(() => {
-            delete this.siteSchemasMigration[site.id!];
+            delete this.siteSchemasMigration[siteId];
         });
     }
 
@@ -1752,7 +1728,7 @@ export type CoreSiteCheckResponse = {
     service: string;
 
     /**
-     * Code of the warning message to show to the user.
+     * Code of the warning message to show to the user. @deprecated since app 4.0
      */
     warning?: string;
 
@@ -1786,40 +1762,14 @@ export type CoreSiteUserTokenResponse = {
  * Site's basic info.
  */
 export type CoreSiteBasicInfo = {
-    /**
-     * Site ID.
-     */
-    id: string;
-
-    /**
-     * Site URL.
-     */
-    siteUrl: string;
-
-    /**
-     * User's full name.
-     */
-    fullName?: string;
-
-    /**
-     * Site's name.
-     */
-    siteName?: string;
-
-    /**
-     * User's avatar.
-     */
-    avatar?: string;
-
-    /**
-     * Badge to display in the site.
-     */
-    badge?: number;
-
-    /**
-     * Site home ID.
-     */
-    siteHomeId?: number;
+    id: string; // Site ID.
+    siteUrl: string; // Site URL.
+    siteUrlWithoutProtocol: string; // Site URL without protocol.
+    fullName?: string; // User's full name.
+    siteName?: string; // Site's name.
+    avatar?: string; // User's avatar.
+    badge?: number; // Badge to display in the site.
+    siteHomeId?: number; // Site home ID.
 };
 
 /**

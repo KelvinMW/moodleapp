@@ -216,7 +216,7 @@ export class CoreH5PCore {
 
         // Prevent too long slug.
         if (newInput.length > 91) {
-            newInput = newInput.substr(0, 92);
+            newInput = newInput.substring(0, 92);
         }
 
         // Prevent empty slug
@@ -241,7 +241,7 @@ export class CoreH5PCore {
             return content.filtered;
         }
 
-        if (typeof content.library == 'undefined' || typeof content.params == 'undefined') {
+        if (content.library === undefined || content.params === undefined) {
             return null;
         }
 
@@ -985,6 +985,13 @@ export type CoreH5PLibraryBasicData = {
     machineName: string; // The library machine name.
     majorVersion: number; // Major version.
     minorVersion: number; // Minor version.
+};
+
+/**
+ * Data about a missing library.
+ */
+export type CoreH5PMissingLibrary = CoreH5PLibraryBasicData & {
+    libString: string; // Library that has the dependency.
 };
 
 /**

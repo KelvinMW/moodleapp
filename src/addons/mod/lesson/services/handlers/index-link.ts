@@ -18,6 +18,7 @@ import { CoreContentLinksModuleIndexHandler } from '@features/contentlinks/class
 import { CoreContentLinksAction } from '@features/contentlinks/services/contentlinks-delegate';
 import { CoreCourse } from '@features/course/services/course';
 import { CoreCourseHelper } from '@features/course/services/course-helper';
+import { CoreSitesReadingStrategy } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
@@ -67,21 +68,6 @@ export class AddonModLessonIndexLinkHandlerService extends CoreContentLinksModul
     }
 
     /**
-     * Check if the handler is enabled for a certain site (site + user) and a URL.
-     * If not defined, defaults to true.
-     *
-     * @param siteId The site ID.
-     * @param url The URL to treat.
-     * @param params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
-     * @param courseId Course ID related to the URL. Optional but recommended.
-     * @return Whether the handler is enabled for the URL and site.
-     */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    isEnabled(siteId: string, url: string, params: Record<string, string>, courseId?: number): Promise<boolean> {
-        return AddonModLesson.isPluginEnabled(siteId);
-    }
-
-    /**
      * Navigate to a lesson module (index page) with a fixed password.
      *
      * @param moduleId Module ID.
@@ -100,14 +86,15 @@ export class AddonModLessonIndexLinkHandlerService extends CoreContentLinksModul
 
         try {
             // Get the module.
-            const module = await CoreCourse.getModuleBasicInfo(moduleId, siteId);
-
-            courseId = courseId || module.course;
+            const module = await CoreCourse.getModuleBasicInfo(
+                moduleId,
+                { siteId, readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE },
+            );
 
             // Store the password so it's automatically used.
             await CoreUtils.ignoreErrors(AddonModLesson.storePassword(module.instance, password, siteId));
 
-            await CoreCourseHelper.navigateToModule(moduleId, siteId, courseId, module.section);
+            await CoreCourseHelper.navigateToModule(moduleId, siteId, module.course, module.section);
         } catch {
             // Error, go to index page.
             await CoreCourseHelper.navigateToModule(moduleId, siteId, courseId);

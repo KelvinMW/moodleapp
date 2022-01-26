@@ -165,7 +165,7 @@ export class CoreLoginEmailSignupPage implements OnInit {
 
             if (this.treatSiteConfig()) {
                 // Check content verification.
-                if (typeof this.ageDigitalConsentVerification == 'undefined') {
+                if (this.ageDigitalConsentVerification === undefined) {
 
                     const result = await CoreUtils.ignoreErrors(
                         CoreWS.callAjax<IsAgeVerificationEnabledWSResponse>(
@@ -310,8 +310,7 @@ export class CoreLoginEmailSignupPage implements OnInit {
         };
 
         if (this.siteConfig?.launchurl) {
-            const service = CoreSites.determineService(this.siteUrl);
-            params.redirect = CoreLoginHelper.prepareForSSOLogin(this.siteUrl, service, this.siteConfig.launchurl);
+            params.redirect = CoreLoginHelper.prepareForSSOLogin(this.siteUrl, undefined, this.siteConfig.launchurl);
         }
 
         // Get the recaptcha response (if needed).
@@ -385,7 +384,10 @@ export class CoreLoginEmailSignupPage implements OnInit {
      * Show contact information on site (we have to display again the age verification form).
      */
     showContactOnSite(): void {
-        CoreUtils.openInBrowser(CoreTextUtils.concatenatePaths(this.siteUrl, '/login/verify_age_location.php'));
+        CoreUtils.openInBrowser(
+            CoreTextUtils.concatenatePaths(this.siteUrl, '/login/verify_age_location.php'),
+            { showBrowserWarning: false },
+        );
     }
 
     /**

@@ -18,12 +18,17 @@ import { Subscription } from 'rxjs';
 
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreEvents, CoreEventObserver } from '@singletons/events';
-import { AddonNotifications, AddonNotificationsAnyNotification, AddonNotificationsProvider } from '../../services/notifications';
-import { AddonNotificationsHelper } from '../../services/notifications-helper';
+import {
+    AddonNotifications,
+    AddonNotificationsProvider,
+} from '../../services/notifications';
 import { CorePushNotificationsDelegate } from '@features/pushnotifications/services/push-delegate';
+import {
+    AddonNotificationsHelper,
+    AddonNotificationsNotificationToRender,
+} from '@addons/notifications/services/notifications-helper';
 
 /**
  * Page that displays the list of notifications.
@@ -31,11 +36,11 @@ import { CorePushNotificationsDelegate } from '@features/pushnotifications/servi
 @Component({
     selector: 'page-addon-notifications-list',
     templateUrl: 'list.html',
-    styleUrls: ['list.scss'],
+    styleUrls: ['../../notifications.scss'],
 })
 export class AddonNotificationsListPage implements OnInit, OnDestroy {
 
-    notifications: FormattedNotification[] = [];
+    notifications: AddonNotificationsNotificationToRender[] = [];
     notificationsLoaded = false;
     canLoadMore = false;
     loadMoreError = false;
@@ -48,7 +53,7 @@ export class AddonNotificationsListPage implements OnInit, OnDestroy {
     protected pendingRefresh = false;
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     ngOnInit(): void {
         this.fetchNotifications();
@@ -89,9 +94,10 @@ export class AddonNotificationsListPage implements OnInit, OnDestroy {
         this.loadMoreError = false;
 
         try {
-            const result = await AddonNotificationsHelper.getNotifications(refresh ? [] : this.notifications);
+            const result = await AddonNotifications.getNotifications(refresh ? [] : this.notifications);
 
-            const notifications = result.notifications.map((notification) => this.formatText(notification));
+            const notifications = result.notifications
+                .map((notification) => AddonNotificationsHelper.formatNotificationText(notification));
 
             if (refresh) {
                 this.notifications = notifications;
@@ -132,7 +138,7 @@ export class AddonNotificationsListPage implements OnInit, OnDestroy {
      *
      * @param notifications Array of notification objects.
      */
-    protected async markNotificationsAsRead(notifications: FormattedNotification[]): Promise<void> {
+    protected async markNotificationsAsRead(notifications: AddonNotificationsNotificationToRender[]): Promise<void> {
         if (notifications.length > 0) {
             const promises = notifications.map(async (notification) => {
                 if (notification.read) {
@@ -150,19 +156,13 @@ export class AddonNotificationsListPage implements OnInit, OnDestroy {
             CoreEvents.trigger(AddonNotificationsProvider.READ_CHANGED_EVENT, {}, CoreSites.getCurrentSiteId());
         }
 
-        // Check if mark all notifications as read is enabled and there are some to read.
-        if (!AddonNotifications.isMarkAllNotificationsAsReadEnabled()) {
-            this.canMarkAllNotificationsAsRead = false;
-
-            return;
-        }
-
+        // Check if mark all as read should be displayed (there are unread notifications).
         try {
             this.loadingMarkAllNotificationsAsRead = true;
 
-            const unread = await AddonNotifications.getUnreadNotificationsCount();
+            const unreadCountData = await AddonNotifications.getUnreadNotificationsCount();
 
-            this.canMarkAllNotificationsAsRead = unread > 0;
+            this.canMarkAllNotificationsAsRead = unreadCountData.count > 0;
         } finally {
             this.loadingMarkAllNotificationsAsRead = false;
         }
@@ -198,33 +198,6 @@ export class AddonNotificationsListPage implements OnInit, OnDestroy {
     }
 
     /**
-     * Formats the text of a notification.
-     *
-     * @param notification The notification object.
-     */
-    protected formatText(notification: AddonNotificationsAnyNotification): FormattedNotification {
-        const formattedNotification: FormattedNotification = notification;
-        formattedNotification.displayfullhtml = this.shouldDisplayFullHtml(notification);
-        formattedNotification.iconurl = formattedNotification.iconurl || undefined; // Make sure the property exists.
-
-        formattedNotification.mobiletext = formattedNotification.displayfullhtml ?
-            notification.fullmessagehtml :
-            CoreTextUtils.replaceNewLines(formattedNotification.mobiletext!.replace(/-{4,}/ig, ''), '<br>');
-
-        return formattedNotification;
-    }
-
-    /**
-     * Check whether we should display full HTML of the notification.
-     *
-     * @param notification Notification.
-     * @return Whether to display full HTML.
-     */
-    protected shouldDisplayFullHtml(notification: FormattedNotification): boolean {
-        return notification.component == 'mod_forum' && notification.eventtype == 'digests';
-    }
-
-    /**
      * User entered the page.
      */
     ionViewDidEnter(): void {
@@ -248,7 +221,7 @@ export class AddonNotificationsListPage implements OnInit, OnDestroy {
     }
 
     /**
-     * Page destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.cronObserver?.off();
@@ -256,8 +229,3 @@ export class AddonNotificationsListPage implements OnInit, OnDestroy {
     }
 
 }
-
-type FormattedNotification = AddonNotificationsAnyNotification & {
-    displayfullhtml?: boolean; // Whether to display the full HTML of the notification.
-    iconurl?: string;
-};

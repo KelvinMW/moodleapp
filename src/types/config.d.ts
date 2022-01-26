@@ -32,7 +32,6 @@ export interface EnvironmentConfig {
     default_lang: string;
     languages: Record<string, string>;
     wsservice: string;
-    wsextservice: string;
     demo_sites: Record<string, CoreSitesDemoSiteData>;
     zoomlevels: Record<CoreZoomLevel, number>;
     customurlscheme: string;
@@ -57,4 +56,8 @@ export interface EnvironmentConfig {
     iOSDefaultOpenFileAction?: OpenFileAction;
     customMainMenuItems?: CoreMainMenuLocalizedCustomItem[];
     feedbackFormUrl?: string | false;
+    a11yStatement?: string | false;
+    iabToolbarColors?: 'auto' | { background: string; text?: string } | null;
+    wsrequestqueuelimit: number; // Maximum number of requests allowed in the queue.
+    wsrequestqueuedelay: number; // Maximum number of miliseconds to wait before processing the queue.
 }

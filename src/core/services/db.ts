@@ -17,6 +17,7 @@ import { Injectable } from '@angular/core';
 import { SQLiteDB } from '@classes/sqlitedb';
 import { SQLiteDBMock } from '@features/emulator/classes/sqlitedb';
 import { makeSingleton, SQLite, Platform } from '@singletons';
+import { CoreAppProvider } from './app';
 
 /**
  * This service allows interacting with the local database to store and retrieve data.
@@ -24,7 +25,28 @@ import { makeSingleton, SQLite, Platform } from '@singletons';
 @Injectable({ providedIn: 'root' })
 export class CoreDbProvider {
 
+    queryLogs: CoreDbQueryLog[] = [];
+
     protected dbInstances: {[name: string]: SQLiteDB} = {};
+
+    /**
+     * Check whether database queries should be logged.
+     *
+     * @returns Whether queries should be logged.
+     */
+    loggingEnabled(): boolean {
+        return CoreAppProvider.isAutomated();
+    }
+
+    /**
+     * Log a query.
+     *
+     * @param sql Query SQL.
+     * @param params Query parameters.
+     */
+    logQuery(sql: string, duration: number, params?: unknown[]): void {
+        this.queryLogs.push({ sql, duration, params });
+    }
 
     /**
      * Get or create a database object.
@@ -36,7 +58,7 @@ export class CoreDbProvider {
      * @return DB.
      */
     getDB(name: string, forceNew?: boolean): SQLiteDB {
-        if (typeof this.dbInstances[name] === 'undefined' || forceNew) {
+        if (this.dbInstances[name] === undefined || forceNew) {
             if (Platform.is('cordova')) {
                 this.dbInstances[name] = new SQLiteDB(name);
             } else {
@@ -54,7 +76,7 @@ export class CoreDbProvider {
      * @return Promise resolved when the DB is deleted.
      */
     async deleteDB(name: string): Promise<void> {
-        if (typeof this.dbInstances[name] != 'undefined') {
+        if (this.dbInstances[name] !== undefined) {
             // Close the database first.
             await this.dbInstances[name].close();
 
@@ -81,3 +103,12 @@ export class CoreDbProvider {
 }
 
 export const CoreDB = makeSingleton(CoreDbProvider);
+
+/**
+ * Database query log entry.
+ */
+export interface CoreDbQueryLog {
+    sql: string;
+    duration: number;
+    params?: unknown[];
+}

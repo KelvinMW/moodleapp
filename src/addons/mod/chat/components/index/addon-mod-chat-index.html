@@ -1,14 +1,14 @@
 <!-- Buttons to add to the header. -->
 <core-navbar-buttons slot="end">
     <core-context-menu>
-        <core-context-menu-item *ngIf="externalUrl" [priority]="900" [content]="'core.openinbrowser' | translate"
-            [href]="externalUrl" iconAction="fas-external-link-alt">
+        <core-context-menu-item *ngIf="externalUrl" [priority]="900" [content]="'core.openinbrowser' | translate" [href]="externalUrl"
+            iconAction="fas-external-link-alt" [showBrowserWarning]="false">
         </core-context-menu-item>
         <core-context-menu-item *ngIf="description" [priority]="800" [content]="'core.moduleintro' | translate"
             (action)="expandDescription()" iconAction="fas-arrow-right">
         </core-context-menu-item>
-        <core-context-menu-item *ngIf="blog" [priority]="750" content="{{'addon.blog.blog' | translate}}"
-            iconAction="far-newspaper" (action)="gotoBlog()">
+        <core-context-menu-item *ngIf="blog" [priority]="750" content="{{'addon.blog.blog' | translate}}" iconAction="far-newspaper"
+            (action)="gotoBlog()">
         </core-context-menu-item>
         <core-context-menu-item *ngIf="loaded && isOnline" [priority]="700" [content]="'core.refresh' | translate"
             (action)="doRefresh(null, $event)" [iconAction]="refreshIcon" [closeOnClick]="false">
@@ -24,16 +24,12 @@
 </core-navbar-buttons>
 
 <!-- Content. -->
-<core-loading [hideUntil]="loaded" class="safe-area-page">
+<core-loading [hideUntil]="loaded" class="safe-area-padding">
 
     <!-- Activity info. -->
-    <core-course-module-info *ngIf="showCompletion" [module]="module" [showManualCompletion]="true"
-        (completionChanged)="onCompletionChange()">
+    <core-course-module-info [module]="module" [description]="description" [component]="component" [componentId]="componentId"
+        [courseId]="courseId">
     </core-course-module-info>
-
-    <core-course-module-description [description]="description" [component]="component" [componentId]="componentId"
-        contextLevel="module" [contextInstanceId]="module.id" [courseId]="courseId">
-    </core-course-module-description>
 
     <ion-card *ngIf="chatInfo" class="core-info-card">
         <ion-item>
@@ -46,8 +42,11 @@
         <ion-button class="ion-margin ion-text-wrap" expand="block" color="primary" (click)="enterChat()">
             {{ 'addon.mod_chat.enterchat' | translate }}
         </ion-button>
-        <ion-button class="ion-margin ion-text-wrap" expand="block" color="light" *ngIf="sessionsAvailable" (click)="viewSessions()">
+        <ion-button class="ion-margin ion-text-wrap" expand="block" color="light" (click)="viewSessions()">
             {{ 'addon.mod_chat.viewreport' | translate }}
         </ion-button>
     </ng-container>
 </core-loading>
+
+<core-course-module-navigation [hidden]="!loaded" [courseId]="courseId" [currentModule]="module" (completionChanged)="onCompletionChange()">
+</core-course-module-navigation>

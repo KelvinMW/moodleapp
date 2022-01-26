@@ -135,6 +135,8 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
         }
 
         if (!this.wiki) {
+            CoreNavigator.back();
+
             return;
         }
 
@@ -143,7 +145,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
                 await AddonModWiki.logView(this.wiki.id, this.wiki.name);
 
                 CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-            } catch (error) {
+            } catch {
                 // Ignore errors.
             }
         } else {
@@ -210,7 +212,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * @inheritdoc
      */
-    protected async fetchContent(refresh: boolean = false, sync: boolean = false, showErrors: boolean = false): Promise<void> {
+    protected async fetchContent(refresh = false, sync = false, showErrors = false): Promise<void> {
         try {
             // Get the wiki instance.
             this.wiki = await AddonModWiki.getWiki(this.courseId, this.module.id);
@@ -219,6 +221,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
                 // Page not loaded yet, emit the data to update the page title.
                 this.dataRetrieved.emit(this.wiki);
             }
+
             AddonModWiki.wikiPageOpened(this.wiki.id, this.currentPath);
 
             if (sync) {
@@ -299,14 +302,14 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
 
         // No page ID but we received a title. This means we're trying to load an offline page.
         try {
-            const title = this.pageTitle || this.wiki!.firstpagetitle!;
+            const title = this.pageTitle || this.wiki?.firstpagetitle || '';
 
             const offlinePage = await AddonModWikiOffline.getNewPage(
                 title,
-                this.currentSubwiki!.id,
-                this.currentSubwiki!.wikiid,
-                this.currentSubwiki!.userid,
-                this.currentSubwiki!.groupid,
+                this.currentSubwiki?.id,
+                this.currentSubwiki?.wikiid,
+                this.currentSubwiki?.userid,
+                this.currentSubwiki?.groupid,
             );
 
             this.pageIsOffline = true;
@@ -321,7 +324,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
                     this.currentPage = data.pageId;
 
                     // Stop listening for new page events.
-                    this.newPageObserver!.off();
+                    this.newPageObserver?.off();
                     this.newPageObserver = undefined;
 
                     await this.showLoadingAndFetch(true, false);
@@ -424,7 +427,6 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
         const pageContents = await this.fetchPageContents(this.currentPage);
 
         if (pageContents) {
-            this.dataRetrieved.emit(pageContents.title);
             this.setSelectedWiki(pageContents.subwikiid, pageContents.userid, pageContents.groupid);
 
             this.pageTitle = pageContents.title;
@@ -664,7 +666,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
         content = content.trim();
 
         if (content.length > 0) {
-            const editUrl = CoreTextUtils.concatenatePaths(CoreSites.getCurrentSite()!.getURL(), '/mod/wiki/edit.php');
+            const editUrl = CoreTextUtils.concatenatePaths(CoreSites.getRequiredCurrentSite().getURL(), '/mod/wiki/edit.php');
             content = content.replace(/href="edit\.php/g, 'href="' + editUrl);
         }
 
@@ -956,28 +958,28 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
                         candidateSubwikiId = subwiki.id;
                     }
 
-                    if (typeof candidateSubwikiId != 'undefined') {
+                    if (candidateSubwikiId !== undefined) {
                         if (candidateSubwikiId > 0) {
                             // Subwiki found and created, no need to keep looking.
                             candidateFirstPage = Number(i);
                             break;
-                        } else if (typeof candidateNoFirstPage == 'undefined') {
+                        } else if (candidateNoFirstPage === undefined) {
                             candidateNoFirstPage = Number(i);
                         }
-                    } else if (typeof firstCanEdit == 'undefined') {
+                    } else if (firstCanEdit === undefined) {
                         firstCanEdit = Number(i);
                     }
                 }
             }
 
             let subWikiToTake: number;
-            if (typeof candidateFirstPage != 'undefined') {
+            if (candidateFirstPage !== undefined) {
                 // Take the candidate that already has the first page created.
                 subWikiToTake = candidateFirstPage;
-            } else if (typeof candidateNoFirstPage != 'undefined') {
+            } else if (candidateNoFirstPage !== undefined) {
                 // No first page created, take the first candidate.
                 subWikiToTake = candidateNoFirstPage;
-            } else if (typeof firstCanEdit != 'undefined') {
+            } else if (firstCanEdit !== undefined) {
                 // None selected, take the first the user can edit.
                 subWikiToTake = firstCanEdit;
             } else {
@@ -986,7 +988,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
             }
 
             const subwiki = subwikiList[subWikiToTake];
-            if (typeof subwiki != 'undefined') {
+            if (subwiki !== undefined) {
                 this.setSelectedWiki(subwiki.id, subwiki.userid, subwiki.groupid);
             }
         }
@@ -1019,7 +1021,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
             // As we loop over each subwiki, add it to the current group
             subwikiList.forEach((subwiki) => {
                 // Add the subwiki to the currently active grouping.
-                if (typeof subwiki.canedit == 'undefined') {
+                if (subwiki.canedit === undefined) {
                     noGrouping.subwikis.push(subwiki);
                 } else if (subwiki.canedit) {
                     myGroupsGrouping.subwikis.push(subwiki);

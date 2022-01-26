@@ -188,7 +188,7 @@ export class AddonModDataProvider {
             data,
         };
 
-        if (typeof groupId !== 'undefined') {
+        if (groupId !== undefined) {
             params.groupid = groupId;
         }
 
@@ -951,19 +951,6 @@ export class AddonModDataProvider {
     }
 
     /**
-     * Return whether or not the plugin is enabled in a certain site. Plugin is enabled if the database WS are available.
-     *
-     * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with true if plugin is enabled, rejected or resolved with false otherwise.
-     * @since 3.3
-     */
-    async isPluginEnabled(siteId?: string): Promise<boolean> {
-        const site = await CoreSites.getSite(siteId);
-
-        return site.wsAvailable('mod_data_get_data_access_information');
-    }
-
-    /**
      * Report the database as being viewed.
      *
      * @param id Module ID.
@@ -1017,16 +1004,16 @@ export class AddonModDataProvider {
             componentId: options.cmId,
             ...CoreSites.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
         };
-        if (typeof options.sort != 'undefined') {
+        if (options.sort !== undefined) {
             params.sort = options.sort;
         }
-        if (typeof options.order !== 'undefined') {
+        if (options.order !== undefined) {
             params.order = options.order;
         }
-        if (typeof options.search !== 'undefined') {
+        if (options.search !== undefined) {
             params.search = options.search;
         }
-        if (typeof options.advSearch !== 'undefined') {
+        if (options.advSearch !== undefined) {
             params.advsearch = options.advSearch;
         }
         const response = await site.read<AddonModDataSearchEntriesWSResponse>('mod_data_search_entries', params, preSets);

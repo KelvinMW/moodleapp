@@ -17,7 +17,6 @@ import { SafeUrl } from '@angular/platform-browser';
 import { ModalOptions } from '@ionic/core';
 
 import { CoreApp } from '@services/app';
-import { CoreLang } from '@services/lang';
 import { CoreAnyError, CoreError } from '@classes/errors/error';
 import { DomSanitizer, makeSingleton, Translate } from '@singletons';
 import { CoreWSFile } from '@services/ws';
@@ -216,7 +215,7 @@ export class CoreTextUtilsProvider {
      * @return Size in human readable format.
      */
     bytesToSize(bytes: number, precision: number = 2): string {
-        if (typeof bytes == 'undefined' || bytes === null || bytes < 0) {
+        if (bytes === undefined || bytes === null || bytes < 0) {
             return Translate.instant('core.notapplicable');
         }
 
@@ -255,7 +254,7 @@ export class CoreTextUtilsProvider {
         // First, we use a regexpr.
         text = text.replace(/(<([^>]+)>)/ig, '');
         // Then, we rely on the browser. We need to wrap the text to be sure is HTML.
-        text = this.convertToElement(text).textContent!;
+        text = this.convertToElement(text).textContent || '';
         // Recover or remove new lines.
         text = this.replaceNewLines(text, singleLine ? ' ' : '<br>');
 
@@ -280,7 +279,7 @@ export class CoreTextUtilsProvider {
         const firstCharRight = rightPath.charAt(0);
 
         if (lastCharLeft === '/' && firstCharRight === '/') {
-            return leftPath + rightPath.substr(1);
+            return leftPath + rightPath.substring(1);
         } else if (lastCharLeft !== '/' && firstCharRight !== '/') {
             return leftPath + '/' + rightPath;
         } else {
@@ -348,7 +347,7 @@ export class CoreTextUtilsProvider {
      * @return Decoded text.
      */
     decodeHTML(text: string | number): string {
-        if (typeof text == 'undefined' || text === null || (typeof text == 'number' && isNaN(text))) {
+        if (text === undefined || text === null || (typeof text == 'number' && isNaN(text))) {
             return '';
         } else if (typeof text != 'string') {
             return '' + text;
@@ -371,7 +370,7 @@ export class CoreTextUtilsProvider {
      */
     decodeHTMLEntities(text: string): string {
         if (text) {
-            text = this.convertToElement(text).textContent!;
+            text = this.convertToElement(text).textContent || '';
         }
 
         return text;
@@ -431,7 +430,7 @@ export class CoreTextUtilsProvider {
      * @return Escaped text.
      */
     escapeHTML(text?: string | number | null, doubleEncode: boolean = true): string {
-        if (typeof text == 'undefined' || text === null || (typeof text == 'number' && isNaN(text))) {
+        if (text === undefined || text === null || (typeof text == 'number' && isNaN(text))) {
             return '';
         } else if (typeof text != 'string') {
             return '' + text;
@@ -508,33 +507,6 @@ export class CoreTextUtilsProvider {
     }
 
     /**
-     * Formats a text, treating multilang tags and cleaning HTML if needed.
-     *
-     * @param text Text to format.
-     * @param clean Whether HTML tags should be removed.
-     * @param singleLine Whether new lines should be removed. Only valid if clean is true.
-     * @param shortenLength Number of characters to shorten the text.
-     * @param highlight Text to highlight.
-     * @return Promise resolved with the formatted text.
-     * @deprecated since 3.8.0. Please use CoreFilterProvider.formatText instead.
-     */
-    formatText(text: string, clean?: boolean, singleLine?: boolean, shortenLength?: number, highlight?: string): Promise<string> {
-        return this.treatMultilangTags(text).then((formatted) => {
-            if (clean) {
-                formatted = this.cleanTags(formatted, singleLine);
-            }
-            if (shortenLength && shortenLength > 0) {
-                formatted = this.shortenText(formatted, shortenLength);
-            }
-            if (highlight) {
-                formatted = this.highlightText(formatted, highlight);
-            }
-
-            return formatted;
-        });
-    }
-
-    /**
      * Get the error message from an error object.
      *
      * @param error Error.
@@ -567,7 +539,7 @@ export class CoreTextUtilsProvider {
             const url = CoreFileHelper.getFileUrl(files[0]);
 
             // Remove text after last slash (encoded or not).
-            return url?.substr(0, Math.max(url.lastIndexOf('/'), url.lastIndexOf('%2F')));
+            return url?.substring(0, Math.max(url.lastIndexOf('/'), url.lastIndexOf('%2F')));
         }
 
         return undefined;
@@ -599,7 +571,7 @@ export class CoreTextUtilsProvider {
 
         const regex = new RegExp('(' + searchText + ')', 'gi');
 
-        return text.replace(regex, '<span class="matchtext">$1</span>');
+        return text.replace(regex, '<mark class="matchtext">$1</mark>');
     }
 
     /**
@@ -701,7 +673,7 @@ export class CoreTextUtilsProvider {
         }
 
         // Error parsing, return the default value or the original value.
-        if (typeof defaultValue != 'undefined') {
+        if (defaultValue !== undefined) {
             return defaultValue;
         }
 
@@ -709,7 +681,7 @@ export class CoreTextUtilsProvider {
     }
 
     /**
-     * @deprecated Use CoreText instead.
+     * @deprecated since 3.9.5. Use CoreText instead.
      */
     removeEndingSlash(text?: string): string {
         return CoreText.removeEndingSlash(text);
@@ -806,9 +778,9 @@ export class CoreTextUtilsProvider {
             }
 
             // Get the filename from the URL.
-            let filename = url.substr(url.lastIndexOf('/') + 1);
+            let filename = url.substring(url.lastIndexOf('/') + 1);
             if (filename.indexOf('?') != -1) {
-                filename = filename.substr(0, filename.indexOf('?'));
+                filename = filename.substring(0, filename.indexOf('?'));
             }
 
             if (pluginfileMap[filename]) {
@@ -932,12 +904,12 @@ export class CoreTextUtilsProvider {
      */
     shortenText(text: string, length: number): string {
         if (text.length > length) {
-            text = text.substr(0, length);
+            text = text.substring(0, length);
 
             // Now, truncate at the last word boundary (if exists).
             const lastWordPos = text.lastIndexOf(' ');
             if (lastWordPos > 0) {
-                text = text.substr(0, lastWordPos);
+                text = text.substring(0, lastWordPos);
             }
             text += '&hellip;';
         }
@@ -995,43 +967,6 @@ export class CoreTextUtilsProvider {
         }
 
         return features;
-    }
-
-    /**
-     * Treat the multilang tags from a HTML code, leaving only the current language.
-     *
-     * @param text The text to be treated.
-     * @return Promise resolved with the formatted text.
-     * @deprecated since 3.8.0. Now this is handled by AddonFilterMultilangHandler.
-     */
-    treatMultilangTags(text: string): Promise<string> {
-        if (!text || typeof text != 'string') {
-            return Promise.resolve('');
-        }
-
-        return CoreLang.getCurrentLanguage().then((language) => {
-            // Match the current language.
-            const anyLangRegEx = /<(?:lang|span)[^>]+lang="[a-zA-Z0-9_-]+"[^>]*>(.*?)<\/(?:lang|span)>/g;
-            let currentLangRegEx = new RegExp('<(?:lang|span)[^>]+lang="' + language + '"[^>]*>(.*?)</(?:lang|span)>', 'g');
-
-            if (!text.match(currentLangRegEx)) {
-                // Current lang not found. Try to find the first language.
-                const matches = text.match(anyLangRegEx);
-                if (matches && matches[0]) {
-                    language = matches[0].match(/lang="([a-zA-Z0-9_-]+)"/)![1];
-                    currentLangRegEx = new RegExp('<(?:lang|span)[^>]+lang="' + language + '"[^>]*>(.*?)</(?:lang|span)>', 'g');
-                } else {
-                    // No multi-lang tag found, stop.
-                    return text;
-                }
-            }
-            // Extract contents of current language.
-            text = text.replace(currentLangRegEx, '$1');
-            // Delete the rest of languages
-            text = text.replace(anyLangRegEx, '');
-
-            return text;
-        });
     }
 
     /**

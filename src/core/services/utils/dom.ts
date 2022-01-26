@@ -29,7 +29,15 @@ import { CoreIonLoadingElement } from '@classes/ion-loading';
 import { CoreCanceledError } from '@classes/errors/cancelederror';
 import { CoreAnyError, CoreError } from '@classes/errors/error';
 import { CoreSilentError } from '@classes/errors/silenterror';
-import { makeSingleton, Translate, AlertController, ToastController, PopoverController, ModalController } from '@singletons';
+import {
+    makeSingleton,
+    Translate,
+    AlertController,
+    ToastController,
+    PopoverController,
+    ModalController,
+    Router,
+} from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import { CoreFileSizeSum } from '@services/plugin-file-delegate';
 import { CoreNetworkError } from '@classes/errors/network-error';
@@ -39,6 +47,11 @@ import { CoreFormFields, CoreForms } from '../../singletons/form';
 import { CoreModalLateralTransitionEnter, CoreModalLateralTransitionLeave } from '@classes/modal-lateral-transition';
 import { CoreZoomLevel } from '@features/settings/services/settings-helper';
 import { CoreErrorWithTitle } from '@classes/errors/errorwithtitle';
+import { AddonFilterMultilangHandler } from '@addons/filter/multilang/services/handlers/multilang';
+import { CoreSites } from '@services/sites';
+import { NavigationStart } from '@angular/router';
+import { filter } from 'rxjs/operators';
+import { Subscription } from 'rxjs';
 
 /*
  * "Utils" service with helper functions for UI, DOM elements and HTML code.
@@ -58,6 +71,7 @@ export class CoreDomUtilsProvider {
     protected instances: WeakMap<Element, unknown> = new WeakMap(); // Store component/directive instances indexed by element.
     protected debugDisplay = false; // Whether to display debug messages. Store it in a variable to make it synchronous.
     protected displayedAlerts: Record<string, HTMLIonAlertElement> = {}; // To prevent duplicated alerts.
+    protected displayedModals: Record<string, HTMLIonModalElement> = {}; // To prevent duplicated modals.
     protected activeLoadingModals: CoreIonLoadingElement[] = [];
     protected logger: CoreLogger;
 
@@ -186,8 +200,8 @@ export class CoreDomUtilsProvider {
 
         const availableSpace = getAvailableSpace(availableBytes);
 
-        wifiThreshold = typeof wifiThreshold == 'undefined' ? CoreConstants.WIFI_DOWNLOAD_THRESHOLD : wifiThreshold;
-        limitedThreshold = typeof limitedThreshold == 'undefined' ? CoreConstants.DOWNLOAD_THRESHOLD : limitedThreshold;
+        wifiThreshold = wifiThreshold === undefined ? CoreConstants.WIFI_DOWNLOAD_THRESHOLD : wifiThreshold;
+        limitedThreshold = limitedThreshold === undefined ? CoreConstants.DOWNLOAD_THRESHOLD : limitedThreshold;
 
         let wifiPrefix = '';
         if (CoreApp.isNetworkAccessLimited()) {
@@ -273,58 +287,6 @@ export class CoreDomUtilsProvider {
         });
 
         return newChanges;
-    }
-
-    /**
-     * Extract the downloadable URLs from an HTML code.
-     *
-     * @param html HTML code.
-     * @return List of file urls.
-     * @deprecated since 3.8. Use CoreFilepoolProvider.extractDownloadableFilesFromHtml instead.
-     */
-    extractDownloadableFilesFromHtml(html: string): string[] {
-        this.logger.error('The function extractDownloadableFilesFromHtml has been moved to CoreFilepoolProvider.' +
-                ' Please use that function instead of this one.');
-
-        const urls: string[] = [];
-
-        const element = this.convertToElement(html);
-        const elements: AnchorOrMediaElement[] = Array.from(element.querySelectorAll('a, img, audio, video, source, track'));
-
-        for (let i = 0; i < elements.length; i++) {
-            const element = elements[i];
-            let url = 'href' in element ? element.href : element.src;
-
-            if (url && CoreUrlUtils.isDownloadableUrl(url) && urls.indexOf(url) == -1) {
-                urls.push(url);
-            }
-
-            // Treat video poster.
-            if (element.tagName == 'VIDEO' && element.getAttribute('poster')) {
-                url = element.getAttribute('poster') || '';
-                if (url && CoreUrlUtils.isDownloadableUrl(url) && urls.indexOf(url) == -1) {
-                    urls.push(url);
-                }
-            }
-        }
-
-        return urls;
-    }
-
-    /**
-     * Extract the downloadable URLs from an HTML code and returns them in fake file objects.
-     *
-     * @param html HTML code.
-     * @return List of fake file objects with file URLs.
-     * @deprecated since 3.8. Use CoreFilepoolProvider.extractDownloadableFilesFromHtmlAsFakeFileObjects instead.
-     */
-    extractDownloadableFilesFromHtmlAsFakeFileObjects(html: string): {fileurl: string}[] {
-        const urls = this.extractDownloadableFilesFromHtml(html);
-
-        // Convert them to fake file objects.
-        return urls.map((url) => ({
-            fileurl: url,
-        }));
     }
 
     /**
@@ -807,21 +769,39 @@ export class CoreDomUtilsProvider {
      *
      * @param scrollEl The element that must be scrolled.
      * @param element DOM element to check.
+     * @param point The point of the element to check.
      * @return Whether the element is outside of the viewport.
      */
-    isElementOutsideOfScreen(scrollEl: HTMLElement, element: HTMLElement): boolean {
+    isElementOutsideOfScreen(
+        scrollEl: HTMLElement,
+        element: HTMLElement,
+        point: VerticalPoint = VerticalPoint.MID,
+    ): boolean {
         const elementRect = element.getBoundingClientRect();
 
         if (!elementRect) {
             return false;
         }
 
-        const elementMidPoint = Math.round((elementRect.bottom + elementRect.top) / 2);
+        let elementPoint: number;
+        switch (point) {
+            case VerticalPoint.TOP:
+                elementPoint = elementRect.top;
+                break;
+
+            case VerticalPoint.BOTTOM:
+                elementPoint = elementRect.bottom;
+                break;
+
+            case VerticalPoint.MID:
+                elementPoint = Math.round((elementRect.bottom + elementRect.top) / 2);
+                break;
+        }
 
         const scrollElRect = scrollEl.getBoundingClientRect();
         const scrollTopPos = scrollElRect?.top || 0;
 
-        return elementMidPoint > window.innerHeight || elementMidPoint < scrollTopPos;
+        return elementPoint > window.innerHeight || elementPoint < scrollTopPos;
     }
 
     /**
@@ -968,7 +948,7 @@ export class CoreDomUtilsProvider {
                 paths[CoreUrlUtils.removeUrlParams(CoreTextUtils.decodeURIComponent(currentSrc))] :
                 undefined;
 
-            if (typeof newSrc != 'undefined') {
+            if (newSrc !== undefined) {
                 media.setAttribute('src', newSrc);
             }
 
@@ -976,7 +956,7 @@ export class CoreDomUtilsProvider {
             if (media.tagName == 'VIDEO' && media.getAttribute('poster')) {
                 const currentPoster = media.getAttribute('poster');
                 const newPoster = paths[CoreTextUtils.decodeURIComponent(currentPoster!)];
-                if (typeof newPoster !== 'undefined') {
+                if (newPoster !== undefined) {
                     media.setAttribute('poster', newPoster);
                 }
             }
@@ -990,7 +970,7 @@ export class CoreDomUtilsProvider {
                 paths[CoreUrlUtils.removeUrlParams(CoreTextUtils.decodeURIComponent(currentHref))] :
                 undefined;
 
-            if (typeof newHref != 'undefined') {
+            if (newHref !== undefined) {
                 anchor.setAttribute('href', newHref);
 
                 if (typeof anchorFn == 'function') {
@@ -1013,7 +993,7 @@ export class CoreDomUtilsProvider {
      * @deprecated since 3.9.5. Use directly the IonContent class.
      */
     scrollTo(content: IonContent, x: number, y: number, duration?: number): Promise<void> {
-        return content?.scrollToPoint(x, y, duration || 0);
+        return content.scrollToPoint(x, y, duration || 0);
     }
 
     /**
@@ -1025,7 +1005,7 @@ export class CoreDomUtilsProvider {
      * @deprecated since 3.9.5. Use directly the IonContent class.
      */
     scrollToBottom(content: IonContent, duration?: number): Promise<void> {
-        return content?.scrollToBottom(duration);
+        return content.scrollToBottom(duration);
     }
 
     /**
@@ -1037,7 +1017,7 @@ export class CoreDomUtilsProvider {
      * @deprecated since 3.9.5. Use directly the IonContent class.
      */
     scrollToTop(content: IonContent, duration?: number): Promise<void> {
-        return content?.scrollToTop(duration);
+        return content.scrollToTop(duration);
     }
 
     /**
@@ -1048,9 +1028,9 @@ export class CoreDomUtilsProvider {
      */
     async getContentHeight(content: IonContent): Promise<number> {
         try {
-            const scrollElement = await content?.getScrollElement();
+            const scrollElement = await content.getScrollElement();
 
-            return scrollElement?.clientHeight || 0;
+            return scrollElement.clientHeight || 0;
         } catch (error) {
             return 0;
         }
@@ -1064,9 +1044,9 @@ export class CoreDomUtilsProvider {
      */
     async getScrollHeight(content: IonContent): Promise<number> {
         try {
-            const scrollElement = await content?.getScrollElement();
+            const scrollElement = await content.getScrollElement();
 
-            return scrollElement?.scrollHeight || 0;
+            return scrollElement.scrollHeight || 0;
         } catch (error) {
             return 0;
         }
@@ -1080,9 +1060,9 @@ export class CoreDomUtilsProvider {
      */
     async getScrollTop(content: IonContent): Promise<number> {
         try {
-            const scrollElement = await content?.getScrollElement();
+            const scrollElement = await content.getScrollElement();
 
-            return scrollElement?.scrollTop || 0;
+            return scrollElement.scrollTop || 0;
         } catch (error) {
             return 0;
         }
@@ -1103,7 +1083,7 @@ export class CoreDomUtilsProvider {
             return false;
         }
 
-        content?.scrollToPoint(position[0], position[1], duration || 0);
+        content.scrollToPoint(position[0], position[1], duration || 0);
 
         return true;
     }
@@ -1135,7 +1115,7 @@ export class CoreDomUtilsProvider {
                 return false;
             }
 
-            content?.scrollToPoint(position[0], position[1], duration || 0);
+            content.scrollToPoint(position[0], position[1], duration || 0);
 
             return true;
         } catch (error) {
@@ -1196,9 +1176,9 @@ export class CoreDomUtilsProvider {
     async showAlertWithOptions(options: AlertOptions = {}, autocloseTime?: number): Promise<HTMLIonAlertElement> {
         const hasHTMLTags = CoreTextUtils.hasHTMLTags(<string> options.message || '');
 
-        if (hasHTMLTags) {
-            // Format the text.
-            options.message = await CoreTextUtils.formatText(<string> options.message);
+        if (hasHTMLTags && !CoreSites.getCurrentSite()?.isVersionGreaterEqualThan('3.7')) {
+            // Treat multilang.
+            options.message = await AddonFilterMultilangHandler.filter(<string> options.message);
         }
 
         const alertId = <string> Md5.hashAsciiStr((options.header || '') + '#' + (options.message || ''));
@@ -1246,7 +1226,7 @@ export class CoreDomUtilsProvider {
                 if (options.buttons) {
                     // Execute dismiss function if any.
                     const cancelButton = <AlertButton> options.buttons.find(
-                        (button) => typeof button != 'string' && typeof button.handler != 'undefined' && button.role == 'cancel',
+                        (button) => typeof button != 'string' && button.handler !== undefined && button.role == 'cancel',
                     );
                     cancelButton.handler?.(null);
                 }
@@ -1490,7 +1470,7 @@ export class CoreDomUtilsProvider {
             buttons.push({
                 text: Translate.instant('core.download'),
                 handler: (): void => {
-                    CoreUtils.openInBrowser(link);
+                    CoreUtils.openInBrowser(link, { showBrowserWarning: false });
                 },
             });
         }
@@ -1515,19 +1495,34 @@ export class CoreDomUtilsProvider {
      *
      * @param message Modal message.
      * @param header Modal header.
-     * @param placeholder Placeholder of the input element. By default, "Password".
+     * @param placeholderOrLabel Placeholder (for textual/numeric inputs) or label (for radio/checkbox). By default, "Password".
      * @param type Type of the input element. By default, password.
-     * @param options More options to pass to the alert.
-     * @return Promise resolved with the input data if the user clicks OK, rejected if cancels.
+     * @param buttons Buttons. If not provided, OK and Cancel buttons will be displayed.
+     * @return Promise resolved with the input data (true for checkbox/radio) if the user clicks OK, rejected if cancels.
      */
     showPrompt(
         message: string,
         header?: string,
-        placeholder?: string,
+        placeholderOrLabel?: string,
         type: TextFieldTypes | 'checkbox' | 'radio' | 'textarea' = 'password',
+        buttons?: PromptButton[],
     ): Promise<any> { // eslint-disable-line @typescript-eslint/no-explicit-any
         return new Promise((resolve, reject) => {
-            placeholder = placeholder ?? Translate.instant('core.login.password');
+            placeholderOrLabel = placeholderOrLabel ?? Translate.instant('core.login.password');
+
+            const isCheckbox = type === 'checkbox';
+            const isRadio = type === 'radio';
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const resolvePromise = (data: any) => {
+                if (isCheckbox) {
+                    resolve(data[0]);
+                } else if (isRadio) {
+                    resolve(data);
+                } else {
+                    resolve(data.promptinput);
+                }
+            };
 
             const options: AlertOptions = {
                 header,
@@ -1535,11 +1530,31 @@ export class CoreDomUtilsProvider {
                 inputs: [
                     {
                         name: 'promptinput',
-                        placeholder: placeholder,
+                        placeholder: placeholderOrLabel,
+                        label: placeholderOrLabel,
                         type,
+                        value: (isCheckbox || isRadio) ? true : undefined,
                     },
                 ],
-                buttons: [
+            };
+
+            if (buttons?.length) {
+                options.buttons = buttons.map((button) => ({
+                    ...button,
+                    handler: (data) => {
+                        if (!button.handler) {
+                            // Just resolve the promise.
+                            resolvePromise(data);
+
+                            return;
+                        }
+
+                        button.handler(data, resolve, reject);
+                    },
+                }));
+            } else {
+                // Default buttons.
+                options.buttons = [
                     {
                         text: Translate.instant('core.cancel'),
                         role: 'cancel',
@@ -1549,12 +1564,10 @@ export class CoreDomUtilsProvider {
                     },
                     {
                         text: Translate.instant('core.ok'),
-                        handler: (data) => {
-                            resolve(data.promptinput);
-                        },
+                        handler: resolvePromise,
                     },
-                ],
-            };
+                ];
+            }
 
             this.showAlertWithOptions(options);
         });
@@ -1691,18 +1704,47 @@ export class CoreDomUtilsProvider {
     /**
      * Opens a Modal.
      *
-     * @param modalOptions Modal Options.
+     * @param options Modal Options.
      */
     async openModal<T = unknown>(
-        modalOptions: ModalOptions,
+        options: OpenModalOptions,
     ): Promise<T | undefined> {
+        const { waitForDismissCompleted, closeOnNavigate, ...modalOptions } = options;
+        const listenCloseEvents = closeOnNavigate ?? true; // Default to true.
 
-        const modal = await ModalController.create(modalOptions);
+        // TODO: Improve this if we need two modals with same component open at the same time.
+        const modalId = <string> Md5.hashAsciiStr(options.component?.toString() || '');
 
-        await modal.present();
+        const modal = this.displayedModals[modalId]
+            ? this.displayedModals[modalId]
+            : await ModalController.create(modalOptions);
 
-        // If onDidDismiss is nedded we can add a new param to the function to wait one function or the other.
-        const result = await modal.onWillDismiss<T>();
+        let navSubscription: Subscription | undefined;
+
+        // Get the promise before presenting to get result if modal is suddenly hidden.
+        const resultPromise = waitForDismissCompleted ? modal.onDidDismiss<T>() : modal.onWillDismiss<T>();
+
+        if (!this.displayedModals[modalId]) {
+            // Store the modal and remove it when dismissed.
+            this.displayedModals[modalId] = modal;
+
+            if (listenCloseEvents) {
+                // Listen navigation events to close modals.
+                navSubscription = Router.events
+                    .pipe(filter(event => event instanceof NavigationStart))
+                    .subscribe(async () => {
+                        modal.dismiss();
+                    });
+            }
+
+            await modal.present();
+        }
+
+        const result = await resultPromise;
+
+        navSubscription?.unsubscribe();
+        delete this.displayedModals[modalId];
+
         if (result?.data) {
             return result?.data;
         }
@@ -1711,21 +1753,21 @@ export class CoreDomUtilsProvider {
     /**
      * Opens a side Modal.
      *
-     * @param modalOptions Modal Options.
+     * @param options Modal Options.
      */
     async openSideModal<T = unknown>(
-        modalOptions: ModalOptions,
+        options: OpenModalOptions,
     ): Promise<T | undefined> {
 
-        modalOptions = Object.assign(modalOptions, {
+        options = Object.assign({
             cssClass: 'core-modal-lateral',
             showBackdrop: true,
             backdropDismiss: true,
             enterAnimation: CoreModalLateralTransitionEnter,
             leaveAnimation: CoreModalLateralTransitionLeave,
-        });
+        }, options);
 
-        return await this.openModal<T>(modalOptions);
+        return await this.openModal<T>(options);
     }
 
     /**
@@ -1767,14 +1809,12 @@ export class CoreDomUtilsProvider {
      * @param title Title of the page or modal.
      * @param component Component to link the image to if needed.
      * @param componentId An ID to use in conjunction with the component.
-     * @param fullScreen Whether the modal should be full screen.
      */
     async viewImage(
         image: string,
         title?: string | null,
         component?: string,
         componentId?: string | number,
-        fullScreen?: boolean,
     ): Promise<void> {
         if (!image) {
             return;
@@ -1788,7 +1828,7 @@ export class CoreDomUtilsProvider {
                 component,
                 componentId,
             },
-            cssClass: fullScreen ? 'core-modal-fullscreen' : '',
+            cssClass: 'core-modal-transparent',
         });
 
     }
@@ -2046,12 +2086,34 @@ function fixMDPopoverPosition(baseEl: HTMLElement, ev?: Event): void {
 
 export const CoreDomUtils = makeSingleton(CoreDomUtilsProvider);
 
-type AnchorOrMediaElement =
-    HTMLAnchorElement | HTMLImageElement | HTMLAudioElement | HTMLVideoElement | HTMLSourceElement | HTMLTrackElement;
-
 /**
  * Options for the openPopover function.
  */
 export type OpenPopoverOptions = PopoverOptions & {
     waitForDismissCompleted?: boolean;
 };
+
+/**
+ * Options for the openModal function.
+ */
+export type OpenModalOptions = ModalOptions & {
+    waitForDismissCompleted?: boolean;
+    closeOnNavigate?: boolean; // Default true.
+};
+
+/**
+ * Buttons for prompt alert.
+ */
+export type PromptButton = Omit<AlertButton, 'handler'> & {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler?: (value: any, resolve: (value: any) => void, reject: (reason: any) => void) => void;
+};
+
+/**
+ * Vertical points for an element.
+ */
+export enum VerticalPoint {
+    TOP = 'top',
+    MID = 'mid',
+    BOTTOM = 'bottom',
+}

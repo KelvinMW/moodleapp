@@ -112,6 +112,26 @@ export interface CoreUserProfileHandlerData {
     spinner?: boolean;
 
     /**
+     * If the handler has badge to show or not. Only for TYPE_NEW_PAGE.
+     */
+    showBadge?: boolean;
+
+    /**
+     * Text to display on the badge. Only used if showBadge is true and only for TYPE_NEW_PAGE.
+     */
+    badge?: string;
+
+    /**
+     * Accessibility text to add on the badge. Only used if showBadge is true and only for TYPE_NEW_PAGE.
+     */
+    badgeA11yText?: string;
+
+    /**
+     * If true, the badge number is being loaded. Only used if showBadge is true and only for TYPE_NEW_PAGE.
+     */
+    loading?: boolean;
+
+    /**
      * Action to do when clicked.
      *
      * @param event Click event.
@@ -270,22 +290,17 @@ export class CoreUserDelegateService extends CoreDelegate<CoreUserProfileHandler
      * @return Promise resolved when done.
      */
     protected async calculateUserHandlers(user: CoreUserProfile, courseId?: number): Promise<void> {
-        let navOptions: CoreCourseUserAdminOrNavOptionIndexed | undefined;
-        let admOptions: CoreCourseUserAdminOrNavOptionIndexed | undefined;
+        // Get course options.
+        const courses = await CoreCourses.getUserCourses(true);
+        const courseIds = courses.map((course) => course.id);
 
-        if (CoreCourses.canGetAdminAndNavOptions()) {
-            // Get course options.
-            const courses = await CoreCourses.getUserCourses(true);
-            const courseIds = courses.map((course) => course.id);
+        const options = await CoreCourses.getCoursesAdminAndNavOptions(courseIds);
 
-            const options = await CoreCourses.getCoursesAdminAndNavOptions(courseIds);
+        // For backwards compatibility we don't modify the courseId.
+        const courseIdForOptions = courseId || CoreSites.getCurrentSiteHomeId();
 
-            // For backwards compatibility we don't modify the courseId.
-            const courseIdForOptions = courseId || CoreSites.getCurrentSiteHomeId();
-
-            navOptions = options.navOptions[courseIdForOptions];
-            admOptions = options.admOptions[courseIdForOptions];
-        }
+        const navOptions = options.navOptions[courseIdForOptions];
+        const admOptions = options.admOptions[courseIdForOptions];
 
         const userData = this.userHandlers[user.id];
         userData.handlers = [];
@@ -352,14 +367,14 @@ export class CoreUserDelegateService extends CoreDelegate<CoreUserProfileHandler
             return handler.isEnabledForUser(user, courseId);
         }
 
-        if (typeof this.enabledForUserCache[handler.name] == 'undefined') {
+        if (this.enabledForUserCache[handler.name] === undefined) {
             this.enabledForUserCache[handler.name] = {};
         }
 
         const cacheKey = this.getCacheKey(courseId, user.id);
         const cache = this.enabledForUserCache[handler.name][cacheKey];
 
-        if (typeof cache != 'undefined') {
+        if (cache !== undefined) {
             return cache;
         }
 
@@ -382,8 +397,14 @@ export class CoreUserDelegateService extends CoreDelegate<CoreUserProfileHandler
      */
     protected clearHandlerCache(courseId?: number, userId?: number): void {
         if (courseId && userId) {
+            const cacheKey = this.getCacheKey(courseId, userId);
+
             Object.keys(this.enabledHandlers).forEach((name) => {
-                delete this.enabledForUserCache[name][this.getCacheKey(courseId, userId)];
+                const cache = this.enabledForUserCache[name];
+
+                if (cache) {
+                    delete cache[cacheKey];
+                }
             });
         } else {
             this.enabledForUserCache = {};

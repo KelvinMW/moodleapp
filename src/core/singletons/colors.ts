@@ -22,6 +22,18 @@ interface ColorComponents {
 }
 
 /**
+ * Ionic color names.
+ */
+export enum CoreIonicColorNames {
+    SUCCESS = 'success',
+    INFO = 'info',
+    DANGER = 'danger',
+    DARK = 'dark',
+    LIGHT = 'light',
+    NONE = '',
+};
+
+/**
  * Singleton with helper functions for colors.
  */
 export class CoreColors {
@@ -64,7 +76,12 @@ export class CoreColors {
         document.body.appendChild(d);
 
         // Color in RGB .
-        const rgba = getComputedStyle(d).color.match(/\d+/g)!.map((a) => parseInt(a, 10));
+        const matches = getComputedStyle(d).color.match(/\d+/g) || [];
+        if (matches.length == 0) {
+            return '';
+        }
+
+        const rgba = matches.map((a) => parseInt(a, 10));
 
         const hex = [0,1,2].map(
             (idx) => this.componentToHex(rgba[idx]),
@@ -72,7 +89,7 @@ export class CoreColors {
 
         document.body.removeChild(d);
 
-        return '#'+hex;
+        return '#' + hex;
     }
 
     /**
@@ -95,7 +112,7 @@ export class CoreColors {
      */
     static hexToRGB(color: string): ColorComponents {
         if (color.charAt(0) == '#') {
-            color = color.substr(1);
+            color = color.substring(1);
         }
 
         if (color.length === 3) {
@@ -105,9 +122,9 @@ export class CoreColors {
         }
 
         return {
-            red: parseInt(color.substr(0, 2), 16),
-            green: parseInt(color.substr(2, 2), 16),
-            blue: parseInt(color.substr(4, 2), 16),
+            red: parseInt(color.substring(0, 2), 16),
+            green: parseInt(color.substring(2, 2), 16),
+            blue: parseInt(color.substring(4, 2), 16),
         };
 
     }
@@ -133,6 +150,25 @@ export class CoreColors {
      */
     protected static componentToHex(c: number): string {
         return ('0' + c.toString(16)).slice(-2);
+    }
+
+    /**
+     * Get the toolbar's current background color.
+     *
+     * @return Color in hex format.
+     */
+    static getToolbarBackgroundColor(): string {
+        const element = document.querySelector('ion-header ion-toolbar');
+        let color: string;
+
+        if (element) {
+            color = getComputedStyle(element).getPropertyValue('--background').trim();
+        } else {
+            // Fallback, it won't always work.
+            color = getComputedStyle(document.body).getPropertyValue('--core-header-toolbar-background').trim();
+        }
+
+        return CoreColors.getColorHex(color);
     }
 
 }

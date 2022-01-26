@@ -19,10 +19,8 @@ import { CoreSites } from '@services/sites';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
-import { CoreUser } from '@features/user/services/user';
 import { CoreH5P } from '../services/h5p';
 import { CoreH5PCore, CoreH5PDisplayOptions } from './core';
-import { Translate } from '@singletons';
 import { CoreError } from '@classes/errors/error';
 
 /**
@@ -117,11 +115,11 @@ export class CoreH5PHelper {
 
         const site = await CoreSites.getSite(siteId);
 
-        const userId = site.getUserId();
-        const user = await CoreUtils.ignoreErrors(CoreUser.getProfile(userId, undefined, false, siteId));
+        const info = site.getInfo();
 
-        if (!user || !user.email) {
-            throw new CoreError(Translate.instant('core.h5p.errorgetemail'));
+        if (!info) {
+            // Shouldn't happen for authenticated sites.
+            throw new CoreError('Site info could not be fetched.');
         }
 
         const basePath = CoreFile.getBasePathInstant();
@@ -151,7 +149,7 @@ export class CoreH5PHelper {
             l10n: {
                 H5P: CoreH5P.h5pCore.getLocalization(), // eslint-disable-line @typescript-eslint/naming-convention
             },
-            user: { name: site.getInfo()!.fullname, mail: user.email },
+            user: { name: info.username, id: info.userid },
             hubIsEnabled: false,
             reportingIsEnabled: false,
             crossorigin: null,
@@ -211,7 +209,7 @@ export class CoreH5PHelper {
             // Read the contents of the unzipped dir, process them and store them.
             const contents = await CoreFile.getDirectoryContents(destFolder);
 
-            const filesData = await CoreH5P.h5pValidator.processH5PFiles(destFolder, contents);
+            const filesData = await CoreH5P.h5pValidator.processH5PFiles(destFolder, contents, siteId);
 
             const content = await CoreH5P.h5pStorage.savePackage(filesData, folderName, fileUrl, false, siteId);
 
@@ -252,7 +250,8 @@ export type CoreH5PCoreSettings = {
     };
     user: {
         name: string;
-        mail: string;
+        id?: number;
+        mail?: string;
     };
     hubIsEnabled: boolean;
     reportingIsEnabled: boolean;

@@ -61,6 +61,7 @@
     --a11y-min-target-size: 44px;
     --a11y-focus-color: var(--primary);
     --a11y-focus-width: 2px;
+    --zoom-level: 100%;
 
     --module-icon-size: 24px;
 
@@ -87,7 +88,7 @@
     --core-bottom-tabs-background: var(--black);
     --core-bottom-tabs-color: var(--gray-lighter);
     --core-bottom-tabs-color-selected: var(--brand-color);
-    --core-bottom-tabs-background-selected: var(--core-bottom-tabs-background);
+    --core-bottom-tabs-background-selected: transparent;
     --core-bottom-tabs-badge-color: var(--brand-color);
     --core-bottom-tabs-badge-text-color: var(--brand-color-contrast);
     --bottom-tabs-size: 56px;
@@ -96,10 +97,6 @@
         --color: var(--core-bottom-tabs-color);
         --color-selected: var(--core-bottom-tabs-color-selected);
         --background-selected: var(--core-bottom-tabs-background-selected);
-        ion-badge {
-            --background: var(--core-bottom-tabs-badge-color);
-            --color: var(--core-bottom-tabs-badge-text-color);
-        }
     }
 
     --core-link-color: var(--blue);
@@ -200,13 +197,6 @@
         --background: var(--core-progressbar-background);
     }
 
-    --core-side-blocks-max-width: 30%;
-    --core-side-blocks-min-width: 280px;
-    core-block-course-blocks {
-        --side-blocks-max-width: var(--core-side-blocks-max-width);
-        --side-blocks-min-width: var(--core-side-blocks-min-width);
-    }
-
     --ion-item-background:        #{$ion-item-background};
     --ion-item-detail-icon-color: var(--gray-darker);
     --ion-item-detail-icon-font-size: 20px;
@@ -225,6 +215,10 @@
         --color: var(--item-divider-color);
         --min-height: var(--item-divider-min-height);
         min-height: var(--min-height);
+
+        .expandable-status-icon {
+            font-size: 18px;
+        }
     }
 
     --spacer-background: var(--item-divider-background);
@@ -236,12 +230,17 @@
         --color: var(--subdued-text-color);
     }
 
+    ion-back-button {
+        --min-height: var(--a11y-min-target-size);
+        --min-width: var(--a11y-min-target-size);
+    }
+
     --core-combobox-background: var(--ion-item-background);
     --core-combobox-color: var(--black);
     --core-combobox-border-color: var(--primary);
     --core-combobox-border-width: 3px;
     --core-combobox-border-all-width: 0 0 var(--core-combobox-border-width) 0;
-    --core-combobox-radius: 0;
+    --core-combobox-radius: 0px;
     --core-combobox-box-shadow: 0 3px 1px -2px rgba(0, 0, 0, .2), 0 2px 2px 0 rgba(0, 0, 0, .14), 0 1px 5px 0 rgba(0, 0, 0, .12);
 
     --selected-item-color: var(--primary);
@@ -261,6 +260,11 @@
     --core-send-message-input-color: var(--black);
 
     --core-courseimage-on-course-height: 150px;
+
+    --core-course-module-navigation-max-height: 56px;
+    --core-course-module-navigation-background: var(--contrast-background);
+
+    --core-user-menu-site-logo-max-height: 32px;
 
     --addon-calendar-event-category-color: var(--purple);
     --addon-calendar-event-course-color: var(--red);
@@ -317,5 +321,10 @@
     @for $i from 0 to length($core-dd-question-colors) {
         --core-dd-question-color-#{$i + 1}: #{nth($core-dd-question-colors, $i + 1)};
         --core-dd-question-color-#{$i + 1}-contrast: #{get_contrast_color(nth($core-dd-question-colors, $i + 1))};
+    }
+
+    // Make activtity colours available for custom modules.
+    @each $type, $value in $activity-icon-colors {
+        --activity#{$type}: #{$value};
     }
 }

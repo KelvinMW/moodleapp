@@ -134,7 +134,7 @@ export class AddonModBookProvider {
 
         if (!CoreFile.isAvailable()) {
             // We return the live URL.
-            return CoreSites.getCurrentSite()!.checkAndFixPluginfileURL(indexUrl);
+            return CoreSites.getRequiredCurrentSite().checkAndFixPluginfileURL(indexUrl);
         }
 
         const siteId = CoreSites.getCurrentSiteId();
@@ -217,43 +217,13 @@ export class AddonModBookProvider {
     }
 
     /**
-     * Get the next chapter to the given one.
-     *
-     * @param chapters The chapters list.
-     * @param chapterId The current chapter.
-     * @return The next chapter.
-     */
-    getNextChapter(chapters: AddonModBookTocChapter[], chapterId: number): AddonModBookTocChapter | undefined {
-        const currentChapterIndex = chapters.findIndex((chapter) => chapter.id == chapterId);
-
-        if (currentChapterIndex >= 0 && typeof chapters[currentChapterIndex + 1] != 'undefined') {
-            return chapters[currentChapterIndex + 1];
-        }
-    }
-
-    /**
-     * Get the previous chapter to the given one.
-     *
-     * @param chapters The chapters list.
-     * @param chapterId The current chapter.
-     * @return The next chapter.
-     */
-    getPreviousChapter(chapters: AddonModBookTocChapter[], chapterId: number): AddonModBookTocChapter | undefined {
-        const currentChapterIndex = chapters.findIndex((chapter) => chapter.id == chapterId);
-
-        if (currentChapterIndex > 0) {
-            return chapters[currentChapterIndex - 1];
-        }
-    }
-
-    /**
      * Get the book toc as an array.
      *
      * @param contents The module contents.
      * @return The toc.
      */
     getToc(contents: CoreCourseModuleContentFile[]): AddonModBookTocChapterParsed[] {
-        if (!contents || !contents.length || typeof contents[0].content == 'undefined') {
+        if (!contents || !contents.length || contents[0].content === undefined) {
             return [];
         }
 
@@ -441,7 +411,7 @@ export type AddonModBookBookWSData = {
     name: string; // Book name.
     intro: string; // The Book intro.
     introformat: number; // Intro format (1 = HTML, 0 = MOODLE, 2 = PLAIN or 4 = MARKDOWN).
-    introfiles?: CoreWSExternalFile[]; // @since 3.2.
+    introfiles?: CoreWSExternalFile[];
     numbering: number; // Book numbering configuration.
     navstyle: number; // Book navigation style configuration.
     customtitles: number; // Book custom titles type.

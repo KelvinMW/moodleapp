@@ -56,7 +56,6 @@ export class AddonMessagesDiscussions35Page implements OnInit, OnDestroy {
     discussionUserId?: number;
 
     search = {
-        enabled: false,
         showResults: false,
         results: <AddonMessagesMessageAreaContact[]> [],
         loading: '',
@@ -78,7 +77,7 @@ export class AddonMessagesDiscussions35Page implements OnInit, OnDestroy {
                 if (data.userId && this.discussions) {
                     const discussion = this.discussions.find((disc) => disc.message!.user == data.userId);
 
-                    if (typeof discussion == 'undefined') {
+                    if (discussion === undefined) {
                         this.loaded = false;
                         this.refreshData().finally(() => {
                             this.loaded = true;
@@ -100,7 +99,7 @@ export class AddonMessagesDiscussions35Page implements OnInit, OnDestroy {
                 if (data.userId && this.discussions) {
                     const discussion = this.discussions.find((disc) => disc.message!.user == data.userId);
 
-                    if (typeof discussion != 'undefined') {
+                    if (discussion !== undefined) {
                     // A discussion has been read reset counter.
                         discussion.unread = false;
 
@@ -179,7 +178,6 @@ export class AddonMessagesDiscussions35Page implements OnInit, OnDestroy {
      */
     protected async fetchData(): Promise<void> {
         this.loadingMessage = this.loadingMessages;
-        this.search.enabled = AddonMessages.isSearchMessagesEnabled();
 
         const promises: Promise<unknown>[] = [];
 

@@ -79,17 +79,6 @@ export class CoreCourseFormatDefaultHandler implements CoreCourseFormatHandler {
     }
 
     /**
-     * Whether the option to enable section/module download should be displayed. Defaults to true.
-     *
-     * @param course The course to check.
-     * @return Whether the option to enable section/module download should be displayed
-     */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    displayEnableDownload(course: CoreCourseAnyCourseData): boolean {
-        return true;
-    }
-
-    /**
      * Whether the default section selector should be displayed. Defaults to true.
      *
      * @param course The course to check.
@@ -127,9 +116,6 @@ export class CoreCourseFormatDefaultHandler implements CoreCourseFormatHandler {
         if ('marker' in course) {
             // We already have it.
             marker = course.marker;
-        } else if (!CoreCourses.isGetCoursesByFieldAvailable()) {
-            // Cannot get the current section, return all of them.
-            return sections[0];
         } else {
             // Try to retrieve the marker.
             const courseData = await CoreUtils.ignoreErrors(CoreCourses.getCourseByField('id', course.id));

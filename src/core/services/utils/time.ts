@@ -97,7 +97,7 @@ export class CoreTimeUtilsProvider {
                     converted += ']';
                 }
 
-                converted += typeof CoreTimeUtilsProvider.FORMAT_REPLACEMENTS[char] != 'undefined' ?
+                converted += CoreTimeUtilsProvider.FORMAT_REPLACEMENTS[char] !== undefined ?
                     CoreTimeUtilsProvider.FORMAT_REPLACEMENTS[char] : char;
             } else {
                 // Not a PHP format. We need to escape them, otherwise the letters could be confused with Moment formats.
@@ -295,19 +295,19 @@ export class CoreTimeUtilsProvider {
      * @return Readable date.
      */
     userDate(timestamp: number, format?: string, convert: boolean = true, fixDay: boolean = true, fixHour: boolean = true): string {
-        format = Translate.instant(format ? format : 'core.strftimedaydatetime');
+        format = Translate.instant(format ? format : 'core.strftimedaydatetime') as string;
 
         if (fixDay) {
-            format = format!.replace(/%d/g, '%e');
+            format = format.replace(/%d/g, '%e');
         }
 
         if (fixHour) {
-            format = format!.replace('%I', '%l');
+            format = format.replace('%I', '%l');
         }
 
         // Format could be in PHP format, convert it to moment.
         if (convert) {
-            format = this.convertPHPToMoment(format!);
+            format = this.convertPHPToMoment(format);
         }
 
         return moment(timestamp).format(format);
@@ -338,7 +338,7 @@ export class CoreTimeUtilsProvider {
     convertToTimestamp(date: string, applyOffset?: boolean): number {
         const timestamp = moment(date).unix();
 
-        if (typeof applyOffset !== 'undefined') {
+        if (applyOffset !== undefined) {
             return applyOffset ? timestamp - moment().utcOffset() * 60 : timestamp;
         }
 

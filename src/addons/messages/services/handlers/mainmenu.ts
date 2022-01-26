@@ -23,11 +23,11 @@ import { CoreSites } from '@services/sites';
 import { CoreEvents } from '@singletons/events';
 import { CoreUtils } from '@services/utils/utils';
 import {
-    CorePushNotifications,
     CorePushNotificationsNotificationBasicData,
 } from '@features/pushnotifications/services/pushnotifications';
 import { CorePushNotificationsDelegate } from '@features/pushnotifications/services/push-delegate';
 import { makeSingleton } from '@singletons';
+import { CoreMainMenuProvider } from '@features/mainmenu/services/mainmenu';
 
 /**
  * Handler to inject an option into main menu.
@@ -38,14 +38,14 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
     static readonly PAGE_NAME = 'messages';
 
     name = 'AddonMessages';
-    priority = 800;
+    priority = 700;
 
     protected handler: CoreMainMenuHandlerToDisplay = {
         icon: 'fas-comments',
         title: 'addon.messages.messages',
         page: AddonMessagesMainMenuHandlerService.PAGE_NAME,
         class: 'addon-messages-handler',
-        showBadge: true, // Do not check isMessageCountEnabled because we'll use fallback it not enabled.
+        showBadge: true,
         badge: '',
         badgeA11yText: 'addon.messages.unreadconversations',
         loading: true,
@@ -90,7 +90,7 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
         );
 
         // Register Badge counter.
-        CorePushNotificationsDelegate.registerCounterHandler('AddonMessages');
+        CorePushNotificationsDelegate.registerCounterHandler(AddonMessagesMainMenuHandlerService.name);
     }
 
     /**
@@ -162,7 +162,14 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
         }
 
         // Update push notifications badge.
-        CorePushNotifications.updateAddonCounter('AddonMessages', totalCount, siteId);
+        CoreEvents.trigger(
+            CoreMainMenuProvider.MAIN_MENU_HANDLER_BADGE_UPDATED,
+            {
+                handler: AddonMessagesMainMenuHandlerService.name,
+                value: totalCount,
+            },
+            siteId,
+        );
     }
 
     /**
@@ -199,8 +206,7 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
      * @return True if is a sync process, false otherwise.
      */
     isSync(): boolean {
-        // This is done to use only wifi if using the fallback function.
-        return !AddonMessages.isMessageCountEnabled() && !AddonMessages.isGroupMessagingEnabled();
+        return false;
     }
 
     /**

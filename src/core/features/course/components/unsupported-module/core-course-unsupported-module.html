@@ -1,8 +1,4 @@
 <div class="ion-padding">
-    <core-course-module-description [description]="module?.description" contextLevel="module"
-        [contextInstanceId]="module?.id" [courseId]="courseId">
-    </core-course-module-description>
-
     <h2 *ngIf="!isDisabledInSite && isSupportedByTheApp">{{ 'core.whoops' | translate }}</h2>
     <h2 *ngIf="isDisabledInSite || !isSupportedByTheApp">{{ 'core.uhoh' | translate }}</h2>
 
@@ -17,7 +13,7 @@
 
     <div *ngIf="module && module.url">
         <p><strong>{{ 'core.course.useactivityonbrowser' | translate }}</strong></p>
-        <ion-button expand="block" [href]="module.url" core-link>
+        <ion-button expand="block" [href]="module.url" core-link [showBrowserWarning]="false">
             {{ 'core.openinbrowser' | translate }}
             <ion-icon name="fas-external-link-alt" slot="end" aria-hidden="true"></ion-icon>
         </ion-button>

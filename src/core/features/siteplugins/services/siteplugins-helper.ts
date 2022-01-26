@@ -84,6 +84,7 @@ import { CoreSitePluginsWorkshopAssessmentStrategyHandler } from '../classes/han
 import { CoreContentLinksModuleIndexHandler } from '@features/contentlinks/classes/module-index-handler';
 import { CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
 import { CoreContentLinksModuleListHandler } from '@features/contentlinks/classes/module-list-handler';
+import { CoreObject } from '@singletons/object';
 
 const HANDLER_DISABLED = 'core_site_plugins_helper_handler_disabled';
 
@@ -205,7 +206,7 @@ export class CoreSitePluginsHelperProvider {
             undefined,
             undefined,
             undefined,
-            handlerSchema.styles!.version,
+            handlerSchema.styles?.version,
         );
 
         // File is downloaded, get the contents.
@@ -378,8 +379,9 @@ export class CoreSitePluginsHelperProvider {
 
         if (plugin.parsedHandlers) {
             // Register all the handlers.
-            await CoreUtils.allPromises(Object.keys(plugin.parsedHandlers).map(async (name) => {
-                await this.registerHandler(plugin, name, plugin.parsedHandlers![name]);
+            const parsedHandlers = plugin.parsedHandlers;
+            await CoreUtils.allPromises(Object.keys(parsedHandlers).map(async (name) => {
+                await this.registerHandler(plugin, name, parsedHandlers[name]);
             }));
         }
     }
@@ -614,9 +616,11 @@ export class CoreSitePluginsHelperProvider {
             if (result.jsResult) {
                 // Override default handler functions with the result of the method JS.
                 const jsResult = <Record<string, unknown>> result.jsResult;
-                for (const property in handler) {
-                    if (property != 'constructor' && typeof handler[property] == 'function' &&
-                            typeof jsResult[property] == 'function') {
+                const handlerProperties = CoreObject.getAllPropertyNames(handler);
+
+                for (const property of handlerProperties) {
+                    if (property !== 'constructor' && typeof handler[property] === 'function' &&
+                            typeof jsResult[property] === 'function') {
                         // eslint-disable-next-line @typescript-eslint/ban-types
                         handler[property] = (<Function> jsResult[property]).bind(handler);
                     }
@@ -891,6 +895,7 @@ export class CoreSitePluginsHelperProvider {
 
         const moduleHandler = new CoreSitePluginsModuleHandler(uniqueName, modName, plugin, handlerSchema, initResult);
         CoreCourseModuleDelegate.registerHandler(moduleHandler);
+        CoreSitePlugins.setModuleHandlerInstance(modName, moduleHandler);
 
         if (handlerSchema.offlinefunctions && Object.keys(handlerSchema.offlinefunctions).length) {
             // Register the prefetch handler.

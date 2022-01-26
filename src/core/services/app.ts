@@ -606,7 +606,7 @@ export class CoreAppProvider {
             };
 
             localStorage.setItem('CoreRedirect', JSON.stringify(redirect));
-        } catch (ex) {
+        } catch {
             // Ignore errors.
         }
     }
@@ -638,15 +638,7 @@ export class CoreAppProvider {
 
         if (!color) {
             // Get the default color to change it.
-            const element = document.querySelector('ion-header ion-toolbar');
-            if (element) {
-                color = getComputedStyle(element).getPropertyValue('--background').trim();
-            } else {
-                // Fallback, it won't always work.
-                color = getComputedStyle(document.body).getPropertyValue('--core-header-toolbar-background').trim();
-            }
-
-            color = CoreColors.getColorHex(color);
+            color = CoreColors.getToolbarBackgroundColor();
         }
 
         // Make darker on Android, except white.
@@ -677,7 +669,7 @@ export class CoreAppProvider {
     /**
      * Reset StatusBar color if any was set.
      *
-     * @deprecated Use setStatusBarColor passing the color of the new statusbar color loaded on remote theme or no color to reset.
+     * @deprecated since 3.9.5. Use setStatusBarColor passing the color of the new statusbar color, or no color to reset.
      */
     resetStatusBarColor(): void {
         this.setStatusBarColor();

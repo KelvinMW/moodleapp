@@ -16,7 +16,7 @@ import { Component, OnDestroy, OnInit, Optional } from '@angular/core';
 import { CoreError } from '@classes/errors/error';
 import { CoreCourseModuleMainResourceComponent } from '@features/course/classes/main-resource-component';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
-import { CoreCourse, CoreCourseWSModule } from '@features/course/services/course';
+import { CoreCourse } from '@features/course/services/course';
 import { CoreCourseModulePrefetchDelegate } from '@features/course/services/module-prefetch-delegate';
 import { CoreApp } from '@services/app';
 import { CoreFileHelper } from '@services/file-helper';
@@ -30,7 +30,6 @@ import {
     AddonModResource,
     AddonModResourceCustomData,
     AddonModResourceProvider,
-    AddonModResourceResource,
 } from '../../services/resource';
 import { AddonModResourceHelper } from '../../services/resource-helper';
 
@@ -45,7 +44,6 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
 
     component = AddonModResourceProvider.COMPONENT;
 
-    canGetResource = false;
     mode = '';
     src = '';
     contentText = '';
@@ -69,7 +67,6 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
     async ngOnInit(): Promise<void> {
         super.ngOnInit();
 
-        this.canGetResource = AddonModResource.isGetResourceWSAvailable();
         this.isIOS = CoreApp.isIOS();
         this.isOnline = CoreApp.isOnline();
 
@@ -85,7 +82,7 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
 
         await this.loadContent();
         try {
-            await AddonModResource.logView(this.module.instance!, this.module.name);
+            await AddonModResource.logView(this.module.instance, this.module.name);
             CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
         } catch {
             // Ignore errors.
@@ -104,32 +101,23 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
      */
     protected async fetchContent(refresh?: boolean): Promise<void> {
         // Load module contents if needed. Passing refresh is needed to force reloading contents.
-        await CoreCourse.loadModuleContents(this.module, this.courseId, undefined, false, refresh);
+        const contents = await CoreCourse.getModuleContents(this.module, undefined, undefined, false, refresh);
 
-        if (!this.module.contents || !this.module.contents.length) {
+        if (!contents.length) {
             throw new CoreError(Translate.instant('core.filenotfound'));
         }
 
-        let resource: AddonModResourceResource | CoreCourseWSModule | undefined;
-        let options: AddonModResourceCustomData = {};
         let hasCalledDownloadResource = false;
 
         // Get the resource instance to get the latest name/description and to know if it's embedded.
-        if (this.canGetResource) {
-            resource = await AddonModResource.getResourceData(this.courseId, this.module.id);
-            this.description = resource.intro || '';
-            options = resource.displayoptions ? CoreTextUtils.unserialize(resource.displayoptions) : {};
-        } else {
-            resource = await CoreCourse.getModule(this.module.id, this.courseId);
-            this.description = resource.description || '';
-            options = resource.customdata ? CoreTextUtils.unserialize(CoreTextUtils.parseJSON(resource.customdata)) : {};
-        }
+        const resource = await AddonModResource.getResourceData(this.courseId, this.module.id);
+        this.description = resource.intro || '';
+        const options: AddonModResourceCustomData =
+            resource.displayoptions ? CoreTextUtils.unserialize(resource.displayoptions) : {};
 
         try {
-            if (resource) {
-                this.displayDescription = typeof options.printintro == 'undefined' || !!options.printintro;
-                this.dataRetrieved.emit(resource);
-            }
+            this.displayDescription = options.printintro === undefined || !!options.printintro;
+            this.dataRetrieved.emit(resource);
 
             if (AddonModResourceHelper.isDisplayedInIframe(this.module)) {
                 hasCalledDownloadResource = true;
@@ -160,17 +148,17 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
                 this.mode = 'embedded';
                 this.warning = '';
 
-                this.contentText = await AddonModResourceHelper.getEmbeddedHtml(this.module, this.courseId);
+                this.contentText = await AddonModResourceHelper.getEmbeddedHtml(this.module);
                 this.mode = this.contentText.length > 0 ? 'embedded' : 'external';
             } else {
                 this.mode = 'external';
                 this.warning = '';
 
                 if (this.isIOS) {
-                    this.shouldOpenInBrowser = CoreFileHelper.shouldOpenInBrowser(this.module.contents[0]);
+                    this.shouldOpenInBrowser = CoreFileHelper.shouldOpenInBrowser(contents[0]);
                 }
 
-                const mimetype = await CoreUtils.getMimeTypeFromUrl(CoreFileHelper.getFileUrl(this.module.contents[0]));
+                const mimetype = await CoreUtils.getMimeTypeFromUrl(CoreFileHelper.getFileUrl(contents[0]));
 
                 this.isStreamedFile = CoreMimetypeUtils.isStreamedMimetype(mimetype);
             }
@@ -200,7 +188,7 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
         }
 
         // The resource cannot be downloaded, open the activity in browser.
-        await CoreSites.getCurrentSite()?.openInBrowserWithAutoLoginIfSameSite(this.module.url!);
+        await CoreSites.getCurrentSite()?.openInBrowserWithAutoLoginIfSameSite(this.module.url || '');
     }
 
     /**

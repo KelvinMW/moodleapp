@@ -13,20 +13,20 @@
 // limitations under the License.
 
 import { AfterViewInit, Component, OnDestroy, ViewChild } from '@angular/core';
-import { Params } from '@angular/router';
 import { IonRefresher } from '@ionic/angular';
 
-import { CoreSettingsDelegate, CoreSettingsHandlerToDisplay } from '../../services/settings-delegate';
+import { CoreSettingsHandlerToDisplay } from '../../services/settings-delegate';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreSettingsHelper, CoreSiteSpaceUsage } from '../../services/settings-helper';
 import { CoreApp } from '@services/app';
-import { CoreSiteInfo } from '@classes/site';
 import { Translate } from '@singletons';
 import { CoreNavigator } from '@services/navigator';
-import { CorePageItemsListManager } from '@classes/page-items-list-manager';
 import { CoreSplitViewComponent } from '@components/split-view/split-view';
+import { CoreListItemsManager } from '@classes/items-management/list-items-manager';
+import { CoreRoutedItemsManagerSourcesTracker } from '@classes/items-management/routed-items-manager-sources-tracker';
+import { CoreSettingsHandlersSource } from '@features/settings/classes/settings-handlers-source';
 
 /**
  * Page that displays the list of site settings pages.
@@ -39,13 +39,10 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
 
     @ViewChild(CoreSplitViewComponent) splitView!: CoreSplitViewComponent;
 
-    handlers: CoreSettingsSitePreferencesManager;
+    handlers: CoreListItemsManager<CoreSettingsHandlerToDisplay>;
 
     isIOS: boolean;
     siteId: string;
-    siteInfo?: CoreSiteInfo;
-    siteName?: string;
-    siteUrl?: string;
     spaceUsage: CoreSiteSpaceUsage = {
         cacheEntries: 0,
         spaceUsage: 0,
@@ -55,16 +52,16 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
     protected isDestroyed = false;
 
     constructor() {
-
         this.isIOS = CoreApp.isIOS();
         this.siteId = CoreSites.getCurrentSiteId();
-        this.handlers = new CoreSettingsSitePreferencesManager(CoreSitePreferencesPage);
 
-        this.sitesObserver = CoreEvents.on(CoreEvents.SITE_UPDATED, (data) => {
-            if (data.siteId == this.siteId) {
-                this.refreshData();
-            }
-        });
+        const source = CoreRoutedItemsManagerSourcesTracker.getOrCreateSource(CoreSettingsHandlersSource, []);
+
+        this.handlers = new CoreListItemsManager(source, CoreSitePreferencesPage);
+
+        this.sitesObserver = CoreEvents.on(CoreEvents.SITE_UPDATED, () => {
+            this.refreshData();
+        }, this.siteId);
     }
 
     /**
@@ -76,14 +73,14 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
         try {
             await this.fetchData();
         } finally {
-
             const handler = pageToOpen ? this.handlers.items.find(handler => handler.page == pageToOpen) : undefined;
 
             if (handler) {
-                this.handlers.select(handler);
                 this.handlers.watchSplitViewOutlet(this.splitView);
+
+                await this.handlers.select(handler);
             } else {
-                this.handlers.start(this.splitView);
+                await this.handlers.start(this.splitView);
             }
         }
     }
@@ -92,12 +89,7 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
      * Fetch Data.
      */
     protected async fetchData(): Promise<void> {
-        this.handlers.setItems(CoreSettingsDelegate.getHandlers());
-
-        const currentSite = CoreSites.getCurrentSite();
-        this.siteInfo = currentSite!.getInfo();
-        this.siteName = currentSite!.getSiteName();
-        this.siteUrl = currentSite!.getURL();
+        await this.handlers.load();
 
         this.spaceUsage = await CoreSettingsHelper.getSiteSpaceUsage(this.siteId);
     }
@@ -133,6 +125,7 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
      * @param refresher Refresher.
      */
     refreshData(refresher?: IonRefresher): void {
+        this.handlers.getSource().setDirty(true);
         this.fetchData().finally(() => {
             refresher?.complete();
         });
@@ -145,7 +138,9 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
      */
     async deleteSiteStorage(): Promise<void> {
         try {
-            this.spaceUsage = await CoreSettingsHelper.deleteSiteStorage(this.siteName || '', this.siteId);
+            const siteName = CoreSites.getRequiredCurrentSite().getSiteName();
+
+            this.spaceUsage = await CoreSettingsHelper.deleteSiteStorage(siteName, this.siteId);
         } catch {
             // Ignore cancelled confirmation modal.
         }
@@ -177,27 +172,6 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
     ngOnDestroy(): void {
         this.isDestroyed = true;
         this.sitesObserver?.off();
-    }
-
-}
-
-/**
- * Helper class to manage sections.
- */
-class CoreSettingsSitePreferencesManager extends CorePageItemsListManager<CoreSettingsHandlerToDisplay> {
-
-    /**
-     * @inheritdoc
-     */
-    protected getItemPath(handler: CoreSettingsHandlerToDisplay): string {
-        return handler.page;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    protected getItemQueryParams(handler: CoreSettingsHandlerToDisplay): Params {
-        return handler.params || {};
     }
 
 }

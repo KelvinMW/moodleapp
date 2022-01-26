@@ -68,7 +68,7 @@ export class AddonModUrlProvider {
         const download = ['application/zip', 'application/x-tar', 'application/g-zip', 'application/pdf', 'text/html'];
         let mimetype = CoreMimetypeUtils.getMimeType(extension);
 
-        if (url.externalurl.indexOf('.php') != -1 || url.externalurl.substr(-1) === '/' ||
+        if (url.externalurl.indexOf('.php') != -1 || url.externalurl.substring(-1) === '/' ||
                 (url.externalurl.indexOf('//') != -1 && url.externalurl.match(/\//g)?.length == 2)) {
             // Seems to be a web, use HTML mimetype.
             mimetype = 'text/html';
@@ -158,7 +158,7 @@ export class AddonModUrlProvider {
         const matches = url.match(/\//g);
         const extension = CoreMimetypeUtils.getFileExtension(url);
 
-        if (!matches || matches.length < 3 || url.substr(-1) === '/' || extension == 'php') {
+        if (!matches || matches.length < 3 || url.substring(-1) === '/' || extension == 'php') {
             // Use default icon.
             return '';
         }
@@ -204,16 +204,6 @@ export class AddonModUrlProvider {
         const site = await CoreSites.getSite(siteId);
 
         await site.invalidateWsCacheForKey(this.getUrlCacheKey(courseId));
-    }
-
-    /**
-     * Returns whether or not getUrl WS available or not.
-     *
-     * @return If WS is abalaible.
-     * @since 3.3
-     */
-    isGetUrlWSAvailable(): boolean {
-        return CoreSites.wsAvailableInCurrentSite('mod_url_get_urls_by_courses');
     }
 
     /**

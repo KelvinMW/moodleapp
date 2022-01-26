@@ -51,7 +51,6 @@ export class CoreCoursePreviewPage implements OnInit, OnDestroy {
     selfEnrolInstances: CoreCourseEnrolmentMethod[] = [];
     paypalEnabled = false;
     dataLoaded = false;
-    avoidOpenCourse = false;
     prefetchCourseData: CorePrefetchStatusInfo = {
         icon: '',
         statusTranslatable: 'core.loading',
@@ -97,7 +96,6 @@ export class CoreCoursePreviewPage implements OnInit, OnDestroy {
      */
     async ngOnInit(): Promise<void> {
         this.course = CoreNavigator.getRouteParam('course');
-        this.avoidOpenCourse = !!CoreNavigator.getRouteBooleanParam('avoidOpenCourse');
 
         if (!this.course) {
             CoreNavigator.back();
@@ -223,12 +221,9 @@ export class CoreCoursePreviewPage implements OnInit, OnDestroy {
 
         if (!CoreSites.getCurrentSite()?.isVersionGreaterEqualThan('3.7')) {
             try {
-                const available = await CoreCourses.isGetCoursesByFieldAvailableInSite();
-                if (available) {
-                    const course = await CoreCourses.getCourseByField('id', this.course!.id);
+                const course = await CoreCourses.getCourseByField('id', this.course!.id);
 
-                    this.course!.customfields = course.customfields;
-                }
+                this.course!.customfields = course.customfields;
             } catch {
                 // Ignore errors.
             }
@@ -241,8 +236,7 @@ export class CoreCoursePreviewPage implements OnInit, OnDestroy {
      * Open the course.
      */
     openCourse(): void {
-        if (!this.canAccessCourse || this.avoidOpenCourse) {
-            // Course cannot be opened or we are avoiding opening because we accessed from inside a course.
+        if (!this.canAccessCourse) {
             return;
         }
 
@@ -359,7 +353,7 @@ export class CoreCoursePreviewPage implements OnInit, OnDestroy {
                     },
                 );
 
-                if (typeof modalData != 'undefined') {
+                if (modalData !== undefined) {
                     this.selfEnrolInCourse(modalData, instanceId);
 
                     return;

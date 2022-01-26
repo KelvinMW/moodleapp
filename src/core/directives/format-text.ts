@@ -61,8 +61,6 @@ export class CoreFormatTextDirective implements OnChanges {
     @Input() adaptImg?: boolean | string = true; // Whether to adapt images to screen width.
     @Input() clean?: boolean | string; // Whether all the HTML tags should be removed.
     @Input() singleLine?: boolean | string; // Whether new lines should be removed (all text in single line). Only if clean=true.
-    @Input() fullOnClick?: boolean | string; // Whether it should open a new page with the full contents on click.
-    @Input() fullTitle?: string; // Title to use in full view. Defaults to "Description".
     @Input() highlight?: string; // Text to highlight.
     @Input() filter?: boolean | string; // Whether to filter the text. If not defined, true if contextLevel and instanceId are set.
     @Input() contextLevel?: string; // The context level of the text.
@@ -73,6 +71,8 @@ export class CoreFormatTextDirective implements OnChanges {
     @Input() openLinksInApp?: boolean; // Whether links should be opened in InAppBrowser.
     @Input() hideIfEmpty = false; // If true, the tag will contain nothing if text is empty.
 
+    @Input() fullOnClick?: boolean | string; // @deprecated on 4.0 Won't do anything.
+    @Input() fullTitle?: string; // @deprecated on 4.0 Won't do anything..
     /**
      * Max height in pixels to render the content box. It should be 50 at least to make sense.
      * Using this parameter will force display: block to calculate height better.
@@ -84,10 +84,11 @@ export class CoreFormatTextDirective implements OnChanges {
     @Output() onClick: EventEmitter<void> = new EventEmitter(); // Called when clicked.
 
     protected element: HTMLElement;
-    protected showMoreDisplayed = false;
+    protected expanded = false;
     protected loadingChangedListener?: CoreEventObserver;
     protected emptyText = '';
     protected contentSpan: HTMLElement;
+    protected toggleExpandEnabled = false;
 
     constructor(
         element: ElementRef,
@@ -114,11 +115,12 @@ export class CoreFormatTextDirective implements OnChanges {
     }
 
     /**
-     * Detect changes on input properties.
+     * @inheritdoc
      */
     ngOnChanges(changes: { [name: string]: SimpleChange }): void {
         if (changes.text || changes.filter || changes.contextLevel || changes.contextInstanceId) {
-            this.hideShowMore();
+            this.setExpandButtonEnabled(false);
+
             this.formatAndRenderContents();
         }
     }
@@ -166,8 +168,8 @@ export class CoreFormatTextDirective implements OnChanges {
         const originalWidth = img.attributes.getNamedItem('width');
 
         const forcedWidth = Number(originalWidth?.value);
-        if (!isNaN(forcedWidth)) {
-            if (originalWidth!.value.indexOf('%') < 0) {
+        if (originalWidth && !isNaN(forcedWidth)) {
+            if (originalWidth.value.indexOf('%') < 0) {
                 img.style.width = forcedWidth + 'px';
             } else {
                 img.style.width = forcedWidth + '%';
@@ -233,7 +235,7 @@ export class CoreFormatTextDirective implements OnChanges {
             button.addEventListener('click', (e: Event) => {
                 e.preventDefault();
                 e.stopPropagation();
-                CoreDomUtils.viewImage(imgSrc, img.getAttribute('alt'), this.component, this.componentId, true);
+                CoreDomUtils.viewImage(imgSrc, img.getAttribute('alt'), this.component, this.componentId);
             });
 
             img.parentNode?.appendChild(button);
@@ -267,37 +269,61 @@ export class CoreFormatTextDirective implements OnChanges {
         this.element.style.maxHeight = initialMaxHeight;
 
         // If cannot calculate height, shorten always.
-        if (!height || height > this.maxHeight) {
-            if (!this.showMoreDisplayed) {
-                this.displayShowMore();
-            }
-        } else if (this.showMoreDisplayed) {
-            this.hideShowMore();
-        }
+        this.setExpandButtonEnabled(!height || height > this.maxHeight);
     }
 
     /**
-     * Display the "Show more" in the element.
+     * Sets if expand button is enabled or not.
+     *
+     * @param enable Wether enable or disable.
      */
-    protected displayShowMore(): void {
-        const expandInFullview = CoreUtils.isTrueOrOne(this.fullOnClick) || false;
-        const showMoreButton = document.createElement('ion-button');
+    protected setExpandButtonEnabled(enable: boolean): void {
+        this.toggleExpandEnabled = enable;
+        this.element.classList.toggle('core-text-formatted', enable);
 
-        showMoreButton.classList.add('core-show-more');
-        showMoreButton.setAttribute('fill', 'clear');
-        showMoreButton.innerHTML = Translate.instant('core.showmore');
-        this.element.appendChild(showMoreButton);
-
-        if (expandInFullview) {
-            this.element.classList.add('core-expand-in-fullview');
-        } else {
-            showMoreButton.setAttribute('aria-expanded', 'false');
+        if (!enable || this.element.querySelector('ion-button.core-format-text-toggle'))  {
+            return;
         }
-        this.element.classList.add('core-text-formatted');
-        this.element.classList.add('core-shortened');
-        this.element.style.maxHeight = this.maxHeight + 'px';
 
-        this.showMoreDisplayed = true;
+        // Add expand/collapse buttons
+        const toggleButton = document.createElement('ion-button');
+        toggleButton.classList.add('core-format-text-toggle');
+        toggleButton.setAttribute('fill', 'clear');
+
+        const toggleText = document.createElement('span');
+        toggleText.classList.add('core-format-text-toggle-text');
+        toggleButton.appendChild(toggleText);
+
+        const expandArrow = document.createElement('span');
+        expandArrow.classList.add('core-format-text-arrow');
+        toggleButton.appendChild(expandArrow);
+
+        this.element.appendChild(toggleButton);
+
+        this.toggleExpand(this.expanded);
+    }
+
+    /**
+     * Expand or collapse text.
+     *
+     * @param expand Wether expand or collapse text. If undefined, will toggle.
+     */
+    protected toggleExpand(expand?: boolean): void {
+        if (expand === undefined) {
+            expand = !this.expanded;
+        }
+        this.expanded = expand;
+        this.element.classList.toggle('core-text-format-expanded', expand);
+        this.element.classList.toggle('core-text-format-collapsed', !expand);
+        this.element.style.maxHeight = expand ? '' : this.maxHeight + 'px';
+
+        const toggleButton = this.element.querySelector('ion-button.core-format-text-toggle');
+        const toggleText = toggleButton?.querySelector('.core-format-text-toggle-text');
+        if (!toggleButton || !toggleText) {
+            return;
+        }
+        toggleText.innerHTML = expand ? Translate.instant('core.showless') : Translate.instant('core.showmore');
+        toggleButton.setAttribute('aria-expanded', expand ? 'true' : 'false');
     }
 
     /**
@@ -321,9 +347,7 @@ export class CoreFormatTextDirective implements OnChanges {
             return;
         }
 
-        const expandInFullview = CoreUtils.isTrueOrOne(this.fullOnClick) || false;
-
-        if (!expandInFullview && !this.showMoreDisplayed) {
+        if (!this.toggleExpandEnabled) {
             // Nothing to do on click, just stop.
             return;
         }
@@ -331,28 +355,7 @@ export class CoreFormatTextDirective implements OnChanges {
         e.preventDefault();
         e.stopPropagation();
 
-        if (!expandInFullview) {
-            // Change class.
-            this.element.classList.toggle('core-shortened');
-
-            return;
-        } else {
-            // Open a new state with the contents.
-            const filter = typeof this.filter != 'undefined' ? CoreUtils.isTrueOrOne(this.filter) : undefined;
-
-            CoreTextUtils.viewText(
-                this.fullTitle || Translate.instant('core.description'),
-                this.text,
-                {
-                    component: this.component,
-                    componentId: this.componentId,
-                    filter: filter,
-                    contextLevel: this.contextLevel,
-                    instanceId: this.contextInstanceId,
-                    courseId: this.courseId,
-                },
-            );
-        }
+        this.toggleExpand();
     }
 
     /**
@@ -361,6 +364,7 @@ export class CoreFormatTextDirective implements OnChanges {
     protected finishRender(): void {
         // Show the element again.
         this.element.classList.remove('core-format-text-loading');
+
         // Emit the afterRender output.
         this.afterRender.emit();
     }
@@ -393,7 +397,7 @@ export class CoreFormatTextDirective implements OnChanges {
 
         this.contentSpan.innerHTML = ''; // Remove current contents.
         if (this.maxHeight && result.div.innerHTML != '' &&
-                (this.fullOnClick || (window.innerWidth < 576 || window.innerHeight < 576))) { // Don't collapse in big screens.
+                (window.innerWidth < 576 || window.innerHeight < 576)) { // Don't collapse in big screens.
 
             // Move the children to the current element to be able to calculate the height.
             CoreDomUtils.moveChildren(result.div, this.contentSpan);
@@ -456,8 +460,8 @@ export class CoreFormatTextDirective implements OnChanges {
             this.contextInstanceId = site.getSiteHomeId();
         }
 
-        const filter = typeof this.filter == 'undefined' ?
-            !!(this.contextLevel && typeof this.contextInstanceId != 'undefined') : CoreUtils.isTrueOrOne(this.filter);
+        const filter = this.filter === undefined ?
+            !!(this.contextLevel && this.contextInstanceId !== undefined) : CoreUtils.isTrueOrOne(this.filter);
 
         const options: CoreFilterFormatTextOptions = {
             clean: CoreUtils.isTrueOrOne(this.clean),
@@ -509,8 +513,6 @@ export class CoreFormatTextDirective implements OnChanges {
      * @return Promise resolved when done.
      */
     protected async treatHTMLElements(div: HTMLElement, site?: CoreSite): Promise<void> {
-        const canTreatVimeo = site?.isVersionGreaterEqualThan(['3.3.4', '3.4']) || false;
-
         const images = Array.from(div.querySelectorAll('img'));
         const anchors = Array.from(div.querySelectorAll('a'));
         const audios = Array.from(div.querySelectorAll('audio'));
@@ -557,11 +559,11 @@ export class CoreFormatTextDirective implements OnChanges {
         });
 
         videos.forEach((video) => {
-            this.treatMedia(video);
+            this.treatMedia(video, true);
         });
 
         iframes.forEach((iframe) => {
-            promises.push(this.treatIframe(iframe, site, canTreatVimeo));
+            promises.push(this.treatIframe(iframe, site));
         });
 
         svgImages.forEach((image) => {
@@ -658,32 +660,39 @@ export class CoreFormatTextDirective implements OnChanges {
     }
 
     /**
-     * "Hide" the "Show more" in the element if it's shown.
-     */
-    protected hideShowMore(): void {
-        const showMoreButton = this.element.querySelector('ion-button.core-show-more');
-        showMoreButton?.remove();
-
-        this.element.classList.remove('core-expand-in-fullview');
-        this.element.classList.remove('core-text-formatted');
-        this.element.classList.remove('core-shortened');
-        this.element.style.maxHeight = '';
-        this.showMoreDisplayed = false;
-    }
-
-    /**
      * Add media adapt class and apply CoreExternalContentDirective to the media element and its sources and tracks.
      *
      * @param element Video or audio to treat.
+     * @param isVideo Whether it's a video.
      */
-    protected treatMedia(element: HTMLElement): void {
+    protected treatMedia(element: HTMLElement, isVideo: boolean = false): void {
         this.addMediaAdaptClass(element);
         this.addExternalContent(element);
 
+        // Hide download button if not hidden already.
+        let controlsList = element.getAttribute('controlsList') || '';
+        if (!controlsList.includes('nodownload')) {
+            if (!controlsList.trim()) {
+                controlsList = 'nodownload';
+            } else {
+                controlsList = controlsList.split(' ').concat('nodownload').join(' ');
+            }
+
+            element.setAttribute('controlsList', controlsList);
+        }
+
         const sources = Array.from(element.querySelectorAll('source'));
         const tracks = Array.from(element.querySelectorAll('track'));
+        const hasPoster = isVideo && !!element.getAttribute('poster');
+
+        if (isVideo && !hasPoster) {
+            this.fixVideoSrcPlaceholder(element);
+        }
 
         sources.forEach((source) => {
+            if (isVideo && !hasPoster) {
+                this.fixVideoSrcPlaceholder(source);
+            }
             source.setAttribute('target-src', source.getAttribute('src') || '');
             source.removeAttribute('src');
             this.addExternalContent(source);
@@ -700,17 +709,30 @@ export class CoreFormatTextDirective implements OnChanges {
     }
 
     /**
+     * Try to fix the placeholder displayed when a video doesn't have a poster.
+     *
+     * @param element Element to fix.
+     */
+    protected fixVideoSrcPlaceholder(element: HTMLElement): void {
+        const src = element.getAttribute('src');
+        if (!src) {
+            return;
+        }
+
+        if (src.match(/#t=\d/)) {
+            return;
+        }
+
+        element.setAttribute('src', src + '#t=0.001');
+    }
+
+    /**
      * Add media adapt class and treat the iframe source.
      *
      * @param iframe Iframe to treat.
      * @param site Site instance.
-     * @param canTreatVimeo Whether Vimeo videos can be treated in the site.
      */
-    protected async treatIframe(
-        iframe: HTMLIFrameElement,
-        site: CoreSite | undefined,
-        canTreatVimeo: boolean,
-    ): Promise<void> {
+    protected async treatIframe(iframe: HTMLIFrameElement, site: CoreSite | undefined): Promise<void> {
         const src = iframe.src;
         const currentSite = CoreSites.getCurrentSite();
 
@@ -736,7 +758,7 @@ export class CoreFormatTextDirective implements OnChanges {
 
         await CoreIframeUtils.fixIframeCookies(src);
 
-        if (site && src && canTreatVimeo) {
+        if (site && src) {
             // Check if it's a Vimeo video. If it is, use the wsplayer script instead to make restricted videos work.
             const matches = iframe.src.match(/https?:\/\/player\.vimeo\.com\/video\/([0-9]+)/);
             if (matches && matches[1]) {

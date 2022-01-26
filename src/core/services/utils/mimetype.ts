@@ -84,13 +84,13 @@ export class CoreMimetypeUtilsProvider {
         // If the extension has parameters, remove them.
         let position = extension.indexOf('?');
         if (position > -1) {
-            extension = extension.substr(0, position);
+            extension = extension.substring(0, position);
         }
 
         // If the extension has an anchor, remove it.
         position = extension.indexOf('#');
         if (position > -1) {
-            extension = extension.substr(0, position);
+            extension = extension.substring(0, position);
         }
 
         // Remove hash in extension if there's any (added by filepool).
@@ -98,7 +98,7 @@ export class CoreMimetypeUtilsProvider {
 
         // Remove dot from the extension if found.
         if (extension && extension[0] == '.') {
-            extension = extension.substr(1);
+            extension = extension.substring(1);
         }
 
         return extension;
@@ -191,7 +191,7 @@ export class CoreMimetypeUtilsProvider {
                 case 'audio':
                 case 'video':
                     return [
-                        `<${embedType} controls title="${filename}" src="${path}">`,
+                        `<${embedType} controls title="${filename}" src="${path}" controlsList="nodownload">`,
                         `<source src="${path}" type="${mimeType}">`,
                         `</${embedType}>`,
                     ].join('');
@@ -311,7 +311,12 @@ export class CoreMimetypeUtilsProvider {
             // Remove params if any.
             position = candidate.indexOf('?');
             if (position > -1) {
-                candidate = candidate.substr(0, position);
+                candidate = candidate.substring(0, position);
+            }
+            // Remove anchor if any.
+            position = candidate.indexOf('#');
+            if (position > -1) {
+                candidate = candidate.substring(0, position);
             }
 
             if (EXTENSION_REGEX.test(candidate)) {
@@ -320,7 +325,7 @@ export class CoreMimetypeUtilsProvider {
         }
 
         // Check extension corresponds to a mimetype to know if it's valid.
-        if (extension && typeof this.getMimeType(extension) == 'undefined') {
+        if (extension && this.getMimeType(extension) === undefined) {
             this.logger.warn('Guess file extension: Not valid extension ' + extension);
 
             return;
@@ -341,11 +346,11 @@ export class CoreMimetypeUtilsProvider {
         let ext;
 
         if (dot > -1) {
-            ext = filename.substr(dot + 1).toLowerCase();
+            ext = filename.substring(dot + 1).toLowerCase();
             ext = this.cleanExtension(ext);
 
             // Check extension corresponds to a mimetype to know if it's valid.
-            if (typeof this.getMimeType(ext) == 'undefined') {
+            if (this.getMimeType(ext) === undefined) {
                 this.logger.warn('Get file extension: Not valid extension ' + ext);
 
                 return;
@@ -365,7 +370,7 @@ export class CoreMimetypeUtilsProvider {
     getGroupMimeInfo(group: string): MimeTypeGroupInfo;
     getGroupMimeInfo(group: string, field: string): string[] | undefined;
     getGroupMimeInfo(group: string, field?: string): MimeTypeGroupInfo | string[] | undefined {
-        if (typeof this.groupsMimeInfo[group] == 'undefined') {
+        if (this.groupsMimeInfo[group] === undefined) {
             this.fillGroupMimeInfo(group);
         }
 
@@ -584,9 +589,9 @@ export class CoreMimetypeUtilsProvider {
 
         if (position > -1) {
             // Check extension corresponds to a mimetype to know if it's valid.
-            extension = path.substr(position + 1).toLowerCase();
-            if (typeof this.getMimeType(extension) != 'undefined') {
-                return path.substr(0, position); // Remove extension.
+            extension = path.substring(position + 1).toLowerCase();
+            if (this.getMimeType(extension) !== undefined) {
+                return path.substring(0, position); // Remove extension.
             }
         }
 

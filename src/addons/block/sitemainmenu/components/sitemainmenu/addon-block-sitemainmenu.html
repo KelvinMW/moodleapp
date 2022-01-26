@@ -3,16 +3,15 @@
         <h2>{{ 'addon.block_sitemainmenu.pluginname' | translate }}</h2>
     </ion-label>
 </ion-item-divider>
-<core-loading [hideUntil]="loaded" [fullscreen]="false" class="margin">
+<core-loading [hideUntil]="loaded" [fullscreen]="false">
     <ng-container *ngIf="mainMenuBlock">
         <ion-item class="ion-text-wrap" *ngIf="mainMenuBlock.summary">
             <ion-label>
-                <core-format-text [text]="mainMenuBlock.summary" [component]="component" [componentId]="siteHomeId"
-                    contextLevel="course" [contextInstanceId]="siteHomeId"></core-format-text>
+                <core-format-text [text]="mainMenuBlock.summary" [component]="component" [componentId]="siteHomeId" contextLevel="course"
+                    [contextInstanceId]="siteHomeId"></core-format-text>
             </ion-label>
         </ion-item>
 
-        <core-course-module *ngFor="let module of mainMenuBlock.modules" [module]="module" [courseId]="siteHomeId"
-            [downloadEnabled]="downloadEnabled" [section]="mainMenuBlock"></core-course-module>
+        <core-course-module *ngFor="let module of mainMenuBlock.modules" [module]="module" [section]="mainMenuBlock"></core-course-module>
     </ng-container>
 </core-loading>

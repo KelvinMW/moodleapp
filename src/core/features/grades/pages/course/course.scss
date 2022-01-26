@@ -61,11 +61,15 @@
         background-color: var(--header-background);
     }
 
+    thead #gradeitem {
+        @include padding(null, null, null, 23px);
+    }
+
     tbody th {
       font-weight: normal;
     }
 
-    #gradeitem {
+    tbody #gradeitem {
         @include padding(null, null, null, 5px);
     }
 
@@ -82,12 +86,23 @@
             height: 16px;
         }
 
+        core-mod-icon {
+            padding: 0.1rem;
+            --size: 16px;
+        }
+
+
         ion-icon {
             color: var(--icon-color);
         }
 
         span {
             @include margin(null, null, null, 5px);
+        }
+
+        .expandable-status-icon {
+            font-size: 14px;
+            @include margin-horizontal(0, 2px);
         }
 
     }
@@ -119,14 +134,22 @@
                 background-color: var(--cell-hover);
             }
         }
+
+        th, td {
+            height: var(--a11y-min-target-size);
+            vertical-align: middle;
+        }
     }
 
-}
+    ion-list, ion-item::part(native) {
+        background-color: transparent;
+    }
 
-core-split-view.nested .core-grades-table .ion-hide-md-down,
-core-split-view.menu-and-content .core-grades-table .ion-hide-md-down {
-    display: none;
-    opacity: 0;
+    &.summary .ion-hide-md-down {
+        display: none;
+        opacity: 0;
+    }
+
 }
 
 @include media-breakpoint-down(md) {

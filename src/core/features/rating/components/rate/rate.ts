@@ -75,7 +75,7 @@ export class CoreRatingRateComponent implements OnChanges, OnDestroy {
         this.item = (this.ratingInfo.ratings || []).find((rating) => rating.itemid == this.itemId);
         this.scale = (this.ratingInfo.scales || []).find((scale) => scale.id == this.scaleId);
 
-        if (!this.item || !this.scale || !CoreRating.isAddRatingWSAvailable()) {
+        if (!this.item || !this.scale) {
             this.item = undefined;
 
             return;
@@ -142,7 +142,7 @@ export class CoreRatingRateComponent implements OnChanges, OnDestroy {
                 this.aggregateMethod,
             );
 
-            if (typeof response == 'undefined') {
+            if (response === undefined) {
                 CoreDomUtils.showToast('core.datastoredoffline', true, 3000);
             } else {
                 this.onUpdate.emit();

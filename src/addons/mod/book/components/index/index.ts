@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, Optional, Input, OnInit } from '@angular/core';
-import { IonContent } from '@ionic/angular';
+import { Component, Optional, Input, OnInit, ViewChild, ElementRef, OnDestroy } from '@angular/core';
 import { CoreCourseModuleMainResourceComponent } from '@features/course/classes/main-resource-component';
 import {
     AddonModBookProvider,
@@ -26,11 +25,17 @@ import {
 import { CoreTag, CoreTagItem } from '@features/tag/services/tag';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
-import { Translate } from '@singletons';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreCourse } from '@features/course/services/course';
 import { AddonModBookTocComponent } from '../toc/toc';
-import { CoreConstants } from '@/core/constants';
+import { CoreNavigationBarItem } from '@components/navigation-bar/navigation-bar';
+import { CoreError } from '@classes/errors/error';
+import { Translate } from '@singletons';
+import { CoreSwipeSlidesComponent, CoreSwipeSlidesOptions } from '@components/swipe-slides/swipe-slides';
+import { CoreSwipeSlidesItemsManagerSource } from '@classes/items-management/swipe-slides-items-manager-source';
+import { CoreCourseModule } from '@features/course/services/course-helper';
+import { CoreSwipeSlidesItemsManager } from '@classes/items-management/swipe-slides-items-manager';
+import { CoreTextUtils } from '@services/utils/text';
 
 /**
  * Component that displays a book.
@@ -39,32 +44,34 @@ import { CoreConstants } from '@/core/constants';
     selector: 'addon-mod-book-index',
     templateUrl: 'addon-mod-book-index.html',
 })
-export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComponent implements OnInit {
+export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComponent implements OnInit, OnDestroy {
+
+    @ViewChild(CoreSwipeSlidesComponent) slides?: CoreSwipeSlidesComponent;
 
     @Input() initialChapterId?: number; // The initial chapter ID to load.
 
     component = AddonModBookProvider.COMPONENT;
-    chapterContent?: string;
-    previousChapter?: AddonModBookTocChapter;
-    nextChapter?: AddonModBookTocChapter;
-    tagsEnabled = false;
-    displayNavBar = true;
-    previousNavBarTitle?: string;
-    nextNavBarTitle?: string;
+    manager?: CoreSwipeSlidesItemsManager<LoadedChapter, AddonModBookSlidesItemsManagerSource>;
     warning = '';
-    tags?: CoreTagItem[];
+    displayNavBar = true;
+    navigationItems: CoreNavigationBarItem<AddonModBookTocChapter>[] = [];
+    displayTitlesInNavBar = false;
+    slidesOpts: CoreSwipeSlidesOptions = {
+        autoHeight: true,
+        scrollOnChange: 'top',
+    };
 
-    protected chapters: AddonModBookTocChapter[] = [];
-    protected currentChapter?: number;
-    protected book?: AddonModBookBookWSData;
-    protected displayTitlesInNavBar = false;
-    protected contentsMap: AddonModBookContentsMap = {};
+    protected firstLoad = true;
+    protected element: HTMLElement;
+    protected managerUnsubscribe?: () => void;
 
     constructor(
-        protected content?: IonContent,
+        elementRef: ElementRef,
         @Optional() courseContentsPage?: CoreCourseContentsPage,
     ) {
         super('AddonModBookIndexComponent', courseContentsPage);
+
+        this.element = elementRef.nativeElement;
     }
 
     /**
@@ -73,8 +80,28 @@ export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComp
     async ngOnInit(): Promise<void> {
         super.ngOnInit();
 
-        this.tagsEnabled = CoreTag.areTagsAvailableInSite();
+        const source = new AddonModBookSlidesItemsManagerSource(
+            this.courseId,
+            this.module,
+            CoreTag.areTagsAvailableInSite(),
+            this.initialChapterId,
+        );
+        this.manager = new CoreSwipeSlidesItemsManager(source);
+        this.managerUnsubscribe = this.manager.addListener({
+            onSelectedItemUpdated: (item) => {
+                this.onChapterViewed(item.id);
+            },
+        });
+
         this.loadContent();
+    }
+
+    get book(): AddonModBookBookWSData | undefined {
+        return this.manager?.getSource().book;
+    }
+
+    get chapters(): AddonModBookTocChapter[] {
+        return this.manager?.getSource().chapters || [];
     }
 
     /**
@@ -82,12 +109,14 @@ export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComp
      */
     async showToc(): Promise<void> {
         // Create the toc modal.
+        const visibleChapter = this.manager?.getSelectedItem();
+
         const modalData = await CoreDomUtils.openSideModal<number>({
             component: AddonModBookTocComponent,
             componentProps: {
                 moduleId: this.module.id,
                 chapters: this.chapters,
-                selected: this.currentChapter,
+                selected: visibleChapter,
                 courseId: this.courseId,
                 book: this.book,
             },
@@ -105,11 +134,11 @@ export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComp
      * @return Promise resolved when done.
      */
     changeChapter(chapterId: number): void {
-        if (chapterId && chapterId != this.currentChapter) {
-            this.loaded = false;
-            this.refreshIcon = CoreConstants.ICON_LOADING;
-            this.loadChapter(chapterId, true);
+        if (!chapterId) {
+            return;
         }
+
+        this.slides?.slideToItem({ id: chapterId });
     }
 
     /**
@@ -117,8 +146,8 @@ export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComp
      *
      * @return Resolved when done.
      */
-    protected invalidateContent(): Promise<void> {
-        return AddonModBook.invalidateContent(this.module.id, this.courseId);
+    protected async invalidateContent(): Promise<void> {
+        await this.manager?.getSource().invalidateContent();
     }
 
     /**
@@ -129,35 +158,29 @@ export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComp
      */
     protected async fetchContent(refresh = false): Promise<void> {
         try {
+            const source = this.manager?.getSource();
+            if (!source) {
+                return;
+            }
+
             const downloadResult = await this.downloadResourceIfNeeded(refresh);
 
-            await this.loadBookData();
+            const book = await source.loadBookData();
 
-            this.contentsMap = AddonModBook.getContentsMap(this.module.contents);
-            this.chapters = AddonModBook.getTocList(this.module.contents);
+            if (book) {
+                this.dataRetrieved.emit(book);
 
-            if (typeof this.currentChapter == 'undefined' && typeof this.initialChapterId != 'undefined' && this.chapters) {
-                // Initial chapter set. Validate that the chapter exists.
-                const chapter = this.chapters.find((chapter) => chapter.id == this.initialChapterId);
-
-                if (chapter) {
-                    this.currentChapter = this.initialChapterId;
-                }
+                this.description = book.intro;
+                this.displayNavBar = book.navstyle != AddonModBookNavStyle.TOC_ONLY;
+                this.displayTitlesInNavBar = book.navstyle == AddonModBookNavStyle.TEXT;
             }
 
-            if (typeof this.currentChapter == 'undefined') {
-                // Load the first chapter.
-                this.currentChapter = AddonModBook.getFirstChapter(this.chapters);
-            }
+            // Get contents. No need to refresh, it has been done in downloadResourceIfNeeded.
+            await source.loadContents();
 
-            // Show chapter.
-            try {
-                await this.loadChapter(this.currentChapter!, refresh);
+            await source.load();
 
-                this.warning = downloadResult?.failed ? this.getErrorDownloadingSomeFilesMessage(downloadResult.error!) : '';
-            } catch {
-                // Ignore errors, they're handled inside the loadChapter function.
-            }
+            this.warning = downloadResult?.failed ? this.getErrorDownloadingSomeFilesMessage(downloadResult.error || '') : '';
         } finally {
             // Pass false because downloadResourceIfNeeded already invalidates and refresh data if refresh=true.
             this.fillContextMenu(false);
@@ -165,66 +188,149 @@ export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComp
     }
 
     /**
+     * Update data related to chapter being viewed.
+     *
+     * @param chapterId Chapter viewed.
+     * @return Promise resolved when done.
+     */
+    protected async onChapterViewed(chapterId: number): Promise<void> {
+        // Don't log the chapter ID when the user has just opened the book.
+        const logChapterId = this.firstLoad;
+        this.firstLoad = false;
+
+        if (this.displayNavBar) {
+            this.navigationItems = this.getNavigationItems(chapterId);
+        }
+
+        // Chapter loaded, log view.
+        await CoreUtils.ignoreErrors(AddonModBook.logView(
+            this.module.instance!,
+            logChapterId ? chapterId : undefined,
+            this.module.name,
+        ));
+
+        const currentChapterIndex = this.chapters.findIndex((chapter) => chapter.id == chapterId);
+        const isLastChapter = currentChapterIndex < 0 || this.chapters[currentChapterIndex + 1] === undefined;
+
+        // Module is completed when last chapter is viewed, so we only check completion if the last is reached.
+        if (isLastChapter) {
+            CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
+        }
+    }
+
+    /**
+     * Converts chapters to navigation items.
+     *
+     * @param chapterId Current chapter Id.
+     * @return Navigation items.
+     */
+    protected getNavigationItems(chapterId: number): CoreNavigationBarItem<AddonModBookTocChapter>[] {
+        return this.chapters.map((chapter) => ({
+            item: chapter,
+            title: chapter.title,
+            current: chapter.id == chapterId,
+            enabled: true,
+        }));
+    }
+
+    /**
+     * @inheritdoc
+     */
+    ngOnDestroy(): void {
+        super.ngOnDestroy();
+
+        this.managerUnsubscribe && this.managerUnsubscribe();
+    }
+
+}
+
+type LoadedChapter = {
+    id: number;
+    content?: string;
+    tags?: CoreTagItem[];
+};
+
+/**
+ * Helper to manage swiping within a collection of chapters.
+ */
+class AddonModBookSlidesItemsManagerSource extends CoreSwipeSlidesItemsManagerSource<LoadedChapter> {
+
+    readonly COURSE_ID: number;
+    readonly MODULE: CoreCourseModule;
+    readonly TAGS_ENABLED: boolean;
+
+    book?: AddonModBookBookWSData;
+    chapters: AddonModBookTocChapter[] = [];
+    contentsMap: AddonModBookContentsMap = {};
+
+    constructor(courseId: number, module: CoreCourseModule, tagsEnabled: boolean, initialChapterId?: number) {
+        super(initialChapterId ? { id: initialChapterId } : undefined);
+
+        this.COURSE_ID = courseId;
+        this.MODULE = module;
+        this.TAGS_ENABLED = tagsEnabled;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    getItemId(item: LoadedChapter): string | number {
+        return item.id;
+    }
+
+    /**
      * Load book data from WS.
      *
      * @return Promise resolved when done.
      */
-    protected async loadBookData(): Promise<void> {
-        this.book = await AddonModBook.getBook(this.courseId, this.module.id);
+    async loadBookData(): Promise<AddonModBookBookWSData> {
+        this.book = await AddonModBook.getBook(this.COURSE_ID, this.MODULE.id);
 
-        this.dataRetrieved.emit(this.book);
-
-        this.description = this.book.intro;
-        this.displayNavBar = this.book.navstyle != AddonModBookNavStyle.TOC_ONLY;
-        this.displayTitlesInNavBar = this.book.navstyle == AddonModBookNavStyle.TEXT;
+        return this.book;
     }
 
     /**
-     * Load a book chapter.
-     *
-     * @param chapterId Chapter to load.
-     * @param logChapterId Whether chapter ID should be passed to the log view function.
-     * @return Promise resolved when done.
+     * Load module contents.
      */
-    protected async loadChapter(chapterId: number, logChapterId: boolean): Promise<void> {
-        this.currentChapter = chapterId;
-        this.content?.scrollToTop();
+    async loadContents(): Promise<void> {
+        const contents = await CoreCourse.getModuleContents(this.MODULE, this.COURSE_ID);
 
+        this.contentsMap = AddonModBook.getContentsMap(contents);
+        this.chapters = AddonModBook.getTocList(contents);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected async loadItems(): Promise<LoadedChapter[]> {
         try {
-            const content = await AddonModBook.getChapterContent(this.contentsMap, chapterId, this.module.id);
+            const newChapters = await Promise.all(this.chapters.map(async (chapter) => {
+                const content = await AddonModBook.getChapterContent(this.contentsMap, chapter.id, this.MODULE.id);
 
-            this.tags = this.tagsEnabled ? this.contentsMap[this.currentChapter].tags : [];
+                return {
+                    id: chapter.id,
+                    content,
+                    tags: this.TAGS_ENABLED ? this.contentsMap[chapter.id].tags : [],
+                };
+            }));
 
-            this.chapterContent = content;
-            this.previousChapter = AddonModBook.getPreviousChapter(this.chapters, chapterId);
-            this.nextChapter = AddonModBook.getNextChapter(this.chapters, chapterId);
-
-            this.previousNavBarTitle = this.previousChapter && this.displayTitlesInNavBar
-                ? Translate.instant('addon.mod_book.navprevtitle', { $a: this.previousChapter.title })
-                : '';
-            this.nextNavBarTitle = this.nextChapter && this.displayTitlesInNavBar
-                ? Translate.instant('addon.mod_book.navnexttitle', { $a: this.nextChapter.title })
-                : '';
-
-            // Chapter loaded, log view. We don't return the promise because we don't want to block the user for this.
-            await CoreUtils.ignoreErrors(AddonModBook.logView(
-                this.module.instance!,
-                logChapterId ? chapterId : undefined,
-                this.module.name,
-            ));
-
-            // Module is completed when last chapter is viewed, so we only check completion if the last is reached.
-            if (!this.nextChapter) {
-                CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-            }
+            return newChapters;
         } catch (error) {
-            CoreDomUtils.showErrorModalDefault(error, 'addon.mod_book.errorchapter', true);
+            if (!CoreTextUtils.getErrorMessageFromError(error)) {
+                throw new CoreError(Translate.instant('addon.mod_book.errorchapter'));
+            }
 
             throw error;
-        } finally {
-            this.loaded = true;
-            this.refreshIcon = CoreConstants.ICON_REFRESH;
         }
+    }
+
+    /**
+     * Perform the invalidate content function.
+     *
+     * @return Resolved when done.
+     */
+    invalidateContent(): Promise<void> {
+        return AddonModBook.invalidateContent(this.MODULE.id, this.COURSE_ID);
     }
 
 }

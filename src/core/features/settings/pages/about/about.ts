@@ -24,6 +24,7 @@ import { CoreNavigator } from '@services/navigator';
 @Component({
     selector: 'page-core-app-settings-about',
     templateUrl: 'about.html',
+    styleUrls: ['about.scss'],
 })
 export class CoreSettingsAboutPage {
 
@@ -31,6 +32,7 @@ export class CoreSettingsAboutPage {
     versionName: string;
     privacyPolicy: string;
     feedbackFormUrl = CoreConstants.CONFIG.feedbackFormUrl ?? 'https://feedback.moodle.org/mobileapp';
+    a11yStatement = CoreConstants.CONFIG.a11yStatement ?? 'https://apps.moodle.com/admin/tool/policy/view.php?versionid=5';
 
     constructor() {
         const currentSite = CoreSites.getCurrentSite();
@@ -49,8 +51,6 @@ export class CoreSettingsAboutPage {
      * @param page The component deeplink name you want to push onto the navigation stack.
      */
     openPage(page: string): void {
-        // const navCtrl = this.svComponent ? this.svComponent.getMasterNav() : this.navCtrl;
-        // navCtrl.push(page);
         CoreNavigator.navigate(page);
     }
 

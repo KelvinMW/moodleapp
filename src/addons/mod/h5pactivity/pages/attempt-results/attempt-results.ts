@@ -50,14 +50,24 @@ export class AddonModH5PActivityAttemptResultsPage implements OnInit {
      * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.cmId = CoreNavigator.getRouteNumberParam('cmId')!;
-        this.attemptId = CoreNavigator.getRouteNumberParam('attemptId')!;
+        try {
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.cmId = CoreNavigator.getRequiredRouteNumberParam('cmId');
+            this.attemptId = CoreNavigator.getRequiredRouteNumberParam('attemptId');
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         try {
             await this.fetchData();
 
-            await AddonModH5PActivity.logViewReport(this.h5pActivity!.id, this.h5pActivity!.name, { attemptId: this.attemptId });
+            if (this.h5pActivity) {
+                await AddonModH5PActivity.logViewReport(this.h5pActivity.id, this.h5pActivity.name, { attemptId: this.attemptId });
+            }
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'Error loading attempt.');
         } finally {
@@ -97,8 +107,12 @@ export class AddonModH5PActivityAttemptResultsPage implements OnInit {
      * @return Promise resolved when done.
      */
     protected async fetchUserProfile(): Promise<void> {
+        if (!this.attempt) {
+            return;
+        }
+
         try {
-            this.user = await CoreUser.getProfile(this.attempt!.userid, this.courseId, true);
+            this.user = await CoreUser.getProfile(this.attempt.userid, this.courseId, true);
         } catch (error) {
             // Ignore errors.
         }

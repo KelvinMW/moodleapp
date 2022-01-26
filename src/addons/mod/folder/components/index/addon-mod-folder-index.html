@@ -1,14 +1,14 @@
 <!-- Buttons to add to the header. -->
 <core-navbar-buttons slot="end">
     <core-context-menu>
-        <core-context-menu-item *ngIf="externalUrl" [priority]="900" [content]="'core.openinbrowser' | translate"
-            [href]="externalUrl" iconAction="fas-external-link-alt">>
+        <core-context-menu-item *ngIf="externalUrl" [priority]="900" [content]="'core.openinbrowser' | translate" [href]="externalUrl"
+            iconAction="fas-external-link-alt" [showBrowserWarning]="false">
         </core-context-menu-item>
         <core-context-menu-item *ngIf="description" [priority]="800" [content]="'core.moduleintro' | translate"
             (action)="expandDescription()" iconAction="fas-arrow-right">
         </core-context-menu-item>
-        <core-context-menu-item *ngIf="blog" [priority]="750" content="{{'addon.blog.blog' | translate}}"
-             iconAction="far-newspaper" (action)="gotoBlog()">
+        <core-context-menu-item *ngIf="blog" [priority]="750" content="{{'addon.blog.blog' | translate}}" iconAction="far-newspaper"
+            (action)="gotoBlog()">
         </core-context-menu-item>
         <core-context-menu-item *ngIf="!subfolder" [priority]="700" [content]="'core.refresh' | translate"
             (action)="doRefresh(null, $event)" [iconAction]="refreshIcon" [closeOnClick]="false">
@@ -26,16 +26,12 @@
 <core-loading [hideUntil]="loaded">
 
     <!-- Activity info. -->
-    <core-course-module-info *ngIf="showCompletion" [module]="module" [showManualCompletion]="true"
-        (completionChanged)="onCompletionChange()">
+    <core-course-module-info *ngIf="!subfolder" [module]="module" [description]="description" [component]="component"
+        [componentId]="componentId" [courseId]="courseId">
     </core-course-module-info>
 
-    <core-course-module-description [description]="description" [component]="component" [componentId]="componentId"
-        contextLevel="module" [contextInstanceId]="module.id" [courseId]="courseId">
-    </core-course-module-description>
-
-    <ion-list *ngIf="contents && (contents!.files.length + contents!.folders.length > 0)">
-        <ng-container *ngFor="let folder of contents!.folders">
+    <ion-list *ngIf="contents && (contents.files.length + contents.folders.length > 0)">
+        <ng-container *ngFor="let folder of contents.folders">
             <ion-item class="item-file" (click)="openFolder(folder)" detail="true" button>
                 <ion-icon name="fas-folder" slot="start" [attr.aria-label]="'core.folder' | translate"></ion-icon>
                 <ion-label>
@@ -43,12 +39,15 @@
                 </ion-label>
             </ion-item>
         </ng-container>
-        <ng-container *ngFor="let file of contents!.files">
+        <ng-container *ngFor="let file of contents.files">
             <core-file [file]="file" [component]="component" [componentId]="componentId"></core-file>
         </ng-container>
     </ion-list>
 
-    <core-empty-box *ngIf="!contents || (contents!.files.length + contents!.folders.length == 0)" icon="far-folder-open"
+    <core-empty-box *ngIf="!contents || (contents.files.length + contents.folders.length == 0)" icon="far-folder-open"
         [message]=" 'addon.mod_folder.emptyfilelist' | translate"></core-empty-box>
 
 </core-loading>
+
+<core-course-module-navigation [hidden]="!loaded" [courseId]="courseId" [currentModule]="module" (completionChanged)="onCompletionChange()">
+</core-course-module-navigation>

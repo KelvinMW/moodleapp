@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnInit, OnDestroy, ViewChild, ChangeDetectorRef } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { IonTabs } from '@ionic/angular';
 import { BackButtonEvent } from '@ionic/core';
 import { Subscription } from 'rxjs';
@@ -22,11 +21,14 @@ import { CoreApp } from '@services/app';
 import { CoreEvents, CoreEventObserver } from '@singletons/events';
 import { CoreMainMenu, CoreMainMenuProvider } from '../../services/mainmenu';
 import { CoreMainMenuDelegate, CoreMainMenuHandlerToDisplay } from '../../services/mainmenu-delegate';
-import { CoreDomUtils } from '@services/utils/dom';
-import { Translate } from '@singletons';
+import { Router } from '@singletons';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreAriaRoleTab, CoreAriaRoleTabFindable } from '@classes/aria-role-tab';
 import { CoreNavigator } from '@services/navigator';
+import { filter } from 'rxjs/operators';
+import { NavigationEnd } from '@angular/router';
+import { trigger, state, style, transition, animate } from '@angular/animations';
+import { CoreSites } from '@services/sites';
 
 /**
  * Page that displays the main menu of the app.
@@ -34,6 +36,25 @@ import { CoreNavigator } from '@services/navigator';
 @Component({
     selector: 'page-core-mainmenu',
     templateUrl: 'menu.html',
+    animations: [
+        trigger('menuShowHideAnimation', [
+            state('hidden', style({
+                height: 0,
+                visibility: 'hidden',
+                transform: 'translateY(100%)',
+            })),
+            state('visible', style({
+                visibility: 'visible',
+            })),
+            transition('visible => hidden', [
+                style({ transform: 'translateY(0)' }),
+                animate('500ms ease-in-out', style({ transform: 'translateY(100%)' })),
+            ]),
+            transition('hidden => visible', [
+                style({ transform: 'translateY(100%)',  visibility: 'visible', height: '*' }),
+                animate('500ms ease-in-out', style({ transform: 'translateY(0)' })),
+            ]),
+        ])],
     styleUrls: ['menu.scss'],
 })
 export class CoreMainMenuPage implements OnInit, OnDestroy {
@@ -43,12 +64,15 @@ export class CoreMainMenuPage implements OnInit, OnDestroy {
     loaded = false;
     showTabs = false;
     tabsPlacement: 'bottom' | 'side' = 'bottom';
-    hidden = false;
     morePageName = CoreMainMenuProvider.MORE_PAGE_NAME;
     selectedTab?: string;
+    isMainScreen = false;
+    moreBadge = false;
 
     protected subscription?: Subscription;
+    protected navSubscription?: Subscription;
     protected keyboardObserver?: CoreEventObserver;
+    protected badgeUpdateObserver?: CoreEventObserver;
     protected resizeFunction: () => void;
     protected backButtonFunction: (event: BackButtonEvent) => void;
     protected selectHistory: string[] = [];
@@ -58,26 +82,38 @@ export class CoreMainMenuPage implements OnInit, OnDestroy {
 
     tabAction: CoreMainMenuRoleTab;
 
-    constructor(
-        protected route: ActivatedRoute,
-        protected changeDetector: ChangeDetectorRef,
-    ) {
+    constructor() {
         this.resizeFunction = this.initHandlers.bind(this);
         this.backButtonFunction = this.backButtonClicked.bind(this);
         this.tabAction = new CoreMainMenuRoleTab(this);
+
+        // Listen navigation events to show or hide tabs.
+        this.navSubscription = Router.events
+            .pipe(filter(event => event instanceof NavigationEnd))
+            .subscribe(async () => {
+                this.isMainScreen = !this.mainTabs?.outlet.canGoBack();
+            });
     }
 
     /**
-     * Initialize the component.
+     * @inheritdoc
      */
-    ngOnInit(): void {
+    async ngOnInit(): Promise<void> {
         this.showTabs = true;
+
+        this.isMainScreen = !this.mainTabs?.outlet.canGoBack();
 
         this.subscription = CoreMainMenuDelegate.getHandlersObservable().subscribe((handlers) => {
             // Remove the handlers that should only appear in the More menu.
-            this.allHandlers = handlers.filter((handler) => !handler.onlyInMore);
+            this.allHandlers = handlers;
 
             this.initHandlers();
+        });
+
+        this.badgeUpdateObserver = CoreEvents.on(CoreMainMenuProvider.MAIN_MENU_HANDLER_BADGE_UPDATED, (data) => {
+            if (data.siteId == CoreSites.getCurrentSiteId()) {
+                this.updateMoreBadge();
+            }
         });
 
         window.addEventListener('resize', this.resizeFunction);
@@ -102,108 +138,75 @@ export class CoreMainMenuPage implements OnInit, OnDestroy {
     /**
      * Init handlers on change (size or handlers).
      */
-    initHandlers(): void {
-        if (this.allHandlers) {
-            this.tabsPlacement = CoreMainMenu.getTabPlacement();
+    async initHandlers(): Promise<void> {
+        if (!this.allHandlers) {
+            return;
+        }
+        this.tabsPlacement = CoreMainMenu.getTabPlacement();
 
-            const handlers = this.allHandlers.slice(0, CoreMainMenu.getNumItems()); // Get main handlers.
+        const handlers = this.allHandlers
+            .filter((handler) => !handler.onlyInMore)
+            .slice(0, CoreMainMenu.getNumItems()); // Get main handlers.
 
-            // Re-build the list of tabs. If a handler is already in the list, use existing object to prevent re-creating the tab.
-            const newTabs: CoreMainMenuHandlerToDisplay[] = [];
+        // Re-build the list of tabs. If a handler is already in the list, use existing object to prevent re-creating the tab.
+        const newTabs: CoreMainMenuHandlerToDisplay[] = [];
 
-            for (let i = 0; i < handlers.length; i++) {
-                const handler = handlers[i];
+        for (let i = 0; i < handlers.length; i++) {
+            const handler = handlers[i];
 
-                // Check if the handler is already in the tabs list. If so, use it.
-                const tab = this.tabs.find((tab) => tab.page == handler.page);
+            // Check if the handler is already in the tabs list. If so, use it.
+            const tab = this.tabs.find((tab) => tab.page == handler.page);
 
-                tab ? tab.hide = false : null;
-                handler.hide = false;
-                handler.id = handler.id || 'core-mainmenu-' + CoreUtils.getUniqueId('CoreMainMenuPage');
+            tab ? tab.hide = false : null;
+            handler.hide = false;
+            handler.id = handler.id || 'core-mainmenu-' + CoreUtils.getUniqueId('CoreMainMenuPage');
 
-                newTabs.push(tab || handler);
-            }
+            newTabs.push(tab || handler);
+        }
 
-            this.tabs = newTabs;
+        this.tabs = newTabs;
 
-            // Sort them by priority so new handlers are in the right position.
-            this.tabs.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        // Sort them by priority so new handlers are in the right position.
+        this.tabs.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
-            this.loaded = CoreMainMenuDelegate.areHandlersLoaded();
+        this.updateMoreBadge();
+
+        this.loaded = CoreMainMenuDelegate.areHandlersLoaded();
+
+        if (this.loaded && this.tabs[0] && !CoreNavigator.getCurrentMainMenuTab()) {
+            // No tab selected, select the first one.
+            await CoreUtils.nextTick();
+            this.mainTabs?.select(this.tabs[0].page);
         }
     }
 
     /**
-     * Change tabs visibility to show/hide them from the view.
-     *
-     * @param visible If show or hide the tabs.
+     * Check all non visible tab handlers for any badge text or number.
      */
-    changeVisibility(visible: boolean): void {
-        if (this.hidden == visible) {
-            // Change needed.
-            this.hidden = !visible;
-
-            /* setTimeout(() => {
-                this.viewCtrl.getContent().resize();
-            });*/
-        }
-    }
-
-    /**
-     * Page destroyed.
-     */
-    ngOnDestroy(): void {
-        this.subscription?.unsubscribe();
-        window.removeEventListener('resize', this.resizeFunction);
-        document.removeEventListener('ionBackButton', this.backButtonFunction);
-        this.keyboardObserver?.off();
-    }
-
-    /**
-     * Tab clicked.
-     *
-     * @param e Event.
-     * @param page Page of the tab.
-     */
-    async tabClicked(e: Event, page: string): Promise<void> {
-        if (this.mainTabs?.getSelected() != page) {
-            // Just change the tab.
+    updateMoreBadge(): void {
+        if (!this.allHandlers) {
             return;
         }
 
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
+        // Calculate the main handlers not to display them in this view.
+        const mainHandlers = this.allHandlers
+            .filter((handler) => !handler.onlyInMore)
+            .slice(0, CoreMainMenu.getNumItems());
 
-        // Current tab was clicked. Check if user is already at root level.
-        const isMainMenuRoot = await this.currentRouteIsMainMenuRoot();
-        if (isMainMenuRoot) {
-            return; // Already at root level, nothing to do.
-        }
+        // Use only the handlers that don't appear in the main view.
+        this.moreBadge = this.allHandlers.some((handler) => mainHandlers.indexOf(handler) == -1 && !!handler.badge);
+    }
 
-        // Maybe the route isn't defined as it should. Check if the current path is the tab one.
-        const currentPath = CoreNavigator.getCurrentPath();
-        if (currentPath == `/main/${page}`) {
-            return; // Already at root level, nothing to do.
-        }
-
-        // Ask the user if he wants to go back to the root page of the tab.
-        try {
-            const tab = this.tabs.find((tab) => tab.page == page);
-
-            if (tab?.title) {
-                await CoreDomUtils.showConfirm(Translate.instant('core.confirmgotabroot', {
-                    name: Translate.instant(tab.title),
-                }));
-            } else {
-                await CoreDomUtils.showConfirm(Translate.instant('core.confirmgotabrootdefault'));
-            }
-
-            // User confirmed, go to root.
-            this.mainTabs?.select(page);
-        } catch {
-            // User canceled.
-        }
+    /**
+     * @inheritdoc
+     */
+    ngOnDestroy(): void {
+        this.subscription?.unsubscribe();
+        this.navSubscription?.unsubscribe();
+        window.removeEventListener('resize', this.resizeFunction);
+        document.removeEventListener('ionBackButton', this.backButtonFunction);
+        this.keyboardObserver?.off();
+        this.badgeUpdateObserver?.off();
     }
 
     /**
@@ -273,13 +276,6 @@ export class CoreMainMenuPage implements OnInit, OnDestroy {
  * Helper class to manage rol tab.
  */
 class CoreMainMenuRoleTab extends CoreAriaRoleTab<CoreMainMenuPage> {
-
-    /**
-     * @inheritdoc
-     */
-    selectTab(tabId: string, e: Event): void {
-        this.componentInstance.tabClicked(e, tabId);
-    }
 
     /**
      * @inheritdoc

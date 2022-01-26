@@ -16,7 +16,7 @@ import { Injectable } from '@angular/core';
 import { CoreError } from '@classes/errors/error';
 import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
 import { CoreCourse, CoreCourseModuleContentFile } from '@features/course/services/course';
-import { CoreCourseModule } from '@features/course/services/course-helper';
+import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreApp } from '@services/app';
 import { CoreFilepool } from '@services/filepool';
@@ -68,63 +68,6 @@ export class AddonModImscpProvider {
         });
 
         return items;
-    }
-
-    /**
-     * Get the previous item to the given one.
-     *
-     * @param items The items list.
-     * @param itemId The current item.
-     * @return The previous item id.
-     */
-    getPreviousItem(items: AddonModImscpTocItem[], itemId: string): string {
-        const position = this.getItemPosition(items, itemId);
-
-        if (position == -1) {
-            return '';
-        }
-
-        for (let i = position - 1; i >= 0; i--) {
-            if (items[i] && items[i].href) {
-                return items[i].href;
-            }
-        }
-
-        return '';
-    }
-
-    /**
-     * Get the next item to the given one.
-     *
-     * @param items The items list.
-     * @param itemId The current item.
-     * @return The next item id.
-     */
-    getNextItem(items: AddonModImscpTocItem[], itemId: string): string {
-        const position = this.getItemPosition(items, itemId);
-
-        if (position == -1) {
-            return '';
-        }
-
-        for (let i = position + 1; i < items.length; i++) {
-            if (items[i] && items[i].href) {
-                return items[i].href;
-            }
-        }
-
-        return '';
-    }
-
-    /**
-     * Get the position of a item.
-     *
-     * @param items The items list.
-     * @param itemId The item to search.
-     * @return The item position.
-     */
-    protected getItemPosition(items: AddonModImscpTocItem[], itemId: string): number {
-        return items.findIndex((item) => item.href == itemId);
     }
 
     /**
@@ -212,7 +155,7 @@ export class AddonModImscpProvider {
             }
 
             const filePath = CoreTextUtils.concatenatePaths(item.filepath, item.filename);
-            const filePathAlt = filePath.charAt(0) === '/' ? filePath.substr(1) : '/' + filePath;
+            const filePathAlt = filePath.charAt(0) === '/' ? filePath.substring(1) : '/' + filePath;
 
             // Check if it's main file.
             return filePath === targetFilePath || filePathAlt === targetFilePath;
@@ -228,9 +171,11 @@ export class AddonModImscpProvider {
      * @param itemHref Href of item to get. If not defined, gets src of main item.
      * @return Promise resolved with the item src.
      */
-    async getIframeSrc(module: CoreCourseModule, itemHref?: string): Promise<string> {
+    async getIframeSrc(module: CoreCourseModuleData, itemHref?: string): Promise<string> {
+        const contents = await CoreCourse.getModuleContents(module);
+
         if (!itemHref) {
-            const toc = this.getToc(module.contents);
+            const toc = this.getToc(contents);
             if (!toc.length) {
                 throw new CoreError('Empty TOC');
             }
@@ -240,13 +185,13 @@ export class AddonModImscpProvider {
         const siteId = CoreSites.getCurrentSiteId();
 
         try {
-            const dirPath = await CoreFilepool.getPackageDirUrlByUrl(siteId, module!.url!);
+            const dirPath = await CoreFilepool.getPackageDirUrlByUrl(siteId, module.url!);
 
             return CoreTextUtils.concatenatePaths(dirPath, itemHref);
         } catch (error) {
             // Error getting directory, there was an error downloading or we're in browser. Return online URL if connected.
             if (CoreApp.isOnline()) {
-                const indexUrl = this.getFileUrlFromContents(module.contents, itemHref);
+                const indexUrl = this.getFileUrlFromContents(contents, itemHref);
 
                 if (indexUrl) {
                     const site = await CoreSites.getSite(siteId);

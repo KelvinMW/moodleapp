@@ -15,7 +15,7 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { FormGroup, FormBuilder, Validators } from '@angular/forms';
 import { CoreError } from '@classes/errors/error';
-import { CoreCourseModule } from '@features/course/services/course-helper';
+import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreFileUploader, CoreFileUploaderStoreFilesResult } from '@features/fileuploader/services/fileuploader';
 import { CanLeave } from '@guards/can-leave';
 import { CoreFile } from '@services/file';
@@ -51,7 +51,7 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy, Ca
 
     @ViewChild('editFormEl') formElement!: ElementRef;
 
-    module!: CoreCourseModule;
+    module!: CoreCourseModuleData;
     courseId!: number;
     access!: AddonModWorkshopGetWorkshopAccessInformationWSResponse;
     submission?: AddonModWorkshopSubmissionDataWithOfflineData;
@@ -99,16 +99,24 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy, Ca
      * Component being initialized.
      */
     ngOnInit(): void {
-        this.module = CoreNavigator.getRouteParam<CoreCourseModule>('module')!;
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.access = CoreNavigator.getRouteParam<AddonModWorkshopGetWorkshopAccessInformationWSResponse>('access')!;
-        this.submissionId = CoreNavigator.getRouteNumberParam('submissionId') || 0;
+        try {
+            this.module = CoreNavigator.getRequiredRouteParam<CoreCourseModuleData>('module');
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.access = CoreNavigator.getRequiredRouteParam<AddonModWorkshopGetWorkshopAccessInformationWSResponse>('access');
+            this.submissionId = CoreNavigator.getRouteNumberParam('submissionId') || 0;
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         if (this.submissionId > 0) {
             this.editorExtraParams.id = this.submissionId;
         }
 
-        this.workshopId = this.module.instance!;
+        this.workshopId = this.module.instance;
         this.componentId = this.module.id;
 
         if (!this.isDestroyed) {

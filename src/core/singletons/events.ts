@@ -19,6 +19,7 @@ import { CoreSite, CoreSiteInfoResponse, CoreSitePublicConfigResponse } from '@c
 import { CoreFilepoolComponentFileEventData } from '@services/filepool';
 import { CoreNavigationOptions } from '@services/navigator';
 import { CoreCourseModuleCompletionData } from '@features/course/services/course-helper';
+import { CoreScreenOrientation } from '@services/screen';
 
 /**
  * Observer instance to stop listening to an event.
@@ -55,6 +56,7 @@ export interface CoreEventsData {
     [CoreEvents.COMPONENT_FILE_ACTION]: CoreFilepoolComponentFileEventData;
     [CoreEvents.FILE_SHARED]: CoreEventFileSharedData;
     [CoreEvents.APP_LAUNCHED_URL]: CoreEventAppLaunchedData;
+    [CoreEvents.ORIENTATION_CHANGE]: CoreEventOrientationData;
 }
 
 /*
@@ -65,6 +67,7 @@ export class CoreEvents {
     static readonly SESSION_EXPIRED = 'session_expired';
     static readonly PASSWORD_CHANGE_FORCED = 'password_change_forced';
     static readonly USER_NOT_FULLY_SETUP = 'user_not_fully_setup';
+    static readonly SITE_POLICY_AGREED = 'site_policy_agreed';
     static readonly SITE_POLICY_NOT_AGREED = 'site_policy_not_agreed';
     static readonly LOGIN = 'login';
     static readonly LOGOUT = 'logout';
@@ -134,7 +137,7 @@ export class CoreEvents {
 
         this.logger.debug(`New observer listening to event '${eventName}'`);
 
-        if (typeof this.observables[eventName] == 'undefined') {
+        if (this.observables[eventName] === undefined) {
             // No observable for this event, create a new one.
             this.observables[eventName] = new Subject();
         }
@@ -386,4 +389,11 @@ export type CoreEventFileSharedData = {
  */
 export type CoreEventAppLaunchedData = {
     url: string;
+};
+
+/**
+ * Data passed to ORIENTATION_CHANGE event.
+ */
+export type CoreEventOrientationData = {
+    orientation: CoreScreenOrientation;
 };

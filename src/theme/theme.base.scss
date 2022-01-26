@@ -1,7 +1,19 @@
 @import "./globals.scss";
 
+html.force-safe-area-margins {
+    --ion-safe-area-left: 40px;
+    --ion-safe-area-right: 40px;
+    --ion-safe-area-top: 40px;
+    --ion-safe-area-bottom: 40px;
+}
+
+// @todo MOBILE-3790 non-standard property, doesn't work everywhere.
+html {
+    zoom: var(--zoom-level);
+}
+
 body {
-    -webkit-text-size-adjust: auto;
+    -webkit-text-size-adjust: var(--zoom-level);
 }
 
 // Common styles.
@@ -107,45 +119,50 @@ body {
     }
 }
 
-// Some styles taken from ion-title
-ion-header h1,
-ion-header h2 {
-    display: block;
-    transform: translateZ(0);
-    --color: initial;
-    color: var(--color);
-    margin: 0;
-    width: 100%;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    overflow: hidden;
-    pointer-events: auto;
+ion-header ion-title{
+    h1, h2, .subheading {
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
+        margin: 0;
+    }
 
     .filter_mathjaxloader_equation div {
         display: inline !important;
     }
 }
 
-ion-app.md ion-header h1,
-ion-app.md ion-header h2 {
+ion-app.md ion-header ion-title{
     @include padding(0, 20px);
-    font-size: 20px;
-    font-weight: 500;
-    letter-spacing: .0125em;
+
+    h1, h2, .subheading {
+        font-size: 20px;
+        font-weight: 500;
+        letter-spacing: .0125em;
+    }
+
+    h1 + h2,
+    h1 + .subheading {
+        font-size: 14px;
+        font-weight: 400;
+    }
 }
 
-ion-app.ios ion-header h1,
-ion-app.ios ion-header h2 {
-    @include position(0, null, null, 0);
-    @include padding(0, 90px, 0);
+ion-app.ios ion-header ion-title {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 
-    position: absolute;
-    text-align: center;
-    font-size: 17px;
-    font-weight: 600;
-    line-height: var(--core-header-toolbar-height);
-    box-sizing: border-box;
-    pointer-events: none;
+    h1, h2, .subheading {
+        font-size: 17px;
+        font-weight: 600;
+    }
+
+    h1 + h2,
+    h1 + .subheading {
+        font-size: 14px;
+        font-weight: 400;
+    }
 }
 
 
@@ -160,6 +177,7 @@ ion-app.ios ion-header h2 {
 .item.ion-text-wrap ion-label core-format-text .core-format-text-content > *,
 .fake-ion-item.ion-text-wrap core-format-text .core-format-text-content > * {
     white-space: normal;
+    overflow: inherit;
 }
 
 .item.ion-text-wrap ion-label {
@@ -193,6 +211,10 @@ ion-button.ion-text-wrap {
 
 ion-button.button-outline {
     --background: var(--contrast-background);
+}
+
+ion-button ion-spinner {
+    --color: inherit !important;
 }
 
 @each $color-name, $value in $colors {
@@ -232,6 +254,10 @@ ion-header ion-toolbar {
     .core-navbar-button-hidden {
         display: none !important;
     }
+}
+
+ion-footer ion-toolbar.ion-color-contrast {
+    background-color: var(--contrast-background);
 }
 
 // Ionic icon.
@@ -374,13 +400,108 @@ ion-list.list-md {
     padding: 0;
 }
 
+// Safe areas
+.safe-area-padding,
+.safe-area-padding-horizontal {
+    @include padding-horizontal(var(--ion-safe-area-left), var(--ion-safe-area-right));
+}
+
+.safe-area-margin,
+.safe-margin-horizontal {
+    @include margin-horizontal(var(--ion-safe-area-left), var(--ion-safe-area-right));
+}
+
+.ion-padding.safe-area-padding-horizontal {
+    @include safe-area-padding-horizontal(16px, 16px);
+}
+
+.ion-margin.safe-margin-horizontal {
+    @include safe-area-margin-horizontal(16px, 16px);
+}
+
+ion-tabs.placement-side .tabs-inner {
+    --ion-safe-area-left: 0px;
+}
+
+ion-tabs.placement-bottom .tabs-inner {
+    --ion-safe-area-bottom: 0px;
+}
+
+
+core-split-view.menu-and-content {
+    .menu {
+        --ion-safe-area-right: 0px;
+    }
+
+    .content-outlet {
+        --ion-safe-area-left: 0px;
+    }
+}
+
 // Header.
+ion-header {
+    z-index: 12; // To hide ion-slides on scroll.
+}
 ion-tabs.hide-header ion-header {
     display: none;
 }
 ion-toolbar {
     ion-spinner {
         margin: 10px;
+    }
+}
+
+// Iframe fullscreen manage.
+// Using router outlet to avoid changing styles on modals.
+body.core-iframe-fullscreen ion-router-outlet {
+
+    ion-tab-bar.mainmenu-tabs {
+        display: none;
+
+        // Restore original safe area.
+        .tabs-inner {
+            @supports (padding-left: constant(safe-area-inset-left)) {
+                --ion-safe-area-left: constant(safe-area-inset-left);
+            }
+
+            @supports (padding-left: env(safe-area-inset-left)) {
+                --ion-safe-area-left: env(safe-area-inset-left);
+            }
+        }
+    }
+
+    --core-header-toolbar-height: 48px;
+    --core-header-toolbar-color: white;
+    --core-header-toolbar-background: black;
+    --core-header-toolbar-border-width: 0px;
+
+    ion-header ion-toolbar {
+        h1, ion-back-button {
+            display: none;
+        }
+    }
+
+    @media screen and (orientation: landscape) {
+        // Place ion-header on the side and hide text
+        .ion-page {
+            flex-direction: row-reverse;
+            ion-header {
+                width: calc(var(--core-header-toolbar-height), var(--ion-safe-area-right));
+                @include safe-area-padding-horizontal(null, 0px);
+                background: var(--core-header-toolbar-background);
+
+                ion-toolbar {
+                    padding: 0;
+                    height: 100%;
+                    --padding-start: 0px;
+                    --padding-end: 0px;
+                }
+
+                ion-buttons {
+                    flex-direction: column-reverse;
+                }
+            }
+        }
     }
 }
 
@@ -393,12 +514,39 @@ ion-toolbar {
     height: 100% !important;
 }
 
+.core-modal-transparent {
+
+    ion-backdrop {
+        backdrop-filter: blur(8px);
+    }
+
+    .modal-wrapper {
+        backdrop-filter: blur(12px);
+        --background: rgba(10, 10, 10, 0.2);
+
+        ion-content {
+            --background: transparent !important;
+        }
+        position: absolute;
+        @include position(0 !important, null, null, 0 !important);
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+    }
+}
+
 .core-modal-force-on-top {
     z-index: 100000 !important;
 }
 
-@media only screen and (min-height: 400px) and (min-width: 300px) {
+.core-modal-lateral .modal-wrapper {
+    @include margin-horizontal(16px, null);
+}
+
+@media only screen and (min-height: 400px) and (min-width: #{$modal-lateral-width}) {
     .core-modal-lateral {
+        --ion-safe-area-left: 0px;
+        --ion-safe-area-right: 0px;
 
         .modal-wrapper {
             position: absolute;
@@ -406,13 +554,40 @@ ion-toolbar {
             display: block;
             height: 100% !important;
             width: auto;
-            min-width: 300px;
+            min-width: calc(#{$modal-lateral-width} - 16px);
             box-shadow: 0 28px 48px rgba(0, 0, 0, 0.4);
         }
         ion-backdrop {
             visibility: visible;
         }
     }
+}
+
+@each $breakpoint, $width in $screen-breakpoints {
+    .core-modal-lateral-#{$breakpoint} .modal-wrapper {
+        @include margin-horizontal(16px, null);
+    }
+
+    @media only screen and (min-height: 400px) and (min-width: #{$width}) {
+        .core-modal-lateral-#{$breakpoint} {
+            --ion-safe-area-left: 0px;
+            --ion-safe-area-right: 0px;
+
+            .modal-wrapper {
+                position: absolute;
+                @include position(0 !important, 0 !important, 0 !important, unset !important);
+                display: block;
+                height: 100% !important;
+                width: auto;
+                min-width: #{$width};
+                box-shadow: 0 28px 48px rgba(0, 0, 0, 0.4);
+            }
+            ion-backdrop {
+                visibility: visible;
+            }
+        }
+    }
+
 }
 
 // Hidden submit button.
@@ -434,9 +609,14 @@ ion-toolbar {
 // Item styles
 [aria-current="page"],
 .item.item-current {
-    // TODO: Add safe area to border and RTL
-    --ion-safe-area-left: calc(-1 * var(--selected-item-border-width));
-    border-inline-start: var(--selected-item-border-width) solid var(--selected-item-color);
+    @include safe-area-border-start(var(--selected-item-border-width), solid,  var(--selected-item-color));
+    > * {
+        --ion-safe-area-left: 0px;
+    }
+
+    &::part(native) {
+        --ion-safe-area-left: 0px;
+    }
 }
 
 .item.item-file {
@@ -467,7 +647,7 @@ ion-toolbar {
         border-bottom: 3px solid var(--color-base);
 
         ion-item {
-            --inner-border-width: 0;
+            --inner-border-width: 0px;
         }
         ion-label {
             white-space: normal !important;
@@ -482,7 +662,7 @@ ion-toolbar {
 
         --border-width: 0 0 3px 0;
         --border-color: var(--color-base);
-        --inner-border-width: 0;
+        --inner-border-width: 0px;
         ion-icon {
             color: var(--color-base);
         }
@@ -527,30 +707,8 @@ img[core-external-content]:not([src]) {
     visibility: hidden;
 }
 
-// Activity modules
-.core-module-icon {
-    --size: var(--module-icon-size);
-    width: var(--size);
-    height: var(--size);
-    max-width: var(--size);
-    max-height: var(--size);
-}
-
-ion-item img.core-module-icon[slot="start"] {
-    margin-top: 12px;
-    margin-bottom: 12px;
-    margin-right: 32px;
-}
-
-ion-card ion-item img.core-module-icon[slot="start"] {
-    margin-top: 12px;
-    margin-bottom: 12px;
-    margin-right: 12px;
-}
-
-[dir=rtl] ion-item img.core-module-icon[slot="start"] {
-    margin-right: unset;
-    margin-left: 32px;
+ion-card ion-item:only-child {
+    --inner-border-width: 0px;
 }
 
 .core-course-module-handler:not(.addon-mod-label-handler) .item-heading .filter_mathjaxloader_equation div {
@@ -559,12 +717,13 @@ ion-card ion-item img.core-module-icon[slot="start"] {
 
 ion-toolbar h1 img.core-bar-button-image,
 ion-toolbar h1 .core-bar-button-image img {
-    padding: 0;
+    padding: 4px;
     width: var(--core-header-toolbar-button-image-size);
     height: var(--core-header-toolbar-button-image-size);
     max-width: var(--core-header-toolbar-button-image-size);
     max-height: var(--core-header-toolbar-button-image-size);
     border-radius: 50%;
+    display: block;
 }
 
 // Action sheet.
@@ -668,6 +827,13 @@ ion-select::part(icon) {
     opacity: 1;
 }
 
+ion-select-popover ion-item.core-select-option-title {
+    cursor: pointer;
+    ion-radio {
+        display: none;
+    }
+}
+
 ion-searchbar {
     .searchbar-search-icon.ios {
         top: 4px;
@@ -708,15 +874,19 @@ core-block ion-item-divider .core-button-spinner {
 
 // Horizontal scrolling elements
 .core-horizontal-scroll {
-    display: flex;
-    flex-flow: nowrap;
+    display: block;
     overflow-x: scroll;
-    flex-direction: row;
+    .safe-area-pseudo-padding-start {
+        @include padding-horizontal(var(--ion-safe-area-left), 0px);
+    }
+    .safe-area-pseudo-padding-end {
+        @include padding-horizontal(0px, var(--ion-safe-area-right));
+    }
 }
 
 // Text formats.
 // Highlight text.
-.matchtext {
+mark, .matchtext {
     background-color: var(--text-hightlight-background-color);
 }
 
@@ -770,8 +940,15 @@ ion-back-button.md::part(text) {
 }
 
 // Hide close button because when present is read on voice over.
-ion-fab[core-fab] ion-fab-button::part(close-icon) {
-    display: none;
+ion-fab[core-fab] {
+    ion-fab-button::part(close-icon) {
+        display: none;
+    }
+}
+
+ion-content.has-core-course-module-navigation ion-fab {
+    bottom: calc(var(--core-course-module-navigation-height, 0px) + 10px);
+    @include core-transition(all, 200ms);
 }
 
 .core-media-adapt-width {
@@ -938,6 +1115,10 @@ ion-item.item-multiple-inputs.only-links {
     }
 }
 
+a {
+    cursor: pointer;
+}
+
 // Case with ion-input + ion-select inside.
 ion-item.item-input.item-multiple-inputs {
     .flex-row {
@@ -972,6 +1153,11 @@ ion-item.item-input ion-input.has-focus {
     .item-highlight, .item-inner-highlight {
         position: unset;
     }
+}
+
+// Ionic set this value to 0 without px that provoked miscalculations.
+ion-item-divider {
+    --inner-padding-end: 0px;
 }
 
 // Change default outline.
@@ -1015,4 +1201,82 @@ iframe {
     display: block;
     max-width: 100%;
     background-color: var(--ion-background-color);
+}
+
+@if ($core-login-hide-need-help) {
+    .core-login-need-help {
+        display: none !important;
+    }
+}
+
+ion-grid.core-no-grid > ion-row {
+    display: block;
+}
+
+ion-header[collapsible] {
+    @include core-transition(all, 500ms);
+
+    ion-title {
+        @include core-transition(opacity, 0ms);
+    }
+
+    &:not(.core-header-collapsed) {
+        ion-toolbar {
+            --core-header-toolbar-background: rgba(255, 255, 255, 0);
+            --core-header-toolbar-border-width: 0;
+        }
+
+        ion-title, &::after {
+            opacity: 0;
+            z-index: 0;
+        }
+    }
+}
+
+.collapsible-title {
+    overflow: visible;
+    *, h1, h2, .subheading {
+        @include core-transition(all, 200ms, linear);
+    }
+
+    ion-label {
+        overflow: visible !important;
+    }
+
+    h1, h2, .subheading {
+        --max-width: none;
+    }
+}
+
+ion-app.ios .collapsible-title h1 {
+    font-weight: 600; // Default heading weight.
+}
+ion-app.md .collapsible-title h1 {
+    font-weight: 500; // Default heading weight.
+    letter-spacing: .0125em;
+}
+
+.collapsible-title.collapsible-title-collapsed {
+    ion-label, h1, h2, ion-row, ion-col, .subheading {
+        opacity: 0;
+    }
+}
+
+.collapsible-title.collapsible-title-collapse-started {
+    * {
+        opacity: var(--collapse-opacity, 0);
+    }
+
+    ion-label, h1, h2, ion-row, ion-col, .subheading {
+        opacity: 1;
+    }
+}
+
+.collapsible-title.collapsible-title-collapse-nowrap {
+    h1, h2, .subheading {
+        max-width: var(--max-width);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }

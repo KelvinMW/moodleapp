@@ -40,7 +40,7 @@ export class AddonNotesListPage implements OnInit, OnDestroy {
 
      @ViewChild(IonContent) content?: IonContent;
 
-    courseId: number;
+    courseId!: number;
     userId?: number;
     type: AddonNotesPublishState = 'course';
     refreshIcon = CoreConstants.ICON_LOADING;
@@ -51,13 +51,21 @@ export class AddonNotesListPage implements OnInit, OnDestroy {
     user?: CoreUserProfile;
     showDelete = false;
     canDeleteNotes = false;
-    currentUserId: number;
+    currentUserId!: number;
 
-    protected syncObserver: CoreEventObserver;
+    protected syncObserver!: CoreEventObserver;
 
     constructor() {
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.userId = CoreNavigator.getRouteNumberParam('userId');
+        try {
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.userId = CoreNavigator.getRouteNumberParam('userId');
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         // Refresh data if notes are synchronized automatically.
         this.syncObserver = CoreEvents.on(AddonNotesSyncProvider.AUTO_SYNCED, (data) => {
@@ -187,7 +195,7 @@ export class AddonNotesListPage implements OnInit, OnDestroy {
             },
         });
 
-        if (typeof modalData != 'undefined') {
+        if (modalData !== undefined) {
 
             if (modalData.sent && modalData.type) {
                 if (modalData.type != this.type) {

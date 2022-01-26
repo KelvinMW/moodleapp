@@ -16,6 +16,7 @@ import { SQLiteObject } from '@ionic-native/sqlite/ngx';
 
 import { SQLite, Platform } from '@singletons';
 import { CoreError } from '@classes/errors/error';
+import { CoreDB } from '@services/db';
 
 type SQLiteDBColumnType = 'INTEGER' | 'REAL' | 'TEXT' | 'BLOB';
 
@@ -221,7 +222,7 @@ export class SQLiteDB {
                 columnSql += ` CHECK (${column.check})`;
             }
 
-            if (typeof column.default != 'undefined') {
+            if (column.default !== undefined) {
                 columnSql += ` DEFAULT ${column.default}`;
             }
 
@@ -388,7 +389,7 @@ export class SQLiteDB {
      * @return Promise resolved with the number of affected rows.
      */
     async deleteRecords(table: string, conditions?: SQLiteDBRecordValues): Promise<number> {
-        if (conditions === null || typeof conditions == 'undefined') {
+        if (conditions === null || conditions === undefined) {
             // No conditions, delete the whole table.
             const result = await this.execute(`DELETE FROM ${table}`);
 
@@ -485,7 +486,7 @@ export class SQLiteDB {
 
         // Remove undefined entries and convert null to "NULL".
         for (const name in data) {
-            if (typeof data[name] == 'undefined') {
+            if (data[name] === undefined) {
                 delete data[name];
             }
         }
@@ -581,13 +582,13 @@ export class SQLiteDB {
         let params: SQLiteDBRecordValue[];
 
         // Default behavior, return empty data on empty array.
-        if (Array.isArray(items) && !items.length && typeof onEmptyItems == 'undefined') {
+        if (Array.isArray(items) && !items.length && onEmptyItems === undefined) {
             return { sql: '', params: [] };
         }
 
         // Handle onEmptyItems on empty array of items.
         if (Array.isArray(items) && !items.length) {
-            if (onEmptyItems === null || typeof onEmptyItems === 'undefined') { // Special case, NULL value.
+            if (onEmptyItems === null || onEmptyItems === undefined) { // Special case, NULL value.
                 sql = equal ? ' IS NULL' : ' IS NOT NULL';
 
                 return { sql, params: [] };
@@ -600,7 +601,7 @@ export class SQLiteDB {
             sql = equal ? '= ?' : '<> ?';
             params = Array.isArray(items) ? items : [items];
         } else {
-            sql = (equal ? '' : 'NOT ') + 'IN (' + ',?'.repeat(items.length).substr(1) + ')';
+            sql = (equal ? '' : 'NOT ') + 'IN (' + ',?'.repeat(items.length).substring(1) + ')';
             params = items;
         }
 
@@ -801,7 +802,7 @@ export class SQLiteDB {
 
         const keys = Object.keys(data);
         const fields = keys.join(',');
-        const questionMarks = ',?'.repeat(keys.length).substr(1);
+        const questionMarks = ',?'.repeat(keys.length).substring(1);
 
         return {
             sql: `INSERT OR REPLACE INTO ${table} (${fields}) VALUES (${questionMarks})`,
@@ -813,16 +814,19 @@ export class SQLiteDB {
      * Initialize the database.
      */
     init(): void {
-        this.promise = Platform.ready()
-            .then(() => SQLite.create({
-                name: this.name,
-                location: 'default',
-            }))
-            .then((db: SQLiteObject) => {
-                this.db = db;
+        this.promise = this.createDatabase().then(db => {
+            if (CoreDB.loggingEnabled()) {
+                const spies = this.getDatabaseSpies(db);
 
-                return;
-            });
+                db = new Proxy(db, {
+                    get: (target, property, receiver) => spies[property] ?? Reflect.get(target, property, receiver),
+                });
+            }
+
+            this.db = db;
+
+            return;
+        });
     }
 
     /**
@@ -1091,7 +1095,7 @@ export class SQLiteDB {
         for (const key in conditions) {
             const value = conditions[key];
 
-            if (typeof value == 'undefined' || value === null) {
+            if (value === undefined || value === null) {
                 where.push(key + ' IS NULL');
             } else {
                 where.push(key + ' = ?');
@@ -1124,7 +1128,7 @@ export class SQLiteDB {
         let sql = '';
 
         values.forEach((value) => {
-            if (typeof value == 'undefined' || value === null) {
+            if (value === undefined || value === null) {
                 sql = field + ' IS NULL';
             } else {
                 params.push(value);
@@ -1139,12 +1143,56 @@ export class SQLiteDB {
             if (params.length == 1) {
                 sql = sql + field + ' = ?';
             } else {
-                const questionMarks = ',?'.repeat(params.length).substr(1);
+                const questionMarks = ',?'.repeat(params.length).substring(1);
                 sql = sql + field + ' IN (' + questionMarks + ')';
             }
         }
 
         return { sql, params };
+    }
+
+    /**
+     * Open a database connection.
+     *
+     * @returns Database.
+     */
+    protected async createDatabase(): Promise<SQLiteObject> {
+        await Platform.ready();
+
+        return SQLite.create({ name: this.name, location: 'default' });
+    }
+
+    /**
+     * Get database spy methods to intercept database calls and track logging information.
+     *
+     * @param db Database to spy.
+     * @returns Spy methods.
+     */
+    protected getDatabaseSpies(db: SQLiteObject): Partial<SQLiteObject> {
+        return {
+            executeSql(statement, params) {
+                const start = performance.now();
+
+                return db.executeSql(statement, params).then(result => {
+                    CoreDB.logQuery(statement, performance.now() - start, params);
+
+                    return result;
+                });
+            },
+            sqlBatch(statements) {
+                const start = performance.now();
+
+                return db.sqlBatch(statements).then(result => {
+                    const sql = Array.isArray(statements)
+                        ? statements.join(' | ')
+                        : String(statements);
+
+                    CoreDB.logQuery(sql, performance.now() - start);
+
+                    return result;
+                });
+            },
+        };
     }
 
 }

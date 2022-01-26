@@ -231,7 +231,7 @@ export class CoreSettingsHelperProvider {
      * @return Sync promise or null if site is not being syncrhonized.
      */
     getSiteSyncPromise(siteId: string): Promise<void> | void {
-        if (this.syncPromises[siteId]) {
+        if (this.syncPromises[siteId] !== undefined) {
             return this.syncPromises[siteId];
         }
     }
@@ -244,7 +244,7 @@ export class CoreSettingsHelperProvider {
      * @return Promise resolved when synchronized, rejected if failure.
      */
     async synchronizeSite(syncOnlyOnWifi: boolean, siteId: string): Promise<void> {
-        if (this.syncPromises[siteId]) {
+        if (this.syncPromises[siteId] !== undefined) {
             // There's already a sync ongoing for this site, return the promise.
             return this.syncPromises[siteId];
         }
@@ -267,7 +267,6 @@ export class CoreSettingsHelperProvider {
             CoreUtils.ignoreErrors(CoreFilepool.invalidateAllFiles(siteId)),
             // Invalidate and synchronize site data.
             site.invalidateWsCache(),
-            this.checkSiteLocalMobile(site),
             CoreSites.updateSiteInfo(site.getId()),
             CoreCronDelegate.forceSyncExecution(site.getId()),
         // eslint-disable-next-line arrow-body-style
@@ -285,34 +284,13 @@ export class CoreSettingsHelperProvider {
     }
 
     /**
-     * Check if local_mobile was added to the site.
-     *
-     * @param site Site to check.
-     * @return Promise resolved if no action needed.
-     */
-    protected async checkSiteLocalMobile(site: CoreSite): Promise<void> {
-        try {
-            // Check if local_mobile was installed in Moodle.
-            await site.checkIfLocalMobileInstalledAndNotUsed();
-        } catch {
-            // Not added, nothing to do.
-            return;
-        }
-
-        // Local mobile was added. Throw invalid session to force reconnect and create a new token.
-        CoreEvents.trigger(CoreEvents.SESSION_EXPIRED, {}, site.getId());
-
-        throw new CoreError(Translate.instant('core.lostconnection'));
-    }
-
-    /**
      * Upgrades from Font size to new zoom level.
      */
     async upgradeZoomLevel(): Promise<void> {
         // Check old setting and update the new.
         try {
             const fontSize = await CoreConfig.get<number>('CoreSettingsFontSize');
-            if (typeof fontSize == 'undefined') {
+            if (fontSize === undefined) {
                 // Already upgraded.
                 return;
             }
@@ -410,8 +388,8 @@ export class CoreSettingsHelperProvider {
      */
     applyZoomLevel(zoomLevel: CoreZoomLevel): void {
         const zoom = CoreConstants.CONFIG.zoomlevels[zoomLevel];
-        // @todo MOBILE-3790 non-standard property, doesn't work everywhere.
-        document.documentElement.style.zoom = zoom + '%';
+
+        document.documentElement.style.setProperty('--zoom-level', zoom + '%');
     }
 
     /**

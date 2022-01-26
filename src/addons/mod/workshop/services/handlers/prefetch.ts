@@ -160,7 +160,7 @@ export class AddonModWorkshopPrefetchHandlerService extends CoreCourseActivityPr
             return {
                 workshop,
                 groups,
-                files: files.filter((file) => typeof file !== 'undefined'),
+                files: files.filter((file) => file !== undefined),
             };
         } catch (error) {
             if (options.omitFail) {
@@ -168,7 +168,7 @@ export class AddonModWorkshopPrefetchHandlerService extends CoreCourseActivityPr
                 return {
                     workshop,
                     groups,
-                    files: files.filter((file) => typeof file !== 'undefined'),
+                    files: files.filter((file) => file !== undefined),
                 };
             }
 
@@ -199,13 +199,6 @@ export class AddonModWorkshopPrefetchHandlerService extends CoreCourseActivityPr
 
         // Check if workshop is setup by phase.
         return accessData.canswitchphase || workshop.phase > AddonModWorkshopPhase.PHASE_SETUP;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    async isEnabled(): Promise<boolean> {
-        return AddonModWorkshop.isPluginEnabled();
     }
 
     /**
@@ -370,7 +363,7 @@ export class AddonModWorkshopPrefetchHandlerService extends CoreCourseActivityPr
         }));
 
         // Add Basic Info to manage links.
-        promises.push(CoreCourse.getModuleBasicInfoByInstance(workshop.id, 'workshop', siteId));
+        promises.push(CoreCourse.getModuleBasicInfoByInstance(workshop.id, 'workshop', { siteId }));
         promises.push(CoreCourse.getModuleBasicGradeInfo(module.id, siteId));
 
         // Get course data, needed to determine upload max size if it's configured to be course limit.
@@ -386,7 +379,7 @@ export class AddonModWorkshopPrefetchHandlerService extends CoreCourseActivityPr
      * @inheritdoc
      */
     async sync(module: CoreCourseAnyModuleData, courseId: number, siteId?: string): Promise<AddonModDataSyncResult> {
-        return AddonModWorkshopSync.syncWorkshop(module.instance!, siteId);
+        return AddonModWorkshopSync.syncWorkshop(module.instance, siteId);
     }
 
 }

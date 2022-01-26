@@ -15,8 +15,8 @@
 import { Type } from '@angular/core';
 
 import { CoreConstants } from '@/core/constants';
-import { CoreCourseAnyModuleData, CoreCourseWSModule } from '@features/course/services/course';
-import { CoreCourseModule } from '@features/course/services/course-helper';
+import { CoreCourse } from '@features/course/services/course';
+import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@features/course/services/module-delegate';
 import { CoreSitePluginsModuleIndexComponent } from '@features/siteplugins/components/module-index/module-index';
 import {
@@ -24,10 +24,13 @@ import {
     CoreSitePluginsContent,
     CoreSitePluginsCourseModuleHandlerData,
     CoreSitePluginsPlugin,
+    CoreSitePluginsProvider,
 } from '@features/siteplugins/services/siteplugins';
 import { CoreNavigationOptions, CoreNavigator } from '@services/navigator';
 import { CoreLogger } from '@singletons/logger';
 import { CoreSitePluginsBaseHandler } from './base-handler';
+import { CoreEvents } from '@singletons/events';
+import { CoreUtils } from '@services/utils/utils';
 
 /**
  * Handler to support a module using a site plugin.
@@ -61,12 +64,12 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
      * @inheritdoc
      */
     getData(
-        module: CoreCourseAnyModuleData,
+        module: CoreCourseModuleData,
         courseId: number,
         sectionId?: number,
         forCoursePage?: boolean,
     ): CoreCourseModuleHandlerData {
-        if ('description' in module && this.shouldOnlyDisplayDescription(module, forCoursePage)) {
+        if (this.shouldOnlyDisplayDescription(module, forCoursePage)) {
             const title = module.description;
             module.description = '';
 
@@ -84,28 +87,35 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
             title: module.name,
             icon: this.getIconSrc(),
             class: this.handlerSchema.displaydata?.class,
-            showDownloadButton: typeof showDowloadButton != 'undefined' ? showDowloadButton : hasOffline,
+            showDownloadButton: showDowloadButton !== undefined ? showDowloadButton : hasOffline,
         };
 
         if (this.handlerSchema.method) {
             // There is a method, add an action.
-            handlerData.action = (event: Event, module: CoreCourseModule, courseId: number, options?: CoreNavigationOptions) => {
+            handlerData.action = async (
+                event: Event,
+                module: CoreCourseModuleData,
+                courseId: number,
+                options?: CoreNavigationOptions,
+            ) => {
                 event.preventDefault();
                 event.stopPropagation();
 
-                options = options || {};
-                options.params = {
-                    title: module.name,
-                    module,
-                };
-
-                CoreNavigator.navigateToSitePath(`siteplugins/module/${courseId}/${module.id}`, options);
+                await this.openActivityPage(module, courseId, options);
             };
         }
 
         if (forCoursePage && this.handlerSchema.coursepagemethod && module.visibleoncoursepage !== 0) {
             // Call the method to get the course page template.
-            this.loadCoursePageTemplate(module, courseId, handlerData);
+            const method = this.handlerSchema.coursepagemethod;
+            this.loadCoursePageTemplate(module, courseId, handlerData, method);
+
+            // Allow updating the data via event.
+            CoreEvents.on(CoreSitePluginsProvider.UPDATE_COURSE_CONTENT, (data) => {
+                if (data.cmId === module.id) {
+                    this.loadCoursePageTemplate(module, courseId, handlerData, method, !data.alreadyFetched);
+                }
+            });
         }
 
         return handlerData;
@@ -118,7 +128,7 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
      * @param forCoursePage Whether the data will be used to render the course page.
      * @return Bool.
      */
-    protected shouldOnlyDisplayDescription(module: CoreCourseAnyModuleData, forCoursePage?: boolean): boolean {
+    protected shouldOnlyDisplayDescription(module: CoreCourseModuleData, forCoursePage?: boolean): boolean {
         if (forCoursePage && this.handlerSchema.coursepagemethod) {
             // The plugin defines a method for course page, don't display just the description.
             return false;
@@ -152,12 +162,16 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
      * @param module Module.
      * @param courseId Course ID.
      * @param handlerData Handler data.
+     * @param method Method to call.
+     * @param refresh Whether to refresh the data.
      * @return Promise resolved when done.
      */
     protected async loadCoursePageTemplate(
-        module: CoreCourseAnyModuleData,
+        module: CoreCourseModuleData,
         courseId: number,
         handlerData: CoreCourseModuleHandlerData,
+        method: string,
+        refresh?: boolean,
     ): Promise<void> {
         // Call the method to get the course page template.
         handlerData.loading = true;
@@ -167,16 +181,16 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
             cmid: module.id,
         };
 
+        if (refresh) {
+            await CoreUtils.ignoreErrors(CoreSitePlugins.invalidateContent(this.plugin.component, method, args));
+        }
+
         try {
-            const result = await CoreSitePlugins.getContent(
-                this.plugin.component,
-                this.handlerSchema.coursepagemethod!,
-                args,
-            );
+            const result = await CoreSitePlugins.getContent(this.plugin.component, method, args);
 
             // Use the html returned.
             handlerData.title = result.templates[0]?.html ?? '';
-            (<CoreCourseWSModule> module).description = '';
+            (<CoreCourseModuleData> module).description = '';
         } catch (error) {
             this.logger.error('Error calling course page method:', error);
         } finally {
@@ -201,7 +215,7 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
     /**
      * @inheritdoc
      */
-    async manualCompletionAlwaysShown(module: CoreCourseModule): Promise<boolean> {
+    async manualCompletionAlwaysShown(module: CoreCourseModuleData): Promise<boolean> {
         if (this.handlerSchema.manualcompletionalwaysshown !== undefined) {
             return this.handlerSchema.manualcompletionalwaysshown;
         }
@@ -212,6 +226,24 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
         }
 
         return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    async openActivityPage(module: CoreCourseModuleData, courseId: number, options?: CoreNavigationOptions): Promise<void> {
+        if (!CoreCourse.moduleHasView(module)) {
+            return;
+        }
+
+        options = options || {};
+        options.params = options.params || {};
+        Object.assign(options.params, {
+            title: module.name,
+            module,
+        });
+
+        CoreNavigator.navigateToSitePath(`siteplugins/module/${courseId}/${module.id}`, options);
     }
 
 }

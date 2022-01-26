@@ -83,11 +83,19 @@ export class AddonModQuizReviewPage implements OnInit {
      * Component being initialized.
      */
     async ngOnInit(): Promise<void> {
-        this.cmId = CoreNavigator.getRouteNumberParam('cmId')!;
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.attemptId = CoreNavigator.getRouteNumberParam('attemptId')!;
-        this.currentPage = CoreNavigator.getRouteNumberParam('page') || -1;
-        this.showAll = this.currentPage == -1;
+        try {
+            this.cmId = CoreNavigator.getRequiredRouteNumberParam('cmId');
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.attemptId = CoreNavigator.getRequiredRouteNumberParam('attemptId');
+            this.currentPage = CoreNavigator.getRouteNumberParam('page') || -1;
+            this.showAll = this.currentPage == -1;
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         try {
             await this.fetchData();
@@ -108,7 +116,7 @@ export class AddonModQuizReviewPage implements OnInit {
      * @param slot Slot of the question to scroll to.
      */
     async changePage(page: number, fromModal?: boolean, slot?: number): Promise<void> {
-        if (typeof slot != 'undefined' && (this.attempt!.currentpage == -1 || page == this.currentPage)) {
+        if (slot !== undefined && (this.attempt!.currentpage == -1 || page == this.currentPage)) {
             // Scrol to a certain question in the current page.
             this.scrollToQuestion(slot);
 
@@ -128,7 +136,7 @@ export class AddonModQuizReviewPage implements OnInit {
         } finally {
             this.loaded = true;
 
-            if (typeof slot != 'undefined') {
+            if (slot !== undefined) {
                 // Scroll to the question. Give some time to the questions to render.
                 setTimeout(() => {
                     this.scrollToQuestion(slot);
@@ -278,7 +286,7 @@ export class AddonModQuizReviewPage implements OnInit {
         if (this.options!.someoptions.marks >= AddonModQuizProvider.QUESTION_OPTIONS_MARK_AND_MAX &&
                 AddonModQuiz.quizHasGrades(this.quiz)) {
 
-            if (data.grade === null || typeof data.grade == 'undefined') {
+            if (data.grade === null || data.grade === undefined) {
                 this.readableGrade = AddonModQuiz.formatGrade(data.grade, this.quiz.decimalpoints);
             } else {
                 // Show raw marks only if they are different from the grade (like on the entry page).

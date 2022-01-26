@@ -58,7 +58,7 @@ export class AddonModForumPostOptionsMenuComponent implements OnInit, OnDestroy 
         });
 
         if (this.post.id > 0) {
-            const site = CoreSites.getCurrentSite()!;
+            const site = CoreSites.getRequiredCurrentSite();
             this.url = site.createSiteUrl('/mod/forum/discuss.php', { d: this.post.discussionid.toString() }, 'p' + this.post.id);
             this.offlinePost = false;
         } else {
@@ -69,7 +69,7 @@ export class AddonModForumPostOptionsMenuComponent implements OnInit, OnDestroy 
             return;
         }
 
-        if (typeof this.post.capabilities.delete == 'undefined') {
+        if (this.post.capabilities.delete === undefined) {
             if (this.forumId) {
                 try {
                     this.post =

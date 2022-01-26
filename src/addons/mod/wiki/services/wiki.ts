@@ -58,7 +58,7 @@ export class AddonModWikiProvider {
      * @param wikiId wiki Id, if not provided all will be cleared.
      */
     clearSubwikiList(wikiId?: number): void {
-        if (typeof wikiId == 'undefined') {
+        if (wikiId === undefined) {
             this.subwikiListsCache = {};
         } else {
             delete this.subwikiListsCache[wikiId];
@@ -178,9 +178,7 @@ export class AddonModWikiProvider {
         if (section) {
             params.section = section;
         }
-
-        // This parameter requires Moodle 3.2. It saves network usage.
-        if (lockOnly && site.isVersionGreaterEqualThan('3.2')) {
+        if (lockOnly) {
             params.lockonly = true;
         }
 

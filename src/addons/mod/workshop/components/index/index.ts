@@ -82,6 +82,7 @@ export class AddonModWorkshopIndexComponent extends CoreCourseModuleMainActivity
         separateGroups: false,
         visibleGroups: false,
         defaultGroupId: 0,
+        canAccessAllGroups: false,
     };
 
     canSubmit = false;
@@ -321,7 +322,7 @@ export class AddonModWorkshopIndexComponent extends CoreCourseModuleMainActivity
 
             const offlineData = await AddonModWorkshopHelper.applyOfflineData(submission, this.offlineSubmissions);
 
-            if (typeof offlineData != 'undefined') {
+            if (offlineData !== undefined) {
                 this.grades!.push(offlineData);
             }
         }));
@@ -355,7 +356,7 @@ export class AddonModWorkshopIndexComponent extends CoreCourseModuleMainActivity
      *
      * @param task Task to be done.
      */
-    runTask(task: AddonModWorkshopPhaseTaskData): void {
+    async runTask(task: AddonModWorkshopPhaseTaskData): Promise<void> {
         if (task.code == 'submit') {
             this.gotoSubmit();
         } else if (task.link) {

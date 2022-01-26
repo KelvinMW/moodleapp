@@ -37,6 +37,7 @@ import { CoreWSError } from '@classes/errors/wserror';
 import { CoreAjaxError } from '@classes/errors/ajaxerror';
 import { CoreAjaxWSError } from '@classes/errors/ajaxwserror';
 import { CoreNetworkError } from '@classes/errors/network-error';
+import { CoreSite } from '@classes/site';
 
 /**
  * This service allows performing WS calls and download/upload files.
@@ -99,7 +100,7 @@ export class CoreWSProvider {
         }
 
         preSets.typeExpected = preSets.typeExpected || 'object';
-        if (typeof preSets.responseExpected == 'undefined') {
+        if (preSets.responseExpected === undefined) {
             preSets.responseExpected = true;
         }
 
@@ -322,7 +323,7 @@ export class CoreWSProvider {
      */
     protected getPromiseHttp<T = unknown>(method: string, url: string, params?: Record<string, unknown>): Promise<T> | undefined {
         const queueItemId = this.getQueueItemId(method, url, params);
-        if (typeof this.ongoingCalls[queueItemId] != 'undefined') {
+        if (this.ongoingCalls[queueItemId] !== undefined) {
             return this.ongoingCalls[queueItemId];
         }
     }
@@ -335,8 +336,9 @@ export class CoreWSProvider {
      * @return Promise resolved with the mimetype or '' if failure.
      */
     async getRemoteFileMimeType(url: string, ignoreCache?: boolean): Promise<string> {
-        if (this.mimeTypeCache[url] && !ignoreCache) {
-            return this.mimeTypeCache[url]!;
+        const cachedMimeType = this.mimeTypeCache[url];
+        if (cachedMimeType && !ignoreCache) {
+            return cachedMimeType;
         }
 
         try {
@@ -412,13 +414,13 @@ export class CoreWSProvider {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let promise: Promise<HttpResponse<any>>;
 
-        if (typeof preSets.siteUrl == 'undefined') {
+        if (preSets.siteUrl === undefined) {
             throw new CoreAjaxError(Translate.instant('core.unexpectederror'));
         } else if (!CoreApp.isOnline()) {
             throw new CoreAjaxError(Translate.instant('core.networkerrormsg'));
         }
 
-        if (typeof preSets.responseExpected == 'undefined') {
+        if (preSets.responseExpected === undefined) {
             preSets.responseExpected = true;
         }
 
@@ -474,9 +476,23 @@ export class CoreWSProvider {
 
             return data.data;
         }, (data) => {
-            const available = data.status == 404 ? -1 : 0;
+            let message = '';
 
-            throw new CoreAjaxError(Translate.instant('core.serverconnection'), available);
+            switch (data.status) {
+                case -2: // Certificate error.
+                    message = this.getCertificateErrorMessage(data.error);
+                    break;
+                case 404: // AJAX endpoint not found.
+                    message = Translate.instant('core.ajaxendpointnotfound', {
+                        $a: CoreSite.MINIMUM_MOODLE_VERSION,
+                        whoisadmin: Translate.instant('core.whoissiteadmin'),
+                    });
+                    break;
+                default:
+                    message = Translate.instant('core.serverconnection');
+            }
+
+            throw new CoreAjaxError(message, 1, data.status);
         });
     }
 
@@ -639,7 +655,7 @@ export class CoreWSProvider {
                 }
             }
 
-            if (typeof data.exception !== 'undefined') {
+            if (data.exception !== undefined) {
                 // Special debugging for site plugins, otherwise it's hard to debug errors if the data is cached.
                 if (method == 'tool_mobile_get_content') {
                     this.logger.error('Error calling WS', method, data);
@@ -648,7 +664,7 @@ export class CoreWSProvider {
                 throw new CoreWSError(data);
             }
 
-            if (typeof data.debuginfo != 'undefined') {
+            if (data.debuginfo !== undefined) {
                 throw new CoreError('Error. ' + data.message);
             }
 
@@ -675,10 +691,30 @@ export class CoreWSProvider {
                 }
 
                 return retryPromise;
+            } else if (error.status === -2) {
+                throw new CoreError(this.getCertificateErrorMessage(error.error));
             }
 
             throw new CoreError(Translate.instant('core.serverconnection'));
         });
+    }
+
+    /**
+     * Get error message about certificate error.
+     *
+     * @param error Exact error message.
+     * @return Certificate error message.
+     */
+    protected getCertificateErrorMessage(error?: string): string {
+        const message = Translate.instant('core.certificaterror', {
+            whoisadmin: Translate.instant('core.whoissiteadmin'),
+        });
+
+        if (error) {
+            return `${message}\n<p>${error}</p>`;
+        }
+
+        return message;
     }
 
     /**
@@ -687,10 +723,12 @@ export class CoreWSProvider {
      */
     protected processRetryQueue(): void {
         if (this.retryCalls.length > 0 && this.retryTimeout == 0) {
-            const call = this.retryCalls.shift();
+            const call = this.retryCalls[0];
+            this.retryCalls.shift();
+
             // Add a delay between calls.
             setTimeout(() => {
-                call!.deferred.resolve(this.performPost(call!.method, call!.siteUrl, call!.data, call!.preSets));
+                call.deferred.resolve(this.performPost(call.method, call.siteUrl, call.data, call.preSets));
                 this.processRetryQueue();
             }, 200);
         } else {
@@ -749,7 +787,7 @@ export class CoreWSProvider {
         }
 
         preSets.typeExpected = preSets.typeExpected || 'object';
-        if (typeof preSets.responseExpected == 'undefined') {
+        if (preSets.responseExpected === undefined) {
             preSets.responseExpected = true;
         }
 
@@ -800,7 +838,7 @@ export class CoreWSProvider {
             throw new CoreError(Translate.instant('core.errorinvalidresponse'));
         }
 
-        if (typeof data.exception != 'undefined' || typeof data.debuginfo != 'undefined') {
+        if (data.exception !== undefined || data.debuginfo !== undefined) {
             throw new CoreWSError(data);
         }
 
@@ -869,14 +907,14 @@ export class CoreWSProvider {
                 throw new CoreError(Translate.instant('core.errorinvalidresponse'));
             }
 
-            if (typeof data.exception !== 'undefined') {
+            if (data.exception !== undefined) {
                 throw new CoreWSError(data);
-            } else if (typeof data.error !== 'undefined') {
+            } else if (data.error !== undefined) {
                 throw new CoreWSError({
                     errorcode: data.errortype,
                     message: data.error,
                 });
-            } else if (data[0] && typeof data[0].error !== 'undefined') {
+            } else if (data[0] && data[0].error !== undefined) {
                 throw new CoreWSError({
                     errorcode: data[0].errortype,
                     message: data[0].error,
@@ -928,7 +966,7 @@ export class CoreWSProvider {
     async sendHTTPRequest<T = unknown>(url: string, options: HttpRequestOptions): Promise<HttpResponse<T>> {
         // Set default values.
         options.responseType = options.responseType || 'json';
-        options.timeout = typeof options.timeout == 'undefined' ? this.getRequestTimeout() : options.timeout;
+        options.timeout = options.timeout === undefined ? this.getRequestTimeout() : options.timeout;
 
         if (CoreApp.isMobile()) {
             // Use the cordova plugin.

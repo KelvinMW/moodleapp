@@ -98,6 +98,10 @@
             margin-top: 10px;
             font-size: 1.2rem;
         }
+
+        .addon-calendar-loading-month {
+            height: 20px;
+        }
     }
 
     .addon-calendar-weekday {
@@ -144,15 +148,12 @@
         }
     }
 
-    .core-module-icon {
-        margin-right: 1px;
-        margin-left: 1px;
-        --size: 16px;
-        display: inline-block;
-        vertical-align: bottom;
-    }
-    .core-module-icon[slot="start"] {
-        padding: 6px;
+    ion-slide {
+        display: block;
+        font-size: inherit;
+        justify-content: start;
+        align-items: start;
+        text-align: start;
     }
 }
 
