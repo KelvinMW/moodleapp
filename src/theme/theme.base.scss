@@ -217,7 +217,7 @@ ion-button ion-spinner {
     --color: inherit !important;
 }
 
-@each $color-name, $value in $colors {
+@each $color-name, $unused in $colors {
     .text-#{$color-name},
     p.text-#{$color-name} {
         color: var(--ion-color-#{$color-name});
@@ -240,7 +240,7 @@ ion-header ion-toolbar {
     .button.button-solid {
         --background: transparent;
         --color: var(--core-header-toolbar-color);
-        --ion-color-primary: var(--core-header-toolbar-color);
+        --primary: var(--core-header-toolbar-color);
     }
 
     .button.button-clear.button-has-icon-only,
@@ -272,7 +272,7 @@ ion-icon {
         bottom: 0;
         left: 0;
         right: 0;
-        background-color: var(--ion-color-danger);
+        background-color: var(--danger);
         -webkit-mask: url("/assets/fonts/font-awesome/solid/slash.svg") no-repeat 50% 50%;
         mask: url("/assets/fonts/font-awesome/solid/slash.svg") no-repeat 50% 50%;
     }
@@ -303,7 +303,7 @@ button,
 
 // Clear buttons will be black.
 ion-button.button-clear {
-    --ion-color-primary: var(--brand-color);
+    --primary: var(--primary);
 }
 
 [role="button"],
@@ -364,7 +364,7 @@ div.core-iframe-network-error {
         right: -15%;
         width: 50%;
         height: 50%;
-        background-color: var(--ion-color-danger);
+        background-color: var(--danger);
         -webkit-mask: url("/assets/fonts/font-awesome/solid/exclamation-triangle.svg") no-repeat 50% 50%;
         mask: url("/assets/fonts/font-awesome/solid/exclamation-triangle.svg") no-repeat 50% 50%;
     }
@@ -382,17 +382,21 @@ ion-alert.core-nohead {
     }
 }
 
-ion-alert .alert-wrapper {
-    overflow: auto;
-}
+ion-alert {
+    --border-radius: var(--huge-radius);
+    .alert-wrapper {
+        overflow: auto;
+        border-radius: var(--border-radius) !important;
 
-ion-alert .alert-message {
-    user-select: text;
-    flex-shrink: 0;
-}
+        button.alert-button {
+            color: var(--primary);
+        }
+    }
 
-ion-alert .alert-wrapper button.alert-button {
-    color: var(--brand-color);
+    .alert-message {
+        user-select: text;
+        flex-shrink: 0;
+    }
 }
 
 // Ionic list.
@@ -629,16 +633,16 @@ body.core-iframe-fullscreen ion-router-outlet {
 
 .item-dimmed {
     opacity: 0.7;
-    --background: var(--ion-color-light);
+    --background: var(--light);
 }
 
 // Extra text colors.
 .text-gray {
-    color: var(--gray-dark);
+    color: var(--gray-500);
 }
 
 // Card styles
-@each $color-name, $base in $colors {
+@each $color-name, $unused in $colors {
 
     // Message cards.
     ion-card.core-#{$color-name}-card {
@@ -688,7 +692,7 @@ img.large-avatar,
     margin-bottom: 10px;
     border-radius : 50%;
     padding: 4px;
-    border: 1px solid var(--gray);
+    border: 1px solid var(--stroke);
     background-color: transparent;
 }
 
@@ -699,7 +703,7 @@ ion-avatar.large-avatar {
 
 ion-avatar ion-img, ion-avatar img {
     text-indent: -99999px;
-    background-color: var(--gray-light);
+    background-color: var(--gray-200);
 }
 
 // Wait to load before showing the image.
@@ -707,8 +711,16 @@ img[core-external-content]:not([src]) {
     visibility: hidden;
 }
 
-ion-card ion-item:only-child {
-    --inner-border-width: 0px;
+ion-card {
+    border-width: var(--border-width);
+    border-style: var(--border-style);
+    border-color: var(--border-color);
+    box-shadow: var(--box-shadow);
+    border-radius: var(--border-radius);
+
+    ion-item:only-child {
+        --inner-border-width: 0px;
+    }
 }
 
 .core-course-module-handler:not(.addon-mod-label-handler) .item-heading .filter_mathjaxloader_equation div {
@@ -831,6 +843,20 @@ ion-select-popover ion-item.core-select-option-title {
     cursor: pointer;
     ion-radio {
         display: none;
+    }
+}
+
+ion-chip {
+    line-height: 1.1;
+    @include padding-horizontal(16px);
+
+    &.ion-color {
+        background: var(--ion-color-tint);
+        &.chip-outline {
+            background-color: transparent;
+            border-color: var(--ion-color-base);
+            color: var(--ion-color-base);
+        }
     }
 }
 
@@ -1155,9 +1181,8 @@ ion-item.item-input ion-input.has-focus {
     }
 }
 
-// Ionic set this value to 0 without px that provoked miscalculations.
 ion-item-divider {
-    --inner-padding-end: 0px;
+    --inner-padding-end: 8px;
 }
 
 // Change default outline.
@@ -1213,6 +1238,13 @@ ion-grid.core-no-grid > ion-row {
     display: block;
 }
 
+.core-underheader {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+}
+
 ion-header[collapsible] {
     @include core-transition(all, 500ms);
 
@@ -1235,7 +1267,14 @@ ion-header[collapsible] {
 
 .collapsible-title {
     overflow: visible;
-    *, h1, h2, .subheading {
+    --inner-padding-top: 0px;
+    --padding-top: 0px;
+
+    ion-label {
+        margin-top: 0px;
+    }
+
+    *, h1 {
         @include core-transition(all, 200ms, linear);
     }
 
@@ -1243,8 +1282,11 @@ ion-header[collapsible] {
         overflow: visible !important;
     }
 
-    h1, h2, .subheading {
+    h1 {
         --max-width: none;
+    }
+    h1.cloned {
+        opacity: 0 !important;
     }
 }
 
@@ -1257,7 +1299,7 @@ ion-app.md .collapsible-title h1 {
 }
 
 .collapsible-title.collapsible-title-collapsed {
-    ion-label, h1, h2, ion-row, ion-col, .subheading {
+    ion-label, h1, ion-row, ion-col {
         opacity: 0;
     }
 }
@@ -1267,13 +1309,13 @@ ion-app.md .collapsible-title h1 {
         opacity: var(--collapse-opacity, 0);
     }
 
-    ion-label, h1, h2, ion-row, ion-col, .subheading {
+    ion-label, h1, ion-row, ion-col, .subheading {
         opacity: 1;
     }
 }
 
 .collapsible-title.collapsible-title-collapse-nowrap {
-    h1, h2, .subheading {
+    h1:not(.cloned) {
         max-width: var(--max-width);
         white-space: nowrap;
         overflow: hidden;

@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnInit, OnDestroy, Input } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
 import { CoreCoursesProvider, CoreCoursesMyCoursesUpdatedEventData, CoreCourses } from '@features/courses/services/courses';
 import {
     CoreCourseSearchedDataWithExtraInfoAndOptions,
-    CoreCoursesHelper,
     CoreEnrolledCourseDataWithOptions,
 } from '@features/courses/services/courses-helper';
 import { CoreCourseOptionsDelegate } from '@features/course/services/course-options-delegate';
-import { AddonCourseCompletion } from '@/addons/coursecompletion/services/coursecompletion';
+import { AddonCourseCompletion } from '@addons/coursecompletion/services/coursecompletion';
 import { CoreBlockBaseComponent } from '@features/block/classes/base-block-component';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreSite } from '@classes/site';
@@ -37,17 +36,13 @@ import { AddonBlockStarredCourse, AddonBlockStarredCourses } from '../../service
 })
 export class AddonBlockStarredCoursesComponent extends CoreBlockBaseComponent implements OnInit, OnDestroy {
 
-    @Input() downloadEnabled = false;
-
     courses: AddonBlockStarredCoursesCourse[] = [];
 
-    downloadCourseEnabled = false;
     scrollElementId!: string;
 
-    protected site!: CoreSite;
+    protected site: CoreSite;
     protected isDestroyed = false;
     protected coursesObserver?: CoreEventObserver;
-    protected updateSiteObserver?: CoreEventObserver;
     protected fetchContentDefaultError = 'Error getting starred courses data.';
 
     constructor() {
@@ -64,14 +59,6 @@ export class AddonBlockStarredCoursesComponent extends CoreBlockBaseComponent im
         const scrollId = CoreUtils.getUniqueId('AddonBlockStarredCoursesComponent-Scroll');
 
         this.scrollElementId = `addon-block-starredcourses-scroll-${scrollId}`;
-
-        // Refresh the enabled flags if enabled.
-        this.downloadCourseEnabled = !CoreCourses.isDownloadCourseDisabledInSite();
-
-        // Refresh the enabled flags if site is updated.
-        this.updateSiteObserver = CoreEvents.on(CoreEvents.SITE_UPDATED, () => {
-            this.downloadCourseEnabled = !CoreCourses.isDownloadCourseDisabledInSite();
-        }, CoreSites.getCurrentSiteId());
 
         this.coursesObserver = CoreEvents.on(
             CoreCoursesProvider.EVENT_MY_COURSES_UPDATED,
@@ -103,12 +90,8 @@ export class AddonBlockStarredCoursesComponent extends CoreBlockBaseComponent im
     protected async invalidateCourses(courseIds: number[]): Promise<void> {
         const promises: Promise<void>[] = [];
 
-        const invalidateCoursePromise = this.site.isVersionGreaterEqualThan('4.0')
-            ? CoreCourses.invalidateUserCourses()
-            : AddonBlockStarredCourses.invalidateStarredCourses();
-
         // Invalidate course completion data.
-        promises.push(invalidateCoursePromise.finally(() =>
+        promises.push(AddonBlockStarredCourses.invalidateStarredCourses().finally(() =>
             CoreUtils.allPromises(courseIds.map((courseId) =>
                 AddonCourseCompletion.invalidateCourseCompletion(courseId)))));
 
@@ -130,12 +113,6 @@ export class AddonBlockStarredCoursesComponent extends CoreBlockBaseComponent im
     protected async fetchContent(): Promise<void> {
         const showCategories = this.block.configsRecord && this.block.configsRecord.displaycategories &&
             this.block.configsRecord.displaycategories.value == '1';
-
-        if (this.site.isVersionGreaterEqualThan('4.0')) {
-            this.courses = await CoreCoursesHelper.getUserCoursesWithOptions('timemodified', 0, 'isfavourite', showCategories);
-
-            return;
-        }
 
         // Timemodified not present, use the block WS to retrieve the info.
         const starredCourses = await AddonBlockStarredCourses.getStarredCourses();
@@ -205,7 +182,6 @@ export class AddonBlockStarredCoursesComponent extends CoreBlockBaseComponent im
     ngOnDestroy(): void {
         this.isDestroyed = true;
         this.coursesObserver?.off();
-        this.updateSiteObserver?.off();
     }
 
 }

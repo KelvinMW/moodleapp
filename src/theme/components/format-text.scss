@@ -371,10 +371,10 @@ core-rich-text-editor .core-rte-editor {
     input:not([type=checkbox]):not([type=radio]):not([type=hidden]) {
         height: 30px;
         display: inline-block;
-        border: 1px solid var(--gray-dark);
+        border: 1px solid var(--gray-500);
         background: var(--contrast-background);
         padding: 6px 8px;
-        border-radius: 4px;
+        border-radius: var(--small-radius);
         margin-left: 2px;
         margin-right: 2px;
         margin-bottom: 10px;
@@ -556,16 +556,15 @@ core-rich-text-editor .core-rte-editor {
         font-weight: 400;
     }
 
-    @each $color-name, $base in $colors {
-
+    @each $color-name, $unused in $colors {
         .alert-#{$color-name} {
-            --color-base: var(--ion-color-#{$color-name});
-            color: var(--color-base);
+            --color-base: var(--#{$color-name});
+            color: var(--#{$color-name}-shade);
             border-color: var(--color-base);
-            background-color: var(--ion-color-#{$color-name}-lighter);
+            background-color: var(--#{$color-name}-tint);
 
-            .alert-link {
-                color: var(--ion-color-#{$color-name}-shade);
+            .alert-link, a {
+                color: var(--#{$color-name}-shade);
             }
         }
         .alert-#{$color-name} p {
@@ -582,11 +581,11 @@ core-rich-text-editor .core-rte-editor {
     .align-text-top    { vertical-align: text-top !important; }
 
     // utilities/_border.scss
-    .border         { border: 1px solid var(--gray-dark) !important; }
-    .border-top     { border-top: 1px solid var(--gray-dark) !important; }
-    .border-right   { border-right: 1px solid var(--gray-dark) !important; }
-    .border-bottom  { border-bottom: 1px solid var(--gray-dark) !important; }
-    .border-left    { border-left: 1px solid var(--gray-dark) !important; }
+    .border         { border: 1px solid var(--gray-500) !important; }
+    .border-top     { border-top: 1px solid var(--gray-500) !important; }
+    .border-right   { border-right: 1px solid var(--gray-500) !important; }
+    .border-bottom  { border-bottom: 1px solid var(--gray-500) !important; }
+    .border-left    { border-left: 1px solid var(--gray-500) !important; }
 
     .border-0        { border: 0 !important; }
     .border-top-0    { border-top: 0 !important; }
@@ -594,9 +593,9 @@ core-rich-text-editor .core-rte-editor {
     .border-bottom-0 { border-bottom: 0 !important; }
     .border-left-0   { border-left: 0 !important; }
 
-    @each $color-name, $base in $colors {
+    @each $color-name, $unused in $colors {
         .border-#{$color-name} {
-            border-color: var(--ion-color-#{$color-name}) !important;
+            border-color: var(--#{$color-name}) !important;
         }
     }
 
@@ -678,9 +677,9 @@ core-rich-text-editor .core-rte-editor {
     .font-italic         { font-style: italic !important; }
     .text-white { color: var(--white) !important; }
 
-    @each $color-name, $base in $colors {
+    @each $color-name, $unused in $colors {
         .text-#{$color-name} {
-            color: var(--ion-color-#{$color-name});
+            color: var(--#{$color-name});
         }
     }
 
@@ -706,18 +705,18 @@ core-rich-text-editor .core-rte-editor {
         vertical-align: baseline;
         transition: color .15s ease-in-out,background-color .15s ease-in-out,border-color .15s ease-in-out,box-shadow .15s ease-in-out;
         color: var(--white);
-        background-color: var(--gray-darker);
+        background-color: var(--medium);
     }
 
     .label-important {
-        color: var(--ion-color-danger-contrast);
-        background-color: var(--ion-color-danger);
+        color: var(--danger-contrast);
+        background-color: var(--danger);
     }
 
-    @each $color-name, $base in $colors {
+    @each $color-name, $unused in $colors {
         .label-#{$color-name} {
-            color: var(--ion-color-#{$color-name}-contrast);
-            background-color: var(--ion-color-#{$color-name});
+            color: var(--#{$color-name}-contrast);
+            background-color: var(--#{$color-name});
         }
     }
 }

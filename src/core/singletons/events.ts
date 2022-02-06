@@ -17,9 +17,10 @@ import { Subject } from 'rxjs';
 import { CoreLogger } from '@singletons/logger';
 import { CoreSite, CoreSiteInfoResponse, CoreSitePublicConfigResponse } from '@classes/site';
 import { CoreFilepoolComponentFileEventData } from '@services/filepool';
-import { CoreNavigationOptions } from '@services/navigator';
+import { CoreRedirectPayload } from '@services/navigator';
 import { CoreCourseModuleCompletionData } from '@features/course/services/course-helper';
 import { CoreScreenOrientation } from '@services/screen';
+import { CoreCourseCompletionType } from '@features/course/services/course';
 
 /**
  * Observer instance to stop listening to an event.
@@ -43,11 +44,13 @@ export interface CoreEventsData {
     [CoreEvents.COURSE_STATUS_CHANGED]: CoreEventCourseStatusChanged;
     [CoreEvents.PACKAGE_STATUS_CHANGED]: CoreEventPackageStatusChanged;
     [CoreEvents.USER_DELETED]: CoreEventUserDeletedData;
+    [CoreEvents.USER_SUSPENDED]: CoreEventUserSuspendedData;
     [CoreEvents.FORM_ACTION]: CoreEventFormActionData;
     [CoreEvents.NOTIFICATION_SOUND_CHANGED]: CoreEventNotificationSoundChangedData;
     [CoreEvents.SELECT_COURSE_TAB]: CoreEventSelectCourseTabData;
     [CoreEvents.COMPLETION_MODULE_VIEWED]: CoreEventCompletionModuleViewedData;
     [CoreEvents.MANUAL_COMPLETION_CHANGED]: CoreEventManualCompletionChangedData;
+    [CoreEvents.COMPLETION_CHANGED]: CoreEventCompletionChangedData;
     [CoreEvents.SECTION_STATUS_CHANGED]: CoreEventSectionStatusChangedData;
     [CoreEvents.ACTIVITY_DATA_SENT]: CoreEventActivityDataSentData;
     [CoreEvents.IAB_LOAD_START]: InAppBrowserEvent;
@@ -77,8 +80,13 @@ export class CoreEvents {
     static readonly SITE_UPDATED = 'site_updated';
     static readonly SITE_DELETED = 'site_deleted';
     static readonly COMPLETION_MODULE_VIEWED = 'completion_module_viewed';
+    /**
+     * Deprecated on 4.0 use COMPLETION_CHANGED instead.
+     */
     static readonly MANUAL_COMPLETION_CHANGED = 'manual_completion_changed';
+    static readonly COMPLETION_CHANGED = 'completion_changed';
     static readonly USER_DELETED = 'user_deleted';
+    static readonly USER_SUSPENDED = 'user_suspended';
     static readonly PACKAGE_STATUS_CHANGED = 'package_status_changed';
     static readonly COURSE_STATUS_CHANGED = 'course_status_changed';
     static readonly SECTION_STATUS_CHANGED = 'section_status_changed';
@@ -264,10 +272,7 @@ export type CoreEventSiteAddedData = CoreSiteInfoResponse;
 /**
  * Data passed to SESSION_EXPIRED event.
  */
-export type CoreEventSessionExpiredData = {
-    pageName?: string;
-    options?: CoreNavigationOptions;
-};
+export type CoreEventSessionExpiredData = CoreRedirectPayload;
 
 /**
  * Data passed to CORE_LOADING_CHANGED event.
@@ -298,6 +303,14 @@ export type CoreEventPackageStatusChanged = {
  * Data passed to USER_DELETED event.
  */
 export type CoreEventUserDeletedData = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    params: any; // Params sent to the WS that failed.
+};
+
+/**
+ * Data passed to USER_SUSPENDED event.
+ */
+export type CoreEventUserSuspendedData = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     params: any; // Params sent to the WS that failed.
 };
@@ -345,6 +358,14 @@ export type CoreEventCompletionModuleViewedData = {
  */
 export type CoreEventManualCompletionChangedData = {
     completion: CoreCourseModuleCompletionData;
+};
+
+/**
+ * Data passed to COMPLETION_CHANGED event.
+ */
+export type CoreEventCompletionChangedData = {
+    completion: CoreCourseModuleCompletionData;
+    type: CoreCourseCompletionType;
 };
 
 /**

@@ -68,7 +68,7 @@ import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreFilterHelper } from '@features/filter/services/filter-helper';
 import { CoreNetworkError } from '@classes/errors/network-error';
 import { CoreSiteHome } from '@features/sitehome/services/sitehome';
-import { CoreNavigator } from '@services/navigator';
+import { CoreNavigationOptions, CoreNavigator } from '@services/navigator';
 import { CoreSiteHomeHomeHandlerService } from '@features/sitehome/services/handlers/sitehome-home';
 import { CoreStatusWithWarningsWSResponse } from '@services/ws';
 
@@ -905,17 +905,30 @@ export class CoreCourseHelperProvider {
         }
 
         if (!path) {
-            path = await this.downloadModuleWithMainFile(
-                module,
-                courseId,
-                fixedUrl,
-                files,
-                status,
-                component,
-                componentId,
-                siteId,
-                options,
-            );
+            try {
+                path = await this.downloadModuleWithMainFile(
+                    module,
+                    courseId,
+                    fixedUrl,
+                    files,
+                    status,
+                    component,
+                    componentId,
+                    siteId,
+                    options,
+                );
+            } catch (error) {
+                if (status !== CoreConstants.OUTDATED) {
+                    throw error;
+                }
+
+                // Use the local file even if it's outdated.
+                try {
+                    path = await CoreFilepool.getInternalUrlByUrl(siteId, mainFile.fileurl);
+                } catch {
+                    throw error;
+                }
+            }
         }
 
         return {
@@ -1056,6 +1069,7 @@ export class CoreCourseHelperProvider {
         instance.size = moduleInfo.sizeReadable;
         instance.prefetchStatusIcon = moduleInfo.statusIcon;
         instance.prefetchStatus = moduleInfo.status;
+        instance.downloadTimeReadable = CoreTextUtils.ucFirst(moduleInfo.downloadTimeReadable);
 
         if (moduleInfo.status != CoreConstants.NOT_DOWNLOADABLE) {
             // Module is downloadable, get the text to display to prefetch.
@@ -1164,7 +1178,7 @@ export class CoreCourseHelperProvider {
 
         modal?.dismiss();
 
-        return this.openCourse(course, params, siteId);
+        return this.openCourse(course, { params , siteId });
     }
 
     /**
@@ -1478,6 +1492,8 @@ export class CoreCourseHelperProvider {
             // Currently, some modules pass invalidateCache=false because they already invalidate data in downloadResourceIfNeeded.
             // If this function is changed to do more actions if invalidateCache=true, please review those modules.
             CoreCourseModulePrefetchDelegate.invalidateModuleStatusCache(module);
+
+            await CoreUtils.ignoreErrors(CoreCourseModulePrefetchDelegate.invalidateCourseUpdates(courseId));
         }
 
         const results = await Promise.all([
@@ -2004,20 +2020,25 @@ export class CoreCourseHelperProvider {
      * they will see the result immediately.
      *
      * @param course Course to open
-     * @param params Params to pass to the course page.
-     * @param siteId Site ID. If not defined, current site.
+     * @param navOptions Navigation options that includes params to pass to the page.
      * @return Promise resolved when done.
      */
-    async openCourse(course: CoreCourseAnyCourseData | { id: number }, params?: Params, siteId?: string): Promise<void> {
+    async openCourse(
+        course: CoreCourseAnyCourseData | { id: number },
+        navOptions?: CoreNavigationOptions & { siteId?: string },
+    ): Promise<void> {
+        const siteId = navOptions?.siteId;
         if (!siteId || siteId == CoreSites.getCurrentSiteId()) {
             // Current site, we can open the course.
-            return CoreCourse.openCourse(course, params);
+            return CoreCourse.openCourse(course, navOptions);
         } else {
             // We need to load the site first.
-            params = params || {};
-            Object.assign(params, { course: course });
+            navOptions = navOptions || {};
 
-            await CoreNavigator.navigateToSitePath(`course/${course.id}`, { siteId, params });
+            navOptions.params = navOptions.params || {};
+            Object.assign(navOptions.params, { course: course });
+
+            await CoreNavigator.navigateToSitePath(`course/${course.id}`, navOptions);
         }
     }
 
@@ -2191,6 +2212,7 @@ type ComponentWithContextMenu = {
     size?: string;
     prefetchStatus?: string;
     prefetchText?: string;
+    downloadTimeReadable?: string;
     contextMenuStatusObserver?: CoreEventObserver;
     contextFileStatusObserver?: CoreEventObserver;
 };

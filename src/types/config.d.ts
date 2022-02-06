@@ -60,4 +60,6 @@ export interface EnvironmentConfig {
     iabToolbarColors?: 'auto' | { background: string; text?: string } | null;
     wsrequestqueuelimit: number; // Maximum number of requests allowed in the queue.
     wsrequestqueuedelay: number; // Maximum number of miliseconds to wait before processing the queue.
+    calendarreminderdefaultvalue: number; // Initial value for default reminders (in seconds). User can change it later.
+    removeaccountonlogout?: boolean; // True to remove the account when the user clicks logout. Doesn't affect switch account.
 }

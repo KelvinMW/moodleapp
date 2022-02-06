@@ -9,9 +9,9 @@
     ion-button {
         --icon-margin: 0 8px;
         --background: var(--core-combobox-background);
-        --background-hover: #000000;
-        --background-activated: #000000;
-        --background-focused: #000000;
+        --background-hover: black;
+        --background-activated: black;
+        --background-focused: black;
         --background-hover-opacity: .04;
 
         --color: var(--core-combobox-color);
@@ -21,14 +21,13 @@
 
         --border-color: var(--core-combobox-border-color);
         --border-style: solid;
-        --border-width: var(--core-combobox-border-all-width);
+        --border-width: var(--core-combobox-border-width);
 
         --box-shadow: var(--core-combobox-box-shadow);
 
-        --padding-top: 10px;
-        --padding-end: 10px;
-        --padding-bottom: 10px;
-        --padding-start: 16px;
+        --padding-top: 8px;
+        --padding-end: 8px;
+        --padding-bottom: 8px;
 
         &.md {
             --background-activated-opacity: 0;
@@ -40,6 +39,14 @@
             --background-focused-opacity: .15;
         }
     }
+
+    ion-button {
+        --padding-start: 8px;
+    }
+
+    ion-select {
+        --padding-start: 16px;
+    }
 }
 
 ion-select,
@@ -48,7 +55,7 @@ ion-button {
     color: var(--color);
     text-overflow: ellipsis;
     white-space: nowrap;
-    min-height: 25px;
+    min-height: 26px;
     overflow: hidden;
     margin: 8px;
     box-shadow: var(--box-shadow);
@@ -105,11 +112,11 @@ ion-button {
         font-weight: 400;
         font-size: 16px;
         line-height: 20px;
-        border-radius: 0;
+        border-radius: var(--core-combobox-radius);
     }
 
     .select-text {
-        margin-inline-end: auto;
+        @include margin-horizontal(null, auto);
         overflow: hidden;
         text-overflow: ellipsis;
     }
