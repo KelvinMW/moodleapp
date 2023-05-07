@@ -17,9 +17,13 @@ import { RouterModule, Routes } from '@angular/router';
 import { CoreSharedModule } from '@/core/shared.module';
 import { AddonModFeedbackComponentsModule } from './components/components.module';
 import { AddonModFeedbackIndexPage } from './pages/index/index';
-import { AddonModFeedbackRespondentsPage } from './pages/respondents/respondents';
+import { AddonModFeedbackAttemptsPage } from './pages/attempts/attempts';
 import { conditionalRoutes } from '@/app/app-routing.module';
 import { CoreScreen } from '@services/screen';
+import { AddonModFeedbackAttemptPage } from '@addons/mod/feedback/pages/attempt/attempt';
+import { AddonModFeedbackFormPage } from '@addons/mod/feedback/pages/form/form';
+import { CanLeaveGuard } from '@guards/can-leave';
+import { AddonModFeedbackNonRespondentsPage } from '@addons/mod/feedback/pages/nonrespondents/nonrespondents';
 
 const commonRoutes: Routes = [
     {
@@ -28,36 +32,36 @@ const commonRoutes: Routes = [
     },
     {
         path: ':courseId/:cmId/form',
-        loadChildren: () => import('./pages/form/form.module').then(m => m.AddonModFeedbackFormPageModule),
+        component: AddonModFeedbackFormPage,
+        canDeactivate: [CanLeaveGuard],
     },
     {
         path: ':courseId/:cmId/nonrespondents',
-        loadChildren: () => import('./pages/nonrespondents/nonrespondents.module')
-            .then(m => m.AddonModFeedbackNonRespondentsPageModule),
+        component: AddonModFeedbackNonRespondentsPage,
     },
 ];
 
 const mobileRoutes: Routes = [
     ...commonRoutes,
     {
-        path: ':courseId/:cmId/respondents',
-        component: AddonModFeedbackRespondentsPage,
+        path: ':courseId/:cmId/attempts',
+        component: AddonModFeedbackAttemptsPage,
     },
     {
-        path: ':courseId/:cmId/respondents/attempt/:attemptId',
-        loadChildren: () => import('./pages/attempt/attempt.module').then(m => m.AddonModFeedbackAttemptPageModule),
+        path: ':courseId/:cmId/attempts/:attemptId',
+        component: AddonModFeedbackAttemptPage,
     },
 ];
 
 const tabletRoutes: Routes = [
     ...commonRoutes,
     {
-        path: ':courseId/:cmId/respondents',
-        component: AddonModFeedbackRespondentsPage,
+        path: ':courseId/:cmId/attempts',
+        component: AddonModFeedbackAttemptsPage,
         children: [
             {
-                path: 'attempt/:attemptId',
-                loadChildren: () => import('./pages/attempt/attempt.module').then(m => m.AddonModFeedbackAttemptPageModule),
+                path: ':attemptId',
+                component: AddonModFeedbackAttemptPage,
             },
         ],
     },
@@ -75,8 +79,11 @@ const routes: Routes = [
         AddonModFeedbackComponentsModule,
     ],
     declarations: [
+        AddonModFeedbackAttemptsPage,
+        AddonModFeedbackFormPage,
         AddonModFeedbackIndexPage,
-        AddonModFeedbackRespondentsPage,
+        AddonModFeedbackNonRespondentsPage,
+        AddonModFeedbackAttemptPage,
     ],
 })
 export class AddonModFeedbackLazyModule {}

@@ -13,17 +13,19 @@
 // limitations under the License.
 
 import { SQLiteDB } from '@classes/sqlitedb';
+import { CoreRemindersService, CoreReminders } from '@features/reminders/services/reminders';
+import { CoreConfig } from '@services/config';
 import { CoreSiteSchema } from '@services/sites';
+import { CoreUtils } from '@services/utils/utils';
 import { AddonCalendarEventType } from '../calendar';
 
 /**
- * Database variables for AddonDatabase service.
+ * Database variables for AddonCalendarProvider service.
  */
 export const EVENTS_TABLE = 'addon_calendar_events_3';
-export const REMINDERS_TABLE = 'addon_calendar_reminders';
 export const CALENDAR_SITE_SCHEMA: CoreSiteSchema = {
     name: 'AddonCalendarProvider',
-    version: 3,
+    version: 5,
     canBeCleared: [EVENTS_TABLE],
     tables: [
         {
@@ -177,49 +179,46 @@ export const CALENDAR_SITE_SCHEMA: CoreSiteSchema = {
                 },
             ],
         },
-        {
-            name: REMINDERS_TABLE,
-            columns: [
-                {
-                    name: 'id',
-                    type: 'INTEGER',
-                    primaryKey: true,
-                },
-                {
-                    name: 'eventid',
-                    type: 'INTEGER',
-                },
-                {
-                    name: 'time',
-                    type: 'INTEGER',
-                },
-            ],
-            uniqueKeys: [
-                ['eventid', 'time'],
-            ],
-        },
     ],
-    async migrate(db: SQLiteDB, oldVersion: number): Promise<void> {
-        if (oldVersion < 3) {
-            let oldTable = 'addon_calendar_events_2';
-
-            try {
-                await db.tableExists(oldTable);
-            } catch {
-                // The v2 table doesn't exist, try with v1.
-                oldTable = 'addon_calendar_events';
-            }
-
-            await db.migrateTable(oldTable, EVENTS_TABLE);
+    async migrate(db: SQLiteDB, oldVersion: number, siteId: string): Promise<void> {
+        if (oldVersion < 5) {
+            await migrateDefaultTime(siteId, oldVersion < 4);
         }
     },
 };
 
+/**
+ * Migrate default notification time if it was changed.
+ * Don't use getDefaultNotificationTime to be able to detect if the value was changed or not.
+ *
+ * @param siteId Site ID to migrate.
+ * @param convertToSeconds If true, time will be converted to seconds.
+ */
+const migrateDefaultTime = async (siteId: string, convertToSeconds = false): Promise<void> => {
+
+    const key = 'mmaCalendarDefaultNotifTime#' + siteId;
+    try {
+        let defaultTime = await CoreConfig.get<number>(key);
+        await CoreUtils.ignoreErrors(CoreConfig.delete(key));
+
+        if (defaultTime <= 0) {
+            defaultTime = CoreRemindersService.DISABLED;
+        } else if (convertToSeconds) {
+            // Convert from minutes to seconds.
+            defaultTime = defaultTime * 60;
+        }
+
+        CoreReminders.setDefaultNotificationTime(defaultTime, siteId);
+    } catch {
+        // Ignore errors, already migrated.
+    }
+};
+
 export type AddonCalendarEventDBRecord = {
-    id?: number;
+    id: number;
     name: string;
     description: string;
-    eventtype: AddonCalendarEventType;
+    eventtype: AddonCalendarEventType | string;
     timestart: number;
     timeduration: number;
     categoryid?: number;
@@ -254,10 +253,4 @@ export type AddonCalendarEventDBRecord = {
     mindaytimestamp?: number;
     maxdaytimestamp?: number;
     draggable?: number;
-};
-
-export type AddonCalendarReminderDBRecord = {
-    id?: number;
-    eventid: number;
-    time: number;
 };

@@ -17,6 +17,7 @@ const appConfig = {
         'prettier',
         'plugin:@angular-eslint/recommended',
         'plugin:promise/recommended',
+        'plugin:jsdoc/recommended',
     ],
     parser: '@typescript-eslint/parser',
     parserOptions: {
@@ -103,12 +104,22 @@ const appConfig = {
             'error',
             {
                 selector: 'property',
-                modifiers: ['readonly'],
+                format: ['camelCase'],
+            },
+            {
+                selector: 'property',
+                modifiers: ['public', 'readonly'],
                 format: ['UPPER_CASE'],
             },
             {
                 selector: 'property',
-                format: ['camelCase'],
+                modifiers: ['protected', 'readonly'],
+                format: ['UPPER_CASE'],
+            },
+            {
+                selector: 'property',
+                modifiers: ['private', 'readonly'],
+                format: ['UPPER_CASE'],
             },
             {
                 selector: 'property',
@@ -126,7 +137,7 @@ const appConfig = {
                 ignoreParameters: true,
             },
         ],
-        '@typescript-eslint/no-non-null-assertion': 'off',
+        '@typescript-eslint/no-non-null-assertion': 'warn',
         '@typescript-eslint/no-redeclare': 'error',
         '@typescript-eslint/no-this-alias': 'error',
         '@typescript-eslint/no-unused-vars': 'error',
@@ -139,7 +150,6 @@ const appConfig = {
             'always',
         ],
         '@typescript-eslint/type-annotation-spacing': 'error',
-        '@typescript-eslint/unified-signatures': 'error',
         'header/header': [
             2,
             'line',
@@ -190,6 +200,10 @@ const appConfig = {
         'id-match': 'error',
         'jsdoc/check-alignment': 'error',
         'jsdoc/newline-after-description': 'error',
+        'jsdoc/require-param-type': 'off',
+        'jsdoc/require-returns-type': 'off',
+        'jsdoc/require-param': 'off',
+        'jsdoc/check-values': 'off',
         'linebreak-style': [
             'error',
             'unix',
@@ -235,6 +249,11 @@ const appConfig = {
                 prev: '*',
                 next: 'return',
             },
+            {
+                blankLine: 'always',
+                prev: '*',
+                next: 'function',
+            },
         ],
         'prefer-arrow/prefer-arrow-functions': [
             'error',
@@ -271,6 +290,8 @@ testsConfig['rules']['padded-blocks'] = [
         switches: 'never',
     },
 ];
+testsConfig['rules']['jest/expect-expect'] = 'off';
+testsConfig['rules']['jest/no-done-callback'] = 'off';
 testsConfig['plugins'].push('jest');
 testsConfig['extends'].push('plugin:jest/recommended');
 
@@ -291,6 +312,7 @@ module.exports = {
                 '@angular-eslint/template/no-positive-tabindex': 'error',
                 '@angular-eslint/template/accessibility-table-scope': 'error',
                 '@angular-eslint/template/accessibility-valid-aria': 'error',
+                '@angular-eslint/template/no-duplicate-attributes': 'error',
             },
         },
         {

@@ -45,7 +45,7 @@ export interface CorePushNotificationsClickHandler {
      * Check if a notification click is handled by this handler.
      *
      * @param notification The notification to check.
-     * @return Whether the notification click is handled by this handler.
+     * @returns Whether the notification click is handled by this handler.
      */
     handles(notification: CorePushNotificationsNotificationBasicData): Promise<boolean>;
 
@@ -53,7 +53,7 @@ export interface CorePushNotificationsClickHandler {
      * Handle the notification click.
      *
      * @param notification The notification to check.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     handleClick(notification: CorePushNotificationsNotificationBasicData): Promise<void>;
 }
@@ -78,7 +78,7 @@ export class CorePushNotificationsDelegateService {
      * Function called when a push notification is clicked. Sends notification to handlers.
      *
      * @param notification Notification clicked.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async clicked(notification: CorePushNotificationsNotificationBasicData): Promise<void> {
         if (!notification) {
@@ -116,7 +116,7 @@ export class CorePushNotificationsDelegateService {
      *
      * @param handler Handler to check.
      * @param siteId The site ID to check.
-     * @return Promise resolved with boolean: whether the handler feature is disabled.
+     * @returns Promise resolved with boolean: whether the handler feature is disabled.
      */
     protected async isFeatureDisabled(handler: CorePushNotificationsClickHandler, siteId?: string): Promise<boolean> {
         if (!siteId) {
@@ -147,10 +147,10 @@ export class CorePushNotificationsDelegateService {
      * observer.unsuscribe();
      *
      * @param eventName Only receive is permitted.
-     * @return Observer to subscribe.
+     * @returns Observer to subscribe.
      */
     on<T = CorePushNotificationsNotificationBasicData>(eventName: string): Subject<T> {
-        if (typeof this.observables[eventName] == 'undefined') {
+        if (this.observables[eventName] === undefined) {
             const eventNames = Object.keys(this.observables).join(', ');
             this.logger.warn(`'${eventName}' event name is not allowed. Use one of the following: '${eventNames}'.`);
 
@@ -164,10 +164,10 @@ export class CorePushNotificationsDelegateService {
      * Register a click handler.
      *
      * @param handler The handler to register.
-     * @return True if registered successfully, false otherwise.
+     * @returns True if registered successfully, false otherwise.
      */
     registerClickHandler(handler: CorePushNotificationsClickHandler): boolean {
-        if (typeof this.clickHandlers[handler.name] !== 'undefined') {
+        if (this.clickHandlers[handler.name] !== undefined) {
             this.logger.log(`Addon '${handler.name}' already registered`);
 
             return false;
@@ -186,7 +186,7 @@ export class CorePushNotificationsDelegateService {
      * @param name Handler's name.
      */
     registerCounterHandler(name: string): void {
-        if (typeof this.counterHandlers[name] == 'undefined') {
+        if (this.counterHandlers[name] === undefined) {
             this.logger.debug(`Registered handler '${name}' as badge counter handler.`);
             this.counterHandlers[name] = name;
         } else {
@@ -198,16 +198,16 @@ export class CorePushNotificationsDelegateService {
      * Check if a counter handler is present.
      *
      * @param name Handler's name.
-     * @return If handler name is present.
+     * @returns If handler name is present.
      */
     isCounterHandlerRegistered(name: string): boolean {
-        return typeof this.counterHandlers[name] != 'undefined';
+        return this.counterHandlers[name] !== undefined;
     }
 
     /**
      * Get all counter badge handlers.
      *
-     * @return with all the handler names.
+     * @returns with all the handler names.
      */
     getCounterHandlers(): Record<string, string> {
         return this.counterHandlers;

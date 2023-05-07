@@ -19,12 +19,12 @@ import { CoreWSError } from '@classes/errors/wserror';
 import { CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
 import { CoreContentLinksHelper } from '@features/contentlinks/services/contentlinks-helper';
 import { CoreLoginHelper, CoreLoginSSOData } from '@features/login/services/login-helper';
-import { CoreSitePlugins } from '@features/siteplugins/services/siteplugins';
 import { ApplicationInit, makeSingleton, Translate } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
+import { CorePath } from '@singletons/path';
 import { CoreConstants } from '../constants';
 import { CoreApp } from './app';
-import { CoreNavigator } from './navigator';
+import { CoreNavigator, CoreRedirectPayload } from './navigator';
 import { CoreSiteCheckResponse, CoreSites } from './sites';
 import { CoreDomUtils } from './utils/dom';
 import { CoreTextErrorObject, CoreTextUtils } from './utils/text';
@@ -48,7 +48,7 @@ export class CoreCustomURLSchemesProvider {
      * Given some data of a custom URL with a token, create a site if it needs to be created.
      *
      * @param data URL data.
-     * @return Promise resolved with the site ID if created or already exists.
+     * @returns Promise resolved with the site ID if created or already exists.
      */
     protected async createSiteIfNeeded(data: CoreCustomURLSchemesParams): Promise<string | undefined> {
         if (!data.token) {
@@ -57,8 +57,8 @@ export class CoreCustomURLSchemesProvider {
 
         const currentSite = CoreSites.getCurrentSite();
 
-        if (!currentSite || currentSite.getToken() != data.token) {
-            // Token belongs to a different site, create it. It doesn't matter if it already exists.
+        if (!currentSite || currentSite.getToken() != data.token || currentSite.isLoggedOut()) {
+            // Token belongs to a different site or site is logged out, create it. It doesn't matter if it already exists.
 
             if (!data.siteUrl.match(/^https?:\/\//)) {
                 // URL doesn't have a protocol and it's required to be able to create the site. Check which one to use.
@@ -86,7 +86,7 @@ export class CoreCustomURLSchemesProvider {
      * Handle an URL received by custom URL scheme.
      *
      * @param url URL to treat.
-     * @return Promise resolved when done. If rejected, the parameter is of type CoreCustomURLSchemesHandleError.
+     * @returns Promise resolved when done. If rejected, the parameter is of type CoreCustomURLSchemesHandleError.
      */
     async handleCustomURL(url: string): Promise<void> {
         if (!this.isCustomURL(url)) {
@@ -108,7 +108,7 @@ export class CoreCustomURLSchemesProvider {
 
         // Some platforms like Windows add a slash at the end. Remove it.
         // Some sites add a # at the end of the URL. If it's there, remove it.
-        url = url.replace(/\/?#?\/?$/, '');
+        url = url.replace(/\/?(#.*)?\/?$/, '');
 
         const modal = await CoreDomUtils.showModalLoading();
         let data: CoreCustomURLSchemesParams;
@@ -151,19 +151,20 @@ export class CoreCustomURLSchemesProvider {
 
             if (data.isSSOToken || (data.isAuthenticationURL && siteId && CoreSites.getCurrentSiteId() == siteId)) {
                 // Site created and authenticated, open the page to go.
-                if (data.pageName) {
-                    // Page defined, go to that page instead of site initial page.
-                    CoreNavigator.navigateToSitePath(data.pageName, data.pageOptions);
-                } else {
-                    CoreNavigator.navigateToSiteHome();
-                }
+                CoreNavigator.navigateToSiteHome({
+                    params: <CoreRedirectPayload> {
+                        redirectPath: data.redirectPath,
+                        redirectOptions: data.redirectOptions,
+                        urlToOpen: data.urlToOpen,
+                    },
+                });
 
                 return;
             }
 
             if (data.redirect && !data.redirect.match(/^https?:\/\//)) {
                 // Redirect is a relative URL. Append the site URL.
-                data.redirect = CoreTextUtils.concatenatePaths(data.siteUrl, data.redirect);
+                data.redirect = CorePath.concatenatePaths(data.siteUrl, data.redirect);
             }
 
             let siteIds = [siteId];
@@ -225,7 +226,7 @@ export class CoreCustomURLSchemesProvider {
      * moodlemobile://username@domain.com?token=TOKEN&privatetoken=PRIVATETOKEN&redirect=http://domain.com/course/view.php?id=2
      *
      * @param url URL to treat.
-     * @return Promise resolved with the data.
+     * @returns Promise resolved with the data.
      */
     protected async getCustomURLData(url: string): Promise<CoreCustomURLSchemesParams> {
         if (!this.isCustomURL(url)) {
@@ -249,7 +250,7 @@ export class CoreCustomURLSchemesProvider {
 
         // Remove the params to get the site URL.
         if (url.indexOf('?') != -1) {
-            url = url.substr(0, url.indexOf('?'));
+            url = url.substring(0, url.indexOf('?'));
         }
 
         if (!url.match(/https?:\/\//)) {
@@ -278,7 +279,7 @@ export class CoreCustomURLSchemesProvider {
      * Get the data from a "link" custom URL scheme. This kind of URL is deprecated.
      *
      * @param url URL to treat.
-     * @return Promise resolved with the data.
+     * @returns Promise resolved with the data.
      */
     protected async getCustomURLLinkData(url: string): Promise<CoreCustomURLSchemesParams> {
         if (!this.isCustomURLLink(url)) {
@@ -340,7 +341,7 @@ export class CoreCustomURLSchemesProvider {
      * Get the data from a "token" custom URL scheme. This kind of URL is deprecated.
      *
      * @param url URL to treat.
-     * @return Promise resolved with the data.
+     * @returns Promise resolved with the data.
      */
     protected async getCustomURLTokenData(url: string): Promise<CoreCustomURLSchemesParams> {
         if (!this.isCustomURLToken(url)) {
@@ -386,7 +387,7 @@ export class CoreCustomURLSchemesProvider {
      *
      * @param data URL data.
      * @param checkResponse Result of checkSite.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async goToAddSite(data: CoreCustomURLSchemesParams, checkResponse: CoreSiteCheckResponse): Promise<void> {
         const ssoNeeded = CoreLoginHelper.isSSOLoginNeeded(checkResponse.code);
@@ -396,20 +397,20 @@ export class CoreCustomURLSchemesProvider {
             urlToOpen: data.redirect,
             siteConfig: checkResponse.config,
         };
-        let hasSitePluginsLoaded = false;
 
         if (CoreSites.isLoggedIn()) {
             // Ask the user before changing site.
             await CoreDomUtils.showConfirm(Translate.instant('core.contentlinks.confirmurlothersite'));
 
             if (!ssoNeeded) {
-                hasSitePluginsLoaded = CoreSitePlugins.hasSitePluginsLoaded;
-                if (hasSitePluginsLoaded) {
-                    // Store the redirect since logout will restart the app.
-                    CoreApp.storeRedirect(CoreConstants.NO_SITE_ID, '/login/credentials', { params: pageParams });
-                }
+                const willReload = await CoreSites.logoutForRedirect(CoreConstants.NO_SITE_ID, {
+                    redirectPath: '/login/credentials',
+                    redirectOptions: { params: pageParams },
+                });
 
-                await CoreSites.logout();
+                if (willReload) {
+                    return;
+                }
             }
         }
 
@@ -420,7 +421,7 @@ export class CoreCustomURLSchemesProvider {
                 checkResponse.service,
                 checkResponse.config?.launchurl,
             );
-        } else if (!hasSitePluginsLoaded) {
+        } else {
             await CoreNavigator.navigateToLoginCredentials(pageParams);
         }
     }
@@ -429,7 +430,7 @@ export class CoreCustomURLSchemesProvider {
      * Check whether a URL is a custom URL scheme.
      *
      * @param url URL to check.
-     * @return Whether it's a custom URL scheme.
+     * @returns Whether it's a custom URL scheme.
      */
     isCustomURL(url: string): boolean {
         if (!url) {
@@ -443,7 +444,7 @@ export class CoreCustomURLSchemesProvider {
      * Check whether a URL is a custom URL scheme with the "link" param (deprecated).
      *
      * @param url URL to check.
-     * @return Whether it's a custom URL scheme.
+     * @returns Whether it's a custom URL scheme.
      */
     isCustomURLLink(url: string): boolean {
         if (!url) {
@@ -457,7 +458,7 @@ export class CoreCustomURLSchemesProvider {
      * Check whether a URL is a custom URL scheme with a "token" param (deprecated).
      *
      * @param url URL to check.
-     * @return Whether it's a custom URL scheme.
+     * @returns Whether it's a custom URL scheme.
      */
     isCustomURLToken(url: string): boolean {
         if (!url) {
@@ -471,7 +472,7 @@ export class CoreCustomURLSchemesProvider {
      * Remove the scheme from a custom URL.
      *
      * @param url URL to treat.
-     * @return URL without scheme.
+     * @returns URL without scheme.
      */
     removeCustomURLScheme(url: string): string {
         return url.replace(CoreConstants.CONFIG.customurlscheme + '://', '');
@@ -481,7 +482,7 @@ export class CoreCustomURLSchemesProvider {
      * Remove the scheme and the "link=" prefix from a link custom URL.
      *
      * @param url URL to treat.
-     * @return URL without scheme and prefix.
+     * @returns URL without scheme and prefix.
      */
     removeCustomURLLinkScheme(url: string): string {
         return url.replace(CoreConstants.CONFIG.customurlscheme + '://link=', '');
@@ -491,7 +492,7 @@ export class CoreCustomURLSchemesProvider {
      * Remove the scheme and the "token=" prefix from a token custom URL.
      *
      * @param url URL to treat.
-     * @return URL without scheme and prefix.
+     * @returns URL without scheme and prefix.
      */
     removeCustomURLTokenScheme(url: string): string {
         return url.replace(CoreConstants.CONFIG.customurlscheme + '://token=', '');

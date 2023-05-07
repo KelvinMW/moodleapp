@@ -17,6 +17,7 @@ import {
     AddonCourseCompletionCourseCompletionStatus,
 } from '@addons/coursecompletion/services/coursecompletion';
 import { Component, OnInit } from '@angular/core';
+import { CoreUser, CoreUserProfile } from '@features/user/services/user';
 import { IonRefresher } from '@ionic/angular';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
@@ -31,24 +32,29 @@ import { CoreDomUtils } from '@services/utils/dom';
 })
 export class AddonCourseCompletionReportPage implements OnInit {
 
-    protected courseId!: number;
     protected userId!: number;
 
+    courseId!: number;
     completionLoaded = false;
     completion?: AddonCourseCompletionCourseCompletionStatus;
     showSelfComplete = false;
     tracked = true; // Whether completion is tracked.
     statusText?: string;
+    user?: CoreUserProfile;
 
     /**
      * @inheritdoc
      */
     ngOnInit(): void {
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.userId = CoreNavigator.getRouteNumberParam('userId') || CoreSites.getCurrentSiteUserId();
+        try {
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.userId = CoreNavigator.getRouteNumberParam('userId') || CoreSites.getCurrentSiteUserId();
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
 
-        if (!this.userId) {
-            this.userId = CoreSites.getCurrentSiteUserId();
+            CoreNavigator.back();
+
+            return;
         }
 
         this.fetchCompletion().finally(() => {
@@ -59,10 +65,12 @@ export class AddonCourseCompletionReportPage implements OnInit {
     /**
      * Fetch compleiton data.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchCompletion(): Promise<void> {
         try {
+            this.user = await CoreUser.getProfile(this.userId, this.courseId, true);
+
             this.completion = await AddonCourseCompletion.getCompletion(this.courseId, this.userId);
 
             this.statusText = AddonCourseCompletion.getCompletedStatusText(this.completion);

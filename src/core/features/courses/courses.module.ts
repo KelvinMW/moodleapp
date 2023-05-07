@@ -15,10 +15,17 @@
 import { APP_INITIALIZER, NgModule, Type } from '@angular/core';
 import { Routes } from '@angular/router';
 import { CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
+import { CoreCourseHelper } from '@features/course/services/course-helper';
+import { CoreMainMenuRoutingModule } from '@features/mainmenu/mainmenu-routing.module';
+import { CoreMainMenuTabRoutingModule } from '@features/mainmenu/mainmenu-tab-routing.module';
 
-import { CoreMainMenuHomeRoutingModule } from '@features/mainmenu/pages/home/home-routing.module';
+import { CoreMainMenuHomeRoutingModule } from '@features/mainmenu/mainmenu-home-routing.module';
 import { CoreMainMenuHomeDelegate } from '@features/mainmenu/services/home-delegate';
+import { CoreMainMenuDelegate } from '@features/mainmenu/services/mainmenu-delegate';
 import { CorePushNotificationsDelegate } from '@features/pushnotifications/services/push-delegate';
+import { CoreRemindersPushNotificationData } from '@features/reminders/services/reminders';
+import { CoreLocalNotifications } from '@services/local-notifications';
+import { ApplicationInit } from '@singletons';
 import { CoreCoursesProvider } from './services/courses';
 import { CoreCoursesHelperProvider } from './services/courses-helper';
 import { CoreCoursesDashboardProvider } from './services/dashboard';
@@ -28,7 +35,10 @@ import { CoreCoursesIndexLinkHandler } from './services/handlers/courses-index-l
 import { CoreDashboardHomeHandler, CoreDashboardHomeHandlerService } from './services/handlers/dashboard-home';
 import { CoreCoursesDashboardLinkHandler } from './services/handlers/dashboard-link';
 import { CoreCoursesEnrolPushClickHandler } from './services/handlers/enrol-push-click';
-import { CoreCoursesMyCoursesHomeHandler, CoreCoursesMyCoursesHomeHandlerService } from './services/handlers/my-courses-home';
+import {
+    CoreCoursesMyCoursesHomeHandler,
+    CoreCoursesMyCoursesMainMenuHandlerService,
+} from './services/handlers/my-courses-mainmenu';
 import { CoreCoursesRequestPushClickHandler } from './services/handlers/request-push-click';
 
 export const CORE_COURSES_SERVICES: Type<unknown>[] = [
@@ -40,17 +50,13 @@ export const CORE_COURSES_SERVICES: Type<unknown>[] = [
 const mainMenuHomeChildrenRoutes: Routes = [
     {
         path: CoreDashboardHomeHandlerService.PAGE_NAME,
-        loadChildren: () => import('./pages/dashboard/dashboard.module').then(m => m.CoreCoursesDashboardPageModule),
-    },
-    {
-        path: CoreCoursesMyCoursesHomeHandlerService.PAGE_NAME,
-        loadChildren: () => import('./pages/my-courses/my-courses.module').then(m => m.CoreCoursesMyCoursesPageModule),
+        loadChildren: () => import('./courses-dashboard-lazy.module').then(m => m.CoreCoursesDashboardLazyModule),
     },
 ];
 
-const mainMenuHomeSiblingRoutes: Routes = [
+const routes: Routes = [
     {
-        path: 'courses',
+        path: CoreCoursesMyCoursesMainMenuHandlerService.PAGE_NAME,
         loadChildren: () => import('./courses-lazy.module').then(m => m.CoreCoursesLazyModule),
     },
 ];
@@ -59,22 +65,32 @@ const mainMenuHomeSiblingRoutes: Routes = [
     imports: [
         CoreMainMenuHomeRoutingModule.forChild({
             children: mainMenuHomeChildrenRoutes,
-            siblings: mainMenuHomeSiblingRoutes,
         }),
+        CoreMainMenuRoutingModule.forChild({ children: routes }),
+        CoreMainMenuTabRoutingModule.forChild(routes),
     ],
+    exports: [CoreMainMenuRoutingModule],
     providers: [
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
-            useFactory: () => () => {
+            useValue: () => {
                 CoreMainMenuHomeDelegate.registerHandler(CoreDashboardHomeHandler.instance);
-                CoreMainMenuHomeDelegate.registerHandler(CoreCoursesMyCoursesHomeHandler.instance);
+                CoreMainMenuDelegate.registerHandler(CoreCoursesMyCoursesHomeHandler.instance);
                 CoreContentLinksDelegate.registerHandler(CoreCoursesCourseLinkHandler.instance);
                 CoreContentLinksDelegate.registerHandler(CoreCoursesIndexLinkHandler.instance);
                 CoreContentLinksDelegate.registerHandler(CoreCoursesDashboardLinkHandler.instance);
                 CorePushNotificationsDelegate.registerClickHandler(CoreCoursesEnrolPushClickHandler.instance);
                 CorePushNotificationsDelegate.registerClickHandler(CoreCoursesRequestPushClickHandler.instance);
+
+                CoreLocalNotifications.registerClick<CoreRemindersPushNotificationData>(
+                    'course',
+                    async (notification) => {
+                        await ApplicationInit.donePromise;
+
+                        CoreCourseHelper.getAndOpenCourse(notification.instanceId, {}, notification.siteId);
+                    },
+                );
             },
         },
     ],

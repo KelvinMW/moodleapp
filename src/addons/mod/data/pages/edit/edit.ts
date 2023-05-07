@@ -15,7 +15,6 @@
 import { Component, OnInit, ViewChild, ElementRef, Type } from '@angular/core';
 import { FormGroup } from '@angular/forms';
 import { CoreError } from '@classes/errors/error';
-import { CoreCourseModule } from '@features/course/services/course-helper';
 import { CoreFileUploader } from '@features/fileuploader/services/fileuploader';
 import { CoreTag } from '@features/tag/services/tag';
 import { IonContent } from '@ionic/angular';
@@ -41,6 +40,9 @@ import {
     AddonModDataEntryWSField,
 } from '../../services/data';
 import { AddonModDataHelper } from '../../services/data-helper';
+import { CoreDom } from '@singletons/dom';
+import { AddonModDataEntryFieldInitialized } from '../../classes/base-field-plugin-component';
+import { CoreTextUtils } from '@services/utils/text';
 
 /**
  * Page that displays the view edit page.
@@ -62,11 +64,12 @@ export class AddonModDataEditPage implements OnInit {
     protected forceLeave = false; // To allow leaving the page without checking for changes.
     protected initialSelectedGroup?: number;
     protected isEditing = false;
+    protected originalData: AddonModDataEntryFields = {};
 
     entry?: AddonModDataEntry;
     fields: Record<number, AddonModDataField> = {};
     courseId!: number;
-    module!: CoreCourseModule;
+    moduleId = 0;
     database?: AddonModDataData;
     title = '';
     component = AddonModDataProvider.COMPONENT;
@@ -83,6 +86,7 @@ export class AddonModDataEditPage implements OnInit {
         contents: AddonModDataEntryFields;
         errors?: Record<number, string>;
         form: FormGroup;
+        onFieldInit: (data: AddonModDataEntryFieldInitialized) => void;
     };
 
     errors: Record<number, string> = {};
@@ -96,15 +100,22 @@ export class AddonModDataEditPage implements OnInit {
      * @inheritdoc
      */
     ngOnInit(): void {
-        this.module = CoreNavigator.getRouteParam<CoreCourseModule>('module')!;
-        this.entryId = CoreNavigator.getRouteNumberParam('entryId') || undefined;
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.selectedGroup = CoreNavigator.getRouteNumberParam('group') || 0;
+        try {
+            this.moduleId = CoreNavigator.getRequiredRouteNumberParam('cmId');
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.title = CoreNavigator.getRouteParam<string>('title') || '';
+            this.entryId = CoreNavigator.getRouteNumberParam('entryId') || undefined;
+            this.selectedGroup = CoreNavigator.getRouteNumberParam('group') || 0;
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         // If entryId is lower than 0 or null, it is a new entry or an offline entry.
-        this.isEditing = typeof this.entryId != 'undefined' && this.entryId > 0;
-
-        this.title = this.module.name;
+        this.isEditing = this.entryId !== undefined && this.entryId > 0;
 
         this.fetchEntryData(true);
     }
@@ -112,7 +123,7 @@ export class AddonModDataEditPage implements OnInit {
     /**
      * Check if we can leave the page or not and ask to confirm the lost of data.
      *
-     * @return True if we can leave, false otherwise.
+     * @returns True if we can leave, false otherwise.
      */
     async canLeave(): Promise<boolean> {
         if (this.forceLeave || !this.entry) {
@@ -121,12 +132,12 @@ export class AddonModDataEditPage implements OnInit {
 
         const inputData = this.editForm.value;
 
-        let changed = AddonModDataHelper.hasEditDataChanged(inputData, this.fieldsArray, this.entry.contents);
+        let changed = AddonModDataHelper.hasEditDataChanged(inputData, this.fieldsArray, this.originalData);
         changed = changed || (!this.isEditing && this.initialSelectedGroup != this.selectedGroup);
 
         if (changed) {
             // Show confirmation if some data has been modified.
-            await CoreDomUtils.showConfirm(Translate.instant('coentryre.confirmcanceledit'));
+            await CoreDomUtils.showConfirm(Translate.instant('core.confirmcanceledit'));
         }
 
         // Delete the local files from the tmp folder.
@@ -142,45 +153,57 @@ export class AddonModDataEditPage implements OnInit {
      * Fetch the entry data.
      *
      * @param refresh To refresh all downloaded data.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async fetchEntryData(refresh = false): Promise<void> {
         try {
-            this.database = await AddonModData.getDatabase(this.courseId, this.module.id);
+            this.database = await AddonModData.getDatabase(this.courseId, this.moduleId);
             this.title = this.database.name || this.title;
             this.cssClass = 'addon-data-entries-' + this.database.id;
 
-            this.fieldsArray = await AddonModData.getFields(this.database.id, { cmId: this.module.id });
+            this.fieldsArray = await AddonModData.getFields(this.database.id, { cmId: this.moduleId });
             this.fields = CoreUtils.arrayToObject(this.fieldsArray, 'id');
 
             const entry = await AddonModDataHelper.fetchEntry(this.database, this.fieldsArray, this.entryId || 0);
             this.entry = entry.entry;
+            this.originalData = CoreUtils.clone(this.entry.contents);
 
-            // Load correct group.
-            this.selectedGroup = this.entry.groupid;
+            if (this.entryId) {
+                // Load correct group.
+                this.selectedGroup = this.entry.groupid;
+            }
 
             // Check permissions when adding a new entry or offline entry.
             if (!this.isEditing) {
                 let haveAccess = false;
+                let groupInfo: CoreGroupInfo | undefined = this.groupInfo;
 
                 if (refresh) {
-                    this.groupInfo = await CoreGroups.getActivityGroupInfo(this.database.coursemodule);
-                    this.selectedGroup = CoreGroups.validateGroupId(this.selectedGroup, this.groupInfo);
+                    groupInfo = await CoreGroups.getActivityGroupInfo(this.database.coursemodule);
+                    if (groupInfo.visibleGroups && groupInfo.groups.length) {
+                        // There is a bug in Moodle with All participants and visible groups (MOBILE-3597). Remove it.
+                        groupInfo.groups = groupInfo.groups.filter(group => group.id !== 0);
+                        groupInfo.defaultGroupId = groupInfo.groups[0].id;
+                    }
+
+                    this.selectedGroup = CoreGroups.validateGroupId(this.selectedGroup, groupInfo);
                     this.initialSelectedGroup = this.selectedGroup;
                 }
 
-                if (this.groupInfo?.groups && this.groupInfo.groups.length > 0) {
+                if (groupInfo?.groups && groupInfo?.groups.length > 0) {
                     if (refresh) {
                         const canAddGroup: Record<number, boolean> = {};
 
-                        await Promise.all(this.groupInfo.groups.map(async (group) => {
+                        await Promise.all(groupInfo.groups.map(async (group) => {
                             const accessData = await AddonModData.getDatabaseAccessInformation(this.database!.id, {
-                                cmId: this.module.id, groupId: group.id });
+                                cmId: this.moduleId,
+                                groupId: group.id,
+                            });
 
                             canAddGroup[group.id] = accessData.canaddentry;
                         }));
 
-                        this.groupInfo.groups = this.groupInfo.groups.filter((group) => !!canAddGroup[group.id]);
+                        groupInfo.groups = groupInfo.groups.filter((group) => !!canAddGroup[group.id]);
 
                         haveAccess = canAddGroup[this.selectedGroup];
                     } else {
@@ -188,9 +211,11 @@ export class AddonModDataEditPage implements OnInit {
                         haveAccess = true;
                     }
                 } else {
-                    const accessData = await AddonModData.getDatabaseAccessInformation(this.database.id, { cmId: this.module.id });
+                    const accessData = await AddonModData.getDatabaseAccessInformation(this.database.id, { cmId: this.moduleId });
                     haveAccess = accessData.canaddentry;
                 }
+
+                this.groupInfo = groupInfo;
 
                 if (!haveAccess) {
                     // You shall not pass, go back.
@@ -216,7 +241,7 @@ export class AddonModDataEditPage implements OnInit {
      * Saves data.
      *
      * @param e Event.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async save(e: Event): Promise<void> {
         e.preventDefault();
@@ -246,7 +271,7 @@ export class AddonModDataEditPage implements OnInit {
             const modal = await CoreDomUtils.showModalLoading('core.sending', true);
 
             // Create an ID to assign files.
-            const entryTemp = this.entryId ? this.entryId : - (new Date().getTime());
+            const entryTemp = this.entryId ? this.entryId : - (Date.now());
             let editData: AddonModDataEntryWSField[] = [];
 
             try {
@@ -260,9 +285,10 @@ export class AddonModDataEditPage implements OnInit {
                         this.offline,
                     );
                 } catch (error) {
-                    if (this.offline) {
+                    if (this.offline || CoreUtils.isWebServiceError(error)) {
                         throw error;
                     }
+
                     // Cannot submit in online, prepare for offline usage.
                     this.offline = true;
 
@@ -343,11 +369,18 @@ export class AddonModDataEditPage implements OnInit {
                             }
                         });
                     }
+
                     this.jsData!.errors = this.errors;
 
-                    setTimeout(() => {
-                        this.scrollToFirstError();
-                    });
+                    this.scrollToFirstError();
+
+                    if (updateEntryResult.generalnotifications?.length) {
+                        CoreDomUtils.showAlertWithOptions({
+                            header: Translate.instant('core.notice'),
+                            message: CoreTextUtils.buildMessage(updateEntryResult.generalnotifications),
+                            buttons: [Translate.instant('core.ok')],
+                        });
+                    }
                 }
             } finally {
                 modal.dismiss();
@@ -361,7 +394,7 @@ export class AddonModDataEditPage implements OnInit {
      * Set group to see the database.
      *
      * @param groupId Group identifier to set.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     setGroup(groupId: number): Promise<void> {
         this.selectedGroup = groupId;
@@ -373,7 +406,7 @@ export class AddonModDataEditPage implements OnInit {
     /**
      * Displays Edit Search Fields.
      *
-     * @return Generated HTML.
+     * @returns Generated HTML.
      */
     protected displayEditFields(): string {
         this.jsData = {
@@ -382,6 +415,7 @@ export class AddonModDataEditPage implements OnInit {
             form: this.editForm,
             database: this.database,
             errors: this.errors,
+            onFieldInit: (data) => this.onFieldInit(data),
         };
 
         let template = AddonModDataHelper.getTemplate(this.database!, AddonModDataTemplateType.ADD, this.fieldsArray);
@@ -395,7 +429,7 @@ export class AddonModDataEditPage implements OnInit {
             // Replace field by a generic directive.
             const render = '<addon-mod-data-field-plugin [class.has-errors]="!!errors[' + field.id + ']" mode="edit" \
                 [field]="fields[' + field.id + ']" [value]="contents[' + field.id + ']" [form]="form" [database]="database" \
-                [error]="errors[' + field.id + ']"></addon-mod-data-field-plugin>';
+                [error]="errors[' + field.id + ']" (onFieldInit)="onFieldInit($event)"></addon-mod-data-field-plugin>';
             template = template.replace(replaceRegEx, render);
 
             // Replace the field id tag.
@@ -404,7 +438,33 @@ export class AddonModDataEditPage implements OnInit {
             replaceRegEx = new RegExp(replace, 'gi');
 
             template = template.replace(replaceRegEx, 'field_' + field.id);
+
+            // Replace the field name tag.
+            replace = '[[' + field.name + '#name]]';
+            replace = replace.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&');
+            replaceRegEx = new RegExp(replace, 'gi');
+
+            template = template.replace(replaceRegEx, field.name);
+
+            // Replace the field description tag.
+            replace = '[[' + field.name + '#description]]';
+            replace = replace.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&');
+            replaceRegEx = new RegExp(replace, 'gi');
+
+            template = template.replace(replaceRegEx, field.description);
         });
+
+        const regex = new RegExp('##otherfields##', 'gi');
+
+        if (template.match(regex)) {
+            const unusedFields = this.fieldsArray.filter(field => !template.includes(`[field]="fields[${field.id}]`)).map((field) =>
+                `<p><strong>${field.name}</strong></p>` +
+                '<p><addon-mod-data-field-plugin [class.has-errors]="!!errors[' + field.id + ']" mode="edit" \
+                [field]="fields[' + field.id + ']" [value]="contents[' + field.id + ']" [form]="form" [database]="database" \
+                [error]="errors[' + field.id + ']" (onFieldInit)="onFieldInit($event)"></addon-mod-data-field-plugin><p>');
+
+            template = template.replace(regex, unusedFields.join(''));
+        }
 
         // Editing tags is not supported.
         const replaceRegEx = new RegExp('##tags##', 'gi');
@@ -417,9 +477,30 @@ export class AddonModDataEditPage implements OnInit {
     }
 
     /**
+     * A certain value has been initialized.
+     *
+     * @param data Data.
+     */
+    onFieldInit(data: AddonModDataEntryFieldInitialized): void {
+        if (!this.originalData[data.fieldid]) {
+            this.originalData[data.fieldid] = {
+                id: 0,
+                recordid: this.entry?.id ?? 0,
+                fieldid: data.fieldid,
+                content: data.content,
+                content1: data.content1 ?? null,
+                content2: data.content2 ?? null,
+                content3: data.content3 ?? null,
+                content4: data.content4 ?? null,
+                files: data.files ?? [],
+            };
+        }
+    }
+
+    /**
      * Return to the entry list (previous page) discarding temp data.
      *
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async returnToEntryList(): Promise<void> {
         const inputData = this.editForm.value;
@@ -442,8 +523,9 @@ export class AddonModDataEditPage implements OnInit {
     /**
      * Scroll to first error or to the top if not found.
      */
-    protected scrollToFirstError(): void {
-        if (!CoreDomUtils.scrollToElementBySelector(this.formElement.nativeElement, this.content, '.addon-data-error')) {
+    protected async scrollToFirstError(): Promise<void> {
+        const scrolled = await CoreDom.scrollToElement(this.formElement.nativeElement, '.addon-data-error');
+        if (!scrolled) {
             this.content?.scrollToTop();
         }
     }

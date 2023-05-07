@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { SafeNumber } from '@/core/utils/types';
 import { Injectable } from '@angular/core';
 
 import { CoreError } from '@classes/errors/error';
@@ -19,7 +20,7 @@ import { CoreWSError } from '@classes/errors/wserror';
 import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
 import { CoreCourseCommonModWSOptions } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
-import { CoreGradesFormattedItem, CoreGradesFormattedRow, CoreGradesHelper } from '@features/grades/services/grades-helper';
+import { CoreGradesFormattedItem, CoreGradesHelper } from '@features/grades/services/grades-helper';
 import { CorePushNotifications } from '@features/pushnotifications/services/pushnotifications';
 import {
     CoreQuestion,
@@ -96,10 +97,10 @@ export class AddonModQuizProvider {
      *
      * @param grade Grade.
      * @param decimals Decimals to use.
-     * @return Grade to display.
+     * @returns Grade to display.
      */
     formatGrade(grade?: number | null, decimals?: number): string {
-        if (grade === undefined || grade == -1 || grade === null || isNaN(grade)) {
+        if (grade === undefined || grade === -1 || grade === null || isNaN(grade)) {
             return Translate.instant('addon.mod_quiz.notyetgraded');
         }
 
@@ -113,7 +114,7 @@ export class AddonModQuizProvider {
      * @param attempt Attempt.
      * @param preflightData Preflight required data (like password).
      * @param options Other options.
-     * @return Promise resolved with the questions.
+     * @returns Promise resolved with the questions.
      */
     async getAllQuestionsData(
         quiz: AddonModQuizQuizWSData,
@@ -149,7 +150,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param attemptId Attempt ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAttemptAccessInformationCacheKey(quizId: number, attemptId: number): string {
         return this.getAttemptAccessInformationCommonCacheKey(quizId) + ':' + attemptId;
@@ -159,7 +160,7 @@ export class AddonModQuizProvider {
      * Get common cache key for get attempt access information WS calls.
      *
      * @param quizId Quiz ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAttemptAccessInformationCommonCacheKey(quizId: number): string {
         return ROOT_CACHE_KEY + 'attemptAccessInformation:' + quizId;
@@ -171,7 +172,7 @@ export class AddonModQuizProvider {
      * @param quizId Quiz ID.
      * @param attemptId Attempt ID. 0 for user's last attempt.
      * @param options Other options.
-     * @return Promise resolved with the access information.
+     * @returns Promise resolved with the access information.
      */
     async getAttemptAccessInformation(
         quizId: number,
@@ -200,7 +201,7 @@ export class AddonModQuizProvider {
      *
      * @param attemptId Attempt ID.
      * @param page Page.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAttemptDataCacheKey(attemptId: number, page: number): string {
         return this.getAttemptDataCommonCacheKey(attemptId) + ':' + page;
@@ -210,7 +211,7 @@ export class AddonModQuizProvider {
      * Get common cache key for get attempt data WS calls.
      *
      * @param attemptId Attempt ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAttemptDataCommonCacheKey(attemptId: number): string {
         return ROOT_CACHE_KEY + 'attemptData:' + attemptId;
@@ -223,7 +224,7 @@ export class AddonModQuizProvider {
      * @param page Page number.
      * @param preflightData Preflight required data (like password).
      * @param options Other options.
-     * @return Promise resolved with the attempt data.
+     * @returns Promise resolved with the attempt data.
      */
     async getAttemptData(
         attemptId: number,
@@ -263,7 +264,7 @@ export class AddonModQuizProvider {
      *
      * @param quiz Quiz.
      * @param attempt Attempt.
-     * @return Attempt's due date, 0 if no due date or invalid data.
+     * @returns Attempt's due date, 0 if no due date or invalid data.
      */
     getAttemptDueDate(quiz: AddonModQuizQuizWSData, attempt: AddonModQuizAttemptWSData): number {
         const deadlines: number[] = [];
@@ -290,7 +291,7 @@ export class AddonModQuizProvider {
                 return dueDate * 1000;
 
             case AddonModQuizProvider.ATTEMPT_OVERDUE:
-                return (dueDate + quiz.graceperiod!) * 1000;
+                return (dueDate + (quiz.graceperiod ?? 0)) * 1000;
 
             default:
                 this.logger.warn('Unexpected state when getting due date: ' + attempt.state);
@@ -304,7 +305,7 @@ export class AddonModQuizProvider {
      *
      * @param quiz Quiz.
      * @param attempt Attempt.
-     * @return Attempt's warning, undefined if no due date.
+     * @returns Attempt's warning, undefined if no due date.
      */
     getAttemptDueDateWarning(quiz: AddonModQuizQuizWSData, attempt: AddonModQuizAttemptWSData): string | undefined {
         const dueDate = this.getAttemptDueDate(quiz, attempt);
@@ -324,7 +325,7 @@ export class AddonModQuizProvider {
      *
      * @param quiz Quiz.
      * @param attempt Attempt.
-     * @return List of state sentences.
+     * @returns List of state sentences.
      */
     getAttemptReadableState(quiz: AddonModQuizQuizWSData, attempt: AddonModQuizAttempt): string[] {
         if (attempt.finishedOffline) {
@@ -356,7 +357,7 @@ export class AddonModQuizProvider {
                     Translate.instant('addon.mod_quiz.statefinished'),
                     Translate.instant(
                         'addon.mod_quiz.statefinisheddetails',
-                        { $a: CoreTimeUtils.userDate(attempt.timefinish! * 1000) },
+                        { $a: CoreTimeUtils.userDate((attempt.timefinish ?? 0) * 1000) },
                     ),
                 ];
 
@@ -372,7 +373,7 @@ export class AddonModQuizProvider {
      * Turn attempt's state into a readable state name, without any more data.
      *
      * @param state State.
-     * @return Readable state name.
+     * @returns Readable state name.
      */
     getAttemptReadableStateName(state: string): string {
         switch (state) {
@@ -398,7 +399,7 @@ export class AddonModQuizProvider {
      *
      * @param attemptId Attempt ID.
      * @param page Page.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAttemptReviewCacheKey(attemptId: number, page: number): string {
         return this.getAttemptReviewCommonCacheKey(attemptId) + ':' + page;
@@ -408,7 +409,7 @@ export class AddonModQuizProvider {
      * Get common cache key for get attempt review WS calls.
      *
      * @param attemptId Attempt ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAttemptReviewCommonCacheKey(attemptId: number): string {
         return ROOT_CACHE_KEY + 'attemptReview:' + attemptId;
@@ -419,13 +420,13 @@ export class AddonModQuizProvider {
      *
      * @param attemptId Attempt ID.
      * @param options Other options.
-     * @return Promise resolved with the attempt review.
+     * @returns Promise resolved with the attempt review.
      */
     async getAttemptReview(
         attemptId: number,
         options: AddonModQuizGetAttemptReviewOptions = {},
     ): Promise<AddonModQuizGetAttemptReviewResponse> {
-        const page = typeof options.page == 'undefined' ? -1 : options.page;
+        const page = options.page === undefined ? -1 : options.page;
 
         const site = await CoreSites.getSite(options.siteId);
 
@@ -452,7 +453,7 @@ export class AddonModQuizProvider {
      * Get cache key for get attempt summary WS calls.
      *
      * @param attemptId Attempt ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAttemptSummaryCacheKey(attemptId: number): string {
         return ROOT_CACHE_KEY + 'attemptSummary:' + attemptId;
@@ -464,7 +465,7 @@ export class AddonModQuizProvider {
      * @param attemptId Attempt ID.
      * @param preflightData Preflight required data (like password).
      * @param options Other options.
-     * @return Promise resolved with the list of questions for the attempt summary.
+     * @returns Promise resolved with the list of questions for the attempt summary.
      */
     async getAttemptSummary(
         attemptId: number,
@@ -506,7 +507,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param userId User ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCombinedReviewOptionsCacheKey(quizId: number, userId: number): string {
         return this.getCombinedReviewOptionsCommonCacheKey(quizId) + ':' + userId;
@@ -516,7 +517,7 @@ export class AddonModQuizProvider {
      * Get common cache key for get combined review options WS calls.
      *
      * @param quizId Quiz ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCombinedReviewOptionsCommonCacheKey(quizId: number): string {
         return ROOT_CACHE_KEY + 'combinedReviewOptions:' + quizId;
@@ -527,7 +528,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param options Other options.
-     * @return Promise resolved with the combined review options.
+     * @returns Promise resolved with the combined review options.
      */
     async getCombinedReviewOptions(
         quizId: number,
@@ -566,7 +567,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param grade Grade.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getFeedbackForGradeCacheKey(quizId: number, grade: number): string {
         return this.getFeedbackForGradeCommonCacheKey(quizId) + ':' + grade;
@@ -576,7 +577,7 @@ export class AddonModQuizProvider {
      * Get common cache key for get feedback for grade WS calls.
      *
      * @param quizId Quiz ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getFeedbackForGradeCommonCacheKey(quizId: number): string {
         return ROOT_CACHE_KEY + 'feedbackForGrade:' + quizId;
@@ -588,11 +589,11 @@ export class AddonModQuizProvider {
      * @param quizId Quiz ID.
      * @param grade Grade.
      * @param options Other options.
-     * @return Promise resolved with the feedback.
+     * @returns Promise resolved with the feedback.
      */
     async getFeedbackForGrade(
         quizId: number,
-        grade: number,
+        grade: SafeNumber,
         options: CoreCourseCommonModWSOptions = {},
     ): Promise<AddonModQuizGetQuizFeedbackForGradeWSResponse> {
         const site = await CoreSites.getSite(options.siteId);
@@ -617,15 +618,15 @@ export class AddonModQuizProvider {
      * Based on Moodle's quiz_get_grade_format.
      *
      * @param quiz Quiz.
-     * @return Number of decimals.
+     * @returns Number of decimals.
      */
     getGradeDecimals(quiz: AddonModQuizQuizWSData): number {
-        if (typeof quiz.questiondecimalpoints == 'undefined') {
+        if (quiz.questiondecimalpoints === undefined) {
             quiz.questiondecimalpoints = -1;
         }
 
         if (quiz.questiondecimalpoints == -1) {
-            return quiz.decimalpoints!;
+            return quiz.decimalpoints ?? 1;
         }
 
         return quiz.questiondecimalpoints;
@@ -639,7 +640,7 @@ export class AddonModQuizProvider {
      * @param ignoreCache Whether it should ignore cached data (it will always fail in offline or server down).
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined use site's current user.
-     * @return Promise resolved with an object containing the grade and the feedback.
+     * @returns Promise resolved with an object containing the grade and the feedback.
      */
     async getGradeFromGradebook(
         courseId: number,
@@ -647,7 +648,7 @@ export class AddonModQuizProvider {
         ignoreCache?: boolean,
         siteId?: string,
         userId?: number,
-    ): Promise<CoreGradesFormattedItem | CoreGradesFormattedRow | undefined> {
+    ): Promise<CoreGradesFormattedItem | undefined> {
 
         const items = await CoreGradesHelper.getGradeModuleItems(
             courseId,
@@ -664,11 +665,21 @@ export class AddonModQuizProvider {
     /**
      * Given a list of attempts, returns the last finished attempt.
      *
-     * @param attempts Attempts.
-     * @return Last finished attempt.
+     * @param attempts Attempts sorted. First attempt should be the first on the list.
+     * @returns Last finished attempt.
      */
     getLastFinishedAttemptFromList(attempts?: AddonModQuizAttemptWSData[]): AddonModQuizAttemptWSData | undefined {
-        return attempts?.find(attempt => this.isAttemptFinished(attempt.state));
+        if (!attempts) {
+            return;
+        }
+
+        for (let i = attempts.length - 1; i >= 0; i--) {
+            const attempt = attempts[i];
+
+            if (this.isAttemptFinished(attempt.state)) {
+                return attempt;
+            }
+        }
     }
 
     /**
@@ -676,7 +687,7 @@ export class AddonModQuizProvider {
      * Will return an array with the messages to prevent the submit. Empty array if quiz can be submitted.
      *
      * @param questions Questions.
-     * @return List of prevent submit messages. Empty array if quiz can be submitted.
+     * @returns List of prevent submit messages. Empty array if quiz can be submitted.
      */
     getPreventSubmitMessages(questions: CoreQuestionQuestionParsed[]): string[] {
         const messages: string[] = [];
@@ -704,7 +715,7 @@ export class AddonModQuizProvider {
      * Get cache key for quiz data WS calls.
      *
      * @param courseId Course ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getQuizDataCacheKey(courseId: number): string {
         return ROOT_CACHE_KEY + 'quiz:' + courseId;
@@ -717,7 +728,7 @@ export class AddonModQuizProvider {
      * @param key Name of the property to check.
      * @param value Value to search.
      * @param options Other options.
-     * @return Promise resolved when the Quiz is retrieved.
+     * @returns Promise resolved when the Quiz is retrieved.
      */
     protected async getQuizByField(
         courseId: number,
@@ -748,7 +759,7 @@ export class AddonModQuizProvider {
         const quiz = response.quizzes.find(quiz => quiz[key] == value);
 
         if (!quiz) {
-            throw new CoreError('Quiz not found.');
+            throw new CoreError(Translate.instant('core.course.modulenotfound'));
         }
 
         return quiz;
@@ -760,7 +771,7 @@ export class AddonModQuizProvider {
      * @param courseId Course ID.
      * @param cmId Course module ID.
      * @param options Other options.
-     * @return Promise resolved when the quiz is retrieved.
+     * @returns Promise resolved when the quiz is retrieved.
      */
     getQuiz(courseId: number, cmId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModQuizQuizWSData> {
         return this.getQuizByField(courseId, 'coursemodule', cmId, options);
@@ -772,7 +783,7 @@ export class AddonModQuizProvider {
      * @param courseId Course ID.
      * @param id Quiz ID.
      * @param options Other options.
-     * @return Promise resolved when the quiz is retrieved.
+     * @returns Promise resolved when the quiz is retrieved.
      */
     getQuizById(courseId: number, id: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModQuizQuizWSData> {
         return this.getQuizByField(courseId, 'id', id, options);
@@ -782,7 +793,7 @@ export class AddonModQuizProvider {
      * Get cache key for get quiz access information WS calls.
      *
      * @param quizId Quiz ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getQuizAccessInformationCacheKey(quizId: number): string {
         return ROOT_CACHE_KEY + 'quizAccessInformation:' + quizId;
@@ -793,7 +804,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param options Other options.
-     * @return Promise resolved with the access information.
+     * @returns Promise resolved with the access information.
      */
     async getQuizAccessInformation(
         quizId: number,
@@ -818,7 +829,7 @@ export class AddonModQuizProvider {
      * Get a readable Quiz grade method.
      *
      * @param method Grading method.
-     * @return Readable grading method.
+     * @returns Readable grading method.
      */
     getQuizGradeMethod(method?: number | string): string {
         if (method === undefined) {
@@ -847,7 +858,7 @@ export class AddonModQuizProvider {
      * Get cache key for get quiz required qtypes WS calls.
      *
      * @param quizId Quiz ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getQuizRequiredQtypesCacheKey(quizId: number): string {
         return ROOT_CACHE_KEY + 'quizRequiredQtypes:' + quizId;
@@ -858,7 +869,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param options Other options.
-     * @return Promise resolved with the access information.
+     * @returns Promise resolved with the access information.
      */
     async getQuizRequiredQtypes(quizId: number, options: CoreCourseCommonModWSOptions = {}): Promise<string[]> {
         const site = await CoreSites.getSite(options.siteId);
@@ -887,7 +898,7 @@ export class AddonModQuizProvider {
      * Given an attempt's layout, return the list of pages.
      *
      * @param layout Attempt's layout.
-     * @return Pages.
+     * @returns Pages.
      * @description
      * An attempt's layout is a string with the question numbers separated by commas. A 0 indicates a change of page.
      * Example: 1,2,3,0,4,5,6,0
@@ -920,7 +931,7 @@ export class AddonModQuizProvider {
      *
      * @param layout Attempt's layout.
      * @param questions List of questions. It needs to be an object where the keys are question slot.
-     * @return Pages.
+     * @returns Pages.
      * @description
      * An attempt's layout is a string with the question numbers separated by commas. A 0 indicates a change of page.
      * Example: 1,2,3,0,4,5,6,0
@@ -953,7 +964,7 @@ export class AddonModQuizProvider {
      * Given a list of question types, returns the types that aren't supported.
      *
      * @param questionTypes Question types to check.
-     * @return Not supported question types.
+     * @returns Not supported question types.
      */
     getUnsupportedQuestions(questionTypes: string[]): string[] {
         const notSupported: string[] = [];
@@ -971,7 +982,7 @@ export class AddonModQuizProvider {
      * Given a list of access rules names, returns the rules that aren't supported.
      *
      * @param rulesNames Rules to check.
-     * @return Not supported rules names.
+     * @returns Not supported rules names.
      */
     getUnsupportedRules(rulesNames: string[]): string[] {
         const notSupported: string[] = [];
@@ -990,7 +1001,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param userId User ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getUserAttemptsCacheKey(quizId: number, userId: number): string {
         return this.getUserAttemptsCommonCacheKey(quizId) + ':' + userId;
@@ -1000,7 +1011,7 @@ export class AddonModQuizProvider {
      * Get common cache key for get user attempts WS calls.
      *
      * @param quizId Quiz ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getUserAttemptsCommonCacheKey(quizId: number): string {
         return ROOT_CACHE_KEY + 'userAttempts:' + quizId;
@@ -1011,7 +1022,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param options Other options.
-     * @return Promise resolved with the attempts.
+     * @returns Promise resolved with the attempts.
      */
     async getUserAttempts(
         quizId: number,
@@ -1019,7 +1030,7 @@ export class AddonModQuizProvider {
     ): Promise<AddonModQuizAttemptWSData[]> {
 
         const status = options.status || 'all';
-        const includePreviews = typeof options.includePreviews == 'undefined' ? true : options.includePreviews;
+        const includePreviews = options.includePreviews === undefined ? true : options.includePreviews;
 
         const site = await CoreSites.getSite(options.siteId);
 
@@ -1048,7 +1059,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param userId User ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getUserBestGradeCacheKey(quizId: number, userId: number): string {
         return this.getUserBestGradeCommonCacheKey(quizId) + ':' + userId;
@@ -1058,7 +1069,7 @@ export class AddonModQuizProvider {
      * Get common cache key for get user best grade WS calls.
      *
      * @param quizId Quiz ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getUserBestGradeCommonCacheKey(quizId: number): string {
         return ROOT_CACHE_KEY + 'userBestGrade:' + quizId;
@@ -1069,7 +1080,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param options Other options.
-     * @return Promise resolved with the best grade data.
+     * @returns Promise resolved with the best grade data.
      */
     async getUserBestGrade(quizId: number, options: AddonModQuizUserOptions = {}): Promise<AddonModQuizGetUserBestGradeWSResponse> {
         const site = await CoreSites.getSite(options.siteId);
@@ -1097,7 +1108,7 @@ export class AddonModQuizProvider {
      * @param attemptId Attempt ID to invalidate some WS calls.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined use site's current user.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAllQuizData(
         quizId: number,
@@ -1136,7 +1147,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAttemptAccessInformation(quizId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1150,7 +1161,7 @@ export class AddonModQuizProvider {
      * @param quizId Quiz ID.
      * @param attemptId Attempt ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAttemptAccessInformationForAttempt(quizId: number, attemptId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1163,7 +1174,7 @@ export class AddonModQuizProvider {
      *
      * @param attemptId Attempt ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAttemptData(attemptId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1177,7 +1188,7 @@ export class AddonModQuizProvider {
      * @param attemptId Attempt ID.
      * @param page Page.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAttemptDataForPage(attemptId: number, page: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1190,7 +1201,7 @@ export class AddonModQuizProvider {
      *
      * @param attemptId Attempt ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAttemptReview(attemptId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1204,7 +1215,7 @@ export class AddonModQuizProvider {
      * @param attemptId Attempt ID.
      * @param page Page.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAttemptReviewForPage(attemptId: number, page: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1217,7 +1228,7 @@ export class AddonModQuizProvider {
      *
      * @param attemptId Attempt ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAttemptSummary(attemptId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1230,7 +1241,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateCombinedReviewOptions(quizId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1244,7 +1255,7 @@ export class AddonModQuizProvider {
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined use site's current user.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateCombinedReviewOptionsForUser(quizId: number, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1258,7 +1269,7 @@ export class AddonModQuizProvider {
      * @param moduleId The module ID.
      * @param courseId Course ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateContent(moduleId: number, courseId: number, siteId?: string): Promise<void> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -1282,7 +1293,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateFeedback(quizId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1296,7 +1307,7 @@ export class AddonModQuizProvider {
      * @param quizId Quiz ID.
      * @param grade Grade.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateFeedbackForGrade(quizId: number, grade: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1310,7 +1321,7 @@ export class AddonModQuizProvider {
      * @param courseId Course ID.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined use site's current user.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateGradeFromGradebook(courseId: number, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1323,7 +1334,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateQuizAccessInformation(quizId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1336,7 +1347,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateQuizRequiredQtypes(quizId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1349,7 +1360,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateUserAttempts(quizId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1363,7 +1374,7 @@ export class AddonModQuizProvider {
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined use site's current user.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateUserAttemptsForUser(quizId: number, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1376,7 +1387,7 @@ export class AddonModQuizProvider {
      *
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateUserBestGrade(quizId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1390,7 +1401,7 @@ export class AddonModQuizProvider {
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined use site's current user.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateUserBestGradeForUser(quizId: number, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1403,7 +1414,7 @@ export class AddonModQuizProvider {
      *
      * @param courseId Course ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateQuizData(courseId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1415,7 +1426,7 @@ export class AddonModQuizProvider {
      * Check if an attempt is finished based on its state.
      *
      * @param state Attempt's state.
-     * @return Whether it's finished.
+     * @returns Whether it's finished.
      */
     isAttemptFinished(state?: string): boolean {
         return state == AddonModQuizProvider.ATTEMPT_FINISHED || state == AddonModQuizProvider.ATTEMPT_ABANDONED;
@@ -1426,7 +1437,7 @@ export class AddonModQuizProvider {
      *
      * @param attemptId Attempt ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with boolean: true if finished in offline but not synced, false otherwise.
+     * @returns Promise resolved with boolean: true if finished in offline but not synced, false otherwise.
      */
     async isAttemptFinishedOffline(attemptId: number, siteId?: string): Promise<boolean> {
         try {
@@ -1446,7 +1457,7 @@ export class AddonModQuizProvider {
      *
      * @param quiz Quiz.
      * @param attempt Attempt.
-     * @return Whether it's nearly over or over.
+     * @returns Whether it's nearly over or over.
      */
     isAttemptTimeNearlyOver(quiz: AddonModQuizQuizWSData, attempt: AddonModQuizAttemptWSData): boolean {
         if (attempt.state != AddonModQuizProvider.ATTEMPT_IN_PROGRESS) {
@@ -1467,10 +1478,10 @@ export class AddonModQuizProvider {
     /**
      * Check if last attempt is offline and unfinished.
      *
-     * @param attemptId Attempt ID.
+     * @param quiz Quiz data.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined, user current site's user.
-     * @return Promise resolved with boolean: true if last offline attempt is unfinished, false otherwise.
+     * @returns Promise resolved with boolean: true if last offline attempt is unfinished, false otherwise.
      */
     async isLastAttemptOfflineUnfinished(quiz: AddonModQuizQuizWSData, siteId?: string, userId?: number): Promise<boolean> {
         try {
@@ -1488,7 +1499,7 @@ export class AddonModQuizProvider {
      * Check if a quiz navigation is sequential.
      *
      * @param quiz Quiz.
-     * @return Whether navigation is sequential.
+     * @returns Whether navigation is sequential.
      */
     isNavigationSequential(quiz: AddonModQuizQuizWSData): boolean {
         return quiz.navmethod == 'sequential';
@@ -1498,7 +1509,7 @@ export class AddonModQuizProvider {
      * Check if a question is blocked.
      *
      * @param question Question.
-     * @return Whether it's blocked.
+     * @returns Whether it's blocked.
      */
     isQuestionBlocked(question: CoreQuestionQuestionParsed): boolean {
         const element = CoreDomUtils.convertToElement(question.html);
@@ -1510,7 +1521,7 @@ export class AddonModQuizProvider {
      * Check if a quiz is enabled to be used in offline.
      *
      * @param quiz Quiz.
-     * @return Whether offline is enabled.
+     * @returns Whether offline is enabled.
      */
     isQuizOffline(quiz: AddonModQuizQuizWSData): boolean {
         // Don't allow downloading the quiz if offline is disabled to prevent wasting a lot of data when opening it.
@@ -1526,7 +1537,7 @@ export class AddonModQuizProvider {
      * @param offline Whether attempt is offline.
      * @param quiz Quiz instance. If set, a Firebase event will be stored.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the WS call is successful.
+     * @returns Promise resolved when the WS call is successful.
      */
     async logViewAttempt(
         attemptId: number,
@@ -1574,7 +1585,7 @@ export class AddonModQuizProvider {
      * @param quizId Quiz ID.
      * @param name Name of the quiz.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the WS call is successful.
+     * @returns Promise resolved when the WS call is successful.
      */
     logViewAttemptReview(attemptId: number, quizId: number, name?: string, siteId?: string): Promise<void> {
         const params: AddonModQuizViewAttemptReviewWSParams = {
@@ -1601,7 +1612,7 @@ export class AddonModQuizProvider {
      * @param quizId Quiz ID.
      * @param name Name of the quiz.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the WS call is successful.
+     * @returns Promise resolved when the WS call is successful.
      */
     logViewAttemptSummary(
         attemptId: number,
@@ -1637,7 +1648,7 @@ export class AddonModQuizProvider {
      * @param id Module ID.
      * @param name Name of the quiz.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the WS call is successful.
+     * @returns Promise resolved when the WS call is successful.
      */
     logViewQuiz(id: number, name?: string, siteId?: string): Promise<void> {
         const params: AddonModQuizViewQuizWSParams = {
@@ -1667,7 +1678,7 @@ export class AddonModQuizProvider {
      * @param timeUp Whether the quiz time is up, false otherwise.
      * @param offline Whether the attempt is offline.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved in success, rejected otherwise.
+     * @returns Promise resolved in success, rejected otherwise.
      */
     async processAttempt(
         quiz: AddonModQuizQuizWSData,
@@ -1695,7 +1706,7 @@ export class AddonModQuizProvider {
      * @param finish Whether to finish the quiz.
      * @param timeUp Whether the quiz time is up, false otherwise.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved in success, rejected otherwise.
+     * @returns Promise resolved in success, rejected otherwise.
      */
     protected async processAttemptOnline(
         attemptId: number,
@@ -1738,7 +1749,7 @@ export class AddonModQuizProvider {
      * @param preflightData Preflight required data (like password).
      * @param finish Whether to finish the quiz.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved in success, rejected otherwise.
+     * @returns Promise resolved in success, rejected otherwise.
      */
     protected async processAttemptOffline(
         quiz: AddonModQuizQuizWSData,
@@ -1767,10 +1778,10 @@ export class AddonModQuizProvider {
      * Check if it's a graded quiz. Based on Moodle's quiz_has_grades.
      *
      * @param quiz Quiz.
-     * @return Whether quiz is graded.
+     * @returns Whether quiz is graded.
      */
     quizHasGrades(quiz: AddonModQuizQuizWSData): boolean {
-        return quiz.grade! >= 0.000005 && quiz.sumgrades! >= 0.000005;
+        return (quiz.grade ?? 0) >= 0.000005 && (quiz.sumgrades ?? 0) >= 0.000005;
     }
 
     /**
@@ -1781,7 +1792,7 @@ export class AddonModQuizProvider {
      * @param quiz Quiz.
      * @param format True to format the results for display, 'question' to format a question grade
      *               (different number of decimal places), false to not format it.
-     * @return Grade to display.
+     * @returns Grade to display.
      */
     rescaleGrade(
         rawGrade: string | number | undefined | null,
@@ -1790,10 +1801,10 @@ export class AddonModQuizProvider {
     ): string | undefined {
         let grade: number | undefined;
 
-        const rawGradeNum = typeof rawGrade == 'string' ? parseFloat(rawGrade) : rawGrade;
+        const rawGradeNum = typeof rawGrade === 'string' ? parseFloat(rawGrade) : rawGrade;
         if (rawGradeNum !== undefined && rawGradeNum !== null && !isNaN(rawGradeNum)) {
-            if (quiz.sumgrades! >= 0.000005) {
-                grade = rawGradeNum * quiz.grade! / quiz.sumgrades!;
+            if (quiz.sumgrades && quiz.sumgrades >= 0.000005) {
+                grade = rawGradeNum * (quiz.grade ?? 0) / quiz.sumgrades;
             } else {
                 grade = 0;
             }
@@ -1806,7 +1817,7 @@ export class AddonModQuizProvider {
         if (format === 'question') {
             return this.formatGrade(grade, this.getGradeDecimals(quiz));
         } else if (format) {
-            return this.formatGrade(grade, quiz.decimalpoints!);
+            return this.formatGrade(grade, quiz.decimalpoints ?? 1);
         }
 
         return String(grade);
@@ -1821,7 +1832,7 @@ export class AddonModQuizProvider {
      * @param preflightData Preflight required data (like password).
      * @param offline Whether attempt is offline.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved in success, rejected otherwise.
+     * @returns Promise resolved in success, rejected otherwise.
      */
     async saveAttempt(
         quiz: AddonModQuizQuizWSData,
@@ -1851,7 +1862,7 @@ export class AddonModQuizProvider {
      * @param data Data to save.
      * @param preflightData Preflight required data (like password).
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved in success, rejected otherwise.
+     * @returns Promise resolved in success, rejected otherwise.
      */
     protected async saveAttemptOnline(
         attemptId: number,
@@ -1888,7 +1899,7 @@ export class AddonModQuizProvider {
      * @param rules List of active rules names.
      * @param attempt Attempt.
      * @param endTime The attempt end time (in seconds).
-     * @return Whether time left should be displayed.
+     * @returns Whether time left should be displayed.
      */
     shouldShowTimeLeft(rules: string[], attempt: AddonModQuizAttemptWSData, endTime: number): boolean {
         const timeNow = CoreTimeUtils.timestamp();
@@ -1907,7 +1918,7 @@ export class AddonModQuizProvider {
      * @param preflightData Preflight required data (like password).
      * @param forceNew Whether to force a new attempt or not.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the attempt data.
+     * @returns Promise resolved with the attempt data.
      */
     async startAttempt(
         quizId: number,
@@ -2043,7 +2054,7 @@ export type AddonModQuizAttemptWSData = {
     timemodified?: number; // Last modified time.
     timemodifiedoffline?: number; // Last modified time via webservices.
     timecheckstate?: number; // Next time quiz cron should check attempt for state changes. NULL means never check.
-    sumgrades?: number | null; // Total marks for this attempt.
+    sumgrades?: SafeNumber | null; // Total marks for this attempt.
 };
 
 /**
@@ -2294,7 +2305,7 @@ export type AddonModQuizGetUserBestGradeWSParams = {
  */
 export type AddonModQuizGetUserBestGradeWSResponse = {
     hasgrade: boolean; // Whether the user has a grade on the given quiz.
-    grade?: number; // The grade (only if the user has a grade).
+    grade?: SafeNumber; // The grade (only if the user has a grade).
     gradetopass?: number; // @since 3.11. The grade to pass the quiz (only if set).
     warnings?: CoreWSExternalWarning[];
 };

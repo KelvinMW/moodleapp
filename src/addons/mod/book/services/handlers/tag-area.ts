@@ -17,6 +17,7 @@ import { CoreCourse } from '@features/course/services/course';
 import { CoreTagFeedComponent } from '@features/tag/components/feed/feed';
 import { CoreTagAreaHandler } from '@features/tag/services/tag-area-delegate';
 import { CoreTagFeedElement, CoreTagHelper } from '@features/tag/services/tag-helper';
+import { CoreSitesReadingStrategy } from '@services/sites';
 import { CoreUrlUtils } from '@services/utils/url';
 import { makeSingleton } from '@singletons';
 import { AddonModBook } from '../book';
@@ -33,7 +34,7 @@ export class AddonModBookTagAreaHandlerService implements CoreTagAreaHandler {
     /**
      * Whether or not the handler is enabled on a site level.
      *
-     * @return Whether or not the handler is enabled on a site level.
+     * @returns Whether or not the handler is enabled on a site level.
      */
     isEnabled(): Promise<boolean> {
         return AddonModBook.isPluginEnabled();
@@ -43,22 +44,23 @@ export class AddonModBookTagAreaHandlerService implements CoreTagAreaHandler {
      * Parses the rendered content of a tag index and returns the items.
      *
      * @param content Rendered content.
-     * @return Area items (or promise resolved with the items).
+     * @returns Area items (or promise resolved with the items).
      */
     async parseContent(content: string): Promise<CoreTagFeedElement[]> {
         const items = CoreTagHelper.parseFeedContent(content);
 
         // Find module ids of the returned books, they are needed by the link delegate.
-        await Promise.all(items.map((item) => {
+        await Promise.all(items.map(async (item) => {
             const params = item.url ? CoreUrlUtils.extractUrlParams(item.url) : {};
             if (params.b && !params.id) {
                 const bookId = parseInt(params.b, 10);
 
-                return CoreCourse.getModuleBasicInfoByInstance(bookId, 'book').then((module) => {
-                    item.url += '&id=' + module.id;
-
-                    return;
-                });
+                const module = await CoreCourse.getModuleBasicInfoByInstance(
+                    bookId,
+                    'book',
+                    { readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE },
+                );
+                item.url += '&id=' + module.id;
             }
         }));
 
@@ -68,7 +70,7 @@ export class AddonModBookTagAreaHandlerService implements CoreTagAreaHandler {
     /**
      * Get the component to use to display items.
      *
-     * @return The component (or promise resolved with component) to use, undefined if not found.
+     * @returns The component (or promise resolved with component) to use, undefined if not found.
      */
     getComponent(): Type<unknown> | Promise<Type<unknown>> {
         return CoreTagFeedComponent;

@@ -30,11 +30,14 @@ import { CoreConfig } from '@services/config';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreCourse } from '@features/course/services/course';
 import { ContextLevel, CoreConstants } from '@/core/constants';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { makeSingleton } from '@singletons';
 import { AddonCalendarSyncInvalidateEvent } from './calendar-sync';
 import { AddonCalendarOfflineEventDBRecord } from './database/calendar-offline';
 import { CoreCategoryData } from '@features/courses/services/courses';
+import { CoreTimeUtils } from '@services/utils/time';
+import { CoreReminders, CoreRemindersService } from '@features/reminders/services/reminders';
+import { CoreCourseModuleDelegate } from '@features/course/services/module-delegate';
 
 /**
  * Context levels enumeration.
@@ -59,9 +62,9 @@ export class AddonCalendarHelperProvider {
      * Returns event icon based on event type.
      *
      * @param eventType Type of the event.
-     * @return Event icon.
+     * @returns Event icon.
      */
-    getEventIcon(eventType: AddonCalendarEventType): string {
+    getEventIcon(eventType: AddonCalendarEventType | string): string {
         if (this.eventTypeIcons.length == 0) {
             CoreUtils.enumKeys(AddonCalendarEventType).forEach((name) => {
                 const value = AddonCalendarEventType[name];
@@ -99,7 +102,7 @@ export class AddonCalendarHelperProvider {
      *
      * @param courseId Course ID. If not defined, site calendar.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with boolean: whether the user can create events.
+     * @returns Promise resolved with boolean: whether the user can create events.
      */
     async canEditEvents(courseId?: number, siteId?: string): Promise<boolean> {
         try {
@@ -120,8 +123,8 @@ export class AddonCalendarHelperProvider {
      * Classify events into their respective months and days. If an event duration covers more than one day,
      * it will be included in all the days it lasts.
      *
-     * @param events Events to classify.
-     * @return Object with the classified events.
+     * @param offlineEvents Events to classify.
+     * @returns Object with the classified events.
      */
     classifyIntoMonths(
         offlineEvents: AddonCalendarOfflineEventDBRecord[],
@@ -133,12 +136,12 @@ export class AddonCalendarHelperProvider {
         const result = {};
 
         events.forEach((event) => {
-            const treatedDay = moment(new Date(event.timestart * 1000));
-            const endDay = moment(new Date((event.timestart + event.timeduration) * 1000));
+            const treatedDay = moment(event.timestart * 1000);
+            const endDay = moment((event.timestart + event.timeduration) * 1000);
 
             // Add the event to all the days it lasts.
             while (!treatedDay.isAfter(endDay, 'day')) {
-                const monthId = this.getMonthId(treatedDay.year(), treatedDay.month() + 1);
+                const monthId = this.getMonthId(treatedDay);
                 const day = treatedDay.date();
 
                 if (!result[monthId]) {
@@ -160,8 +163,11 @@ export class AddonCalendarHelperProvider {
      * Convenience function to format some event data to be rendered.
      *
      * @param event Event to format.
+     * @returns The formatted event to display.
      */
-    formatEventData(event: AddonCalendarEvent | AddonCalendarEventBase | AddonCalendarGetEventsEvent): AddonCalendarEventToDisplay {
+    async formatEventData(
+        event: AddonCalendarEvent | AddonCalendarEventBase | AddonCalendarGetEventsEvent,
+    ): Promise<AddonCalendarEventToDisplay> {
 
         const eventFormatted: AddonCalendarEventToDisplay = {
             ...event,
@@ -173,10 +179,14 @@ export class AddonCalendarHelperProvider {
             format: 1,
             visible: 1,
             offline: false,
+            purpose: 'purpose' in event ? event.purpose : undefined,
         };
 
         if (event.modulename) {
-            eventFormatted.eventIcon = CoreCourse.getModuleIconSrc(event.modulename);
+            eventFormatted.eventIcon = await CoreCourseModuleDelegate.getModuleIconSrc(
+                event.modulename,
+                'icon' in event ? event.icon.iconurl : undefined,
+            );
             eventFormatted.moduleIcon = eventFormatted.eventIcon;
             eventFormatted.iconTitle = CoreCourse.translateModuleName(event.modulename);
         }
@@ -213,12 +223,13 @@ export class AddonCalendarHelperProvider {
     /**
      * Convenience function to format some event data to be rendered.
      *
-     * @param e Event to format.
+     * @param event Event to format.
+     * @returns The formatted offline event to display.
      */
     formatOfflineEventData(event: AddonCalendarOfflineEventDBRecord): AddonCalendarEventToDisplay {
 
         const eventFormatted: AddonCalendarEventToDisplay = {
-            id: event.id!,
+            id: event.id,
             name: event.name,
             timestart: event.timestart,
             eventtype: event.eventtype,
@@ -241,6 +252,8 @@ export class AddonCalendarHelperProvider {
             format: 1,
             visible: 1,
             offline: true,
+            canedit: event.id < 0,
+            candelete: event.id < 0,
             timeduration: 0,
         };
 
@@ -281,10 +294,89 @@ export class AddonCalendarHelperProvider {
     }
 
     /**
+     * Format reminders, adding calculated data.
+     *
+     * @param reminders Reminders.
+     * @param timestart Event timestart.
+     * @param siteId Site ID.
+     * @returns Formatted reminders.
+     * @deprecated since 4.1 Use AddonCalendarHelper.getEventReminders.
+     */
+    async formatReminders(
+        reminders: { eventid: number }[],
+        timestart: number,
+        siteId?: string,
+    ): Promise<AddonCalendarEventReminder[]> {
+        if (!reminders.length) {
+            return [];
+        }
+
+        return AddonCalendarHelper.getEventReminders(reminders[0].eventid, timestart, siteId);
+    }
+
+    /**
+     * Format reminders, adding calculated data.
+     *
+     * @param eventId Event Id.
+     * @param eventTimestart Event timestart.
+     * @param siteId Site ID.
+     * @returns Formatted reminders.
+     */
+    async getEventReminders(
+        eventId: number,
+        eventTimestart: number,
+        siteId?: string,
+    ): Promise<AddonCalendarEventReminder[]> {
+        const reminders = await CoreReminders.getReminders(
+            {
+                instanceId: eventId,
+                component: AddonCalendarProvider.COMPONENT,
+            },
+            siteId,
+        );
+
+        if (!reminders.length) {
+            return [];
+        }
+
+        const defaultTime = await CoreReminders.getDefaultNotificationTime(siteId);
+        let defaultLabel: string | undefined;
+
+        if (defaultTime > CoreRemindersService.DISABLED) {
+            const data = CoreRemindersService.convertSecondsToValueAndUnit(defaultTime);
+            defaultLabel = CoreReminders.getUnitValueLabel(data.value, data.unit, true);
+        }
+
+        return reminders.map((reminder) => {
+            const formatted: AddonCalendarEventReminder = {
+                id: reminder.id,
+            };
+
+            if (reminder.timebefore === CoreRemindersService.DEFAULT_REMINDER_TIMEBEFORE) {
+                // Default time. Check if default notifications are disabled.
+                if (defaultLabel !== undefined) {
+                    formatted.label = defaultLabel;
+                    formatted.timestamp = eventTimestart - defaultTime;
+                }
+            } else {
+                const data = CoreRemindersService.convertSecondsToValueAndUnit(reminder.timebefore);
+                formatted.label = CoreReminders.getUnitValueLabel(data.value, data.unit, false);
+                formatted.timestamp = eventTimestart - reminder.timebefore;
+            }
+
+            if (formatted.timestamp) {
+                formatted.sublabel = CoreTimeUtils.userDate(formatted.timestamp * 1000, 'core.strftimedatetime');
+            }
+
+            return formatted;
+        });
+    }
+
+    /**
      * Get options (name & value) for each allowed event type.
      *
      * @param eventTypes Result of getAllowedEventTypes.
-     * @return Options.
+     * @returns Options.
      */
     getEventTypeOptions(eventTypes: {[name: string]: boolean}): AddonCalendarEventTypeOption[] {
         const options: AddonCalendarEventTypeOption[] = [];
@@ -309,14 +401,23 @@ export class AddonCalendarHelperProvider {
     }
 
     /**
-     * Get the month "id" (year + month).
+     * Get the month "id".
      *
-     * @param year Year.
-     * @param month Month.
-     * @return The "id".
+     * @param moment Month moment.
+     * @returns The "id".
      */
-    getMonthId(year: number, month: number): string {
-        return year + '#' + month;
+    getMonthId(moment: moment.Moment): string {
+        return `${moment.year()}#${moment.month() + 1}`;
+    }
+
+    /**
+     * Get the day "id".
+     *
+     * @param moment Day moment.
+     * @returns The "id".
+     */
+    getDayId(moment: moment.Moment): string {
+        return `${this.getMonthId(moment)}#${moment.date()}`;
     }
 
     /**
@@ -327,22 +428,22 @@ export class AddonCalendarHelperProvider {
      * @param year Year to get.
      * @param month Month to get.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      */
     async getOfflineMonthWeeks(
         year: number,
         month: number,
         siteId?: string,
-    ): Promise<{ daynames: Partial<AddonCalendarDayName>[]; weeks: Partial<AddonCalendarWeek>[] }> {
+    ): Promise<{ daynames: Partial<AddonCalendarDayName>[]; weeks: AddonCalendarWeek[] }> {
         const site = await CoreSites.getSite(siteId);
         // Get starting week day user preference, fallback to site configuration.
-        let startWeekDayStr = site.getStoredConfig('calendar_startwday');
+        let startWeekDayStr = site.getStoredConfig('calendar_startwday') || '1';
         startWeekDayStr = await CoreConfig.get(AddonCalendarProvider.STARTING_WEEK_DAY, startWeekDayStr);
         const startWeekDay = parseInt(startWeekDayStr, 10);
 
         const today = moment();
         const isCurrentMonth = today.year() == year && today.month() == month - 1;
-        const weeks: Partial<AddonCalendarWeek>[] = [];
+        const weeks: AddonCalendarWeek[] = [];
 
         let date = moment({ year, month: month - 1, date: 1 });
         for (let mday = 1; mday <= date.daysInMonth(); mday++) {
@@ -369,7 +470,7 @@ export class AddonCalendarHelperProvider {
             }
 
             // Add day to current week.
-            weeks[weeks.length - 1].days!.push({
+            weeks[weeks.length - 1].days.push({
                 events: [],
                 hasevents: false,
                 mday: date.date(),
@@ -402,7 +503,7 @@ export class AddonCalendarHelperProvider {
      *
      * @param data Current data.
      * @param original Original data.
-     * @return True if data has changed, false otherwise.
+     * @returns True if data has changed, false otherwise.
      */
     hasEventDataChanged(data: AddonCalendarOfflineEventDBRecord, original?: AddonCalendarOfflineEventDBRecord): boolean {
         if (!original) {
@@ -444,15 +545,15 @@ export class AddonCalendarHelperProvider {
      * @param events Events without filtering.
      * @param filter Filter from popover.
      * @param categories Categories indexed by ID.
-     * @return Filtered events.
+     * @returns Filtered events.
      */
     getFilteredEvents(
         events: AddonCalendarEventToDisplay[],
-        filter: AddonCalendarFilter,
+        filter: AddonCalendarFilter | undefined,
         categories: { [id: number]: CoreCategoryData },
     ): AddonCalendarEventToDisplay[] {
         // Do not filter.
-        if (!filter.filtered) {
+        if (!filter || !filter.filtered) {
             return events;
         }
 
@@ -473,10 +574,10 @@ export class AddonCalendarHelperProvider {
      * Check if an event should be displayed based on the filter.
      *
      * @param event Event object.
+     * @param categories Categories indexed by ID.
      * @param courseId Course ID to filter.
      * @param categoryId Category ID the course belongs to.
-     * @param categories Categories indexed by ID.
-     * @return Whether it should be displayed.
+     * @returns Whether it should be displayed.
      */
     protected shouldDisplayEvent(
         event: AddonCalendarEventToDisplay,
@@ -484,31 +585,31 @@ export class AddonCalendarHelperProvider {
         courseId: number,
         categoryId?: number,
     ): boolean {
-        if (event.eventtype == 'user' || event.eventtype == 'site') {
+        if (event.eventtype === 'user' || event.eventtype === 'site') {
             // User or site event, display it.
             return true;
         }
 
-        if (event.eventtype == 'category' && categories) {
-            if (!event.categoryid || !Object.keys(categories).length) {
+        if (event.eventtype === 'category' && categories) {
+            if (!event.categoryid || !Object.keys(categories).length || !categoryId) {
                 // We can't tell if the course belongs to the category, display them all.
                 return true;
             }
 
-            if (event.categoryid == categoryId) {
+            if (event.categoryid === categoryId) {
                 // The event is in the same category as the course, display it.
                 return true;
             }
 
             // Check parent categories.
-            let category = categories[categoryId!];
+            let category = categories[categoryId];
             while (category) {
                 if (!category.parent) {
                     // Category doesn't have parent, stop.
                     break;
                 }
 
-                if (event.categoryid == category.parent) {
+                if (event.categoryid === category.parent) {
                     return true;
                 }
                 category = categories[category.parent];
@@ -520,7 +621,7 @@ export class AddonCalendarHelperProvider {
         const eventCourse = (event.course && event.course.id) || event.courseid;
 
         // Show the event if it is from site home or if it matches the selected course.
-        return !!eventCourse && (eventCourse == CoreSites.getCurrentSiteHomeId() || eventCourse == courseId);
+        return !eventCourse || (eventCourse === CoreSites.getCurrentSiteHomeId() || eventCourse === courseId);
     }
 
     /**
@@ -529,7 +630,7 @@ export class AddonCalendarHelperProvider {
      *
      * @param events Events that have been touched and number of times each event is repeated.
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async refreshAfterChangeEvents(events: AddonCalendarSyncInvalidateEvent[], siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -565,7 +666,7 @@ export class AddonCalendarHelperProvider {
                     await AddonCalendar.getLocalEventsByRepeatIdFromLocalDb(eventData.repeatid, site.id);
 
                 await CoreUtils.allPromises(repeatedEvents.map((event) =>
-                    AddonCalendar.invalidateEvent(event.id!)));
+                    AddonCalendar.invalidateEvent(event.id)));
 
                 return;
             }
@@ -592,10 +693,10 @@ export class AddonCalendarHelperProvider {
             const finalPromises: Promise<unknown>[] =[AddonCalendar.invalidateAllUpcomingEvents()];
 
             // Fetch months and days.
-            fetchTimestarts.map((fetchTime) => {
-                const day = moment(new Date(fetchTime * 1000));
+            fetchTimestarts.forEach((fetchTime) => {
+                const day = moment(fetchTime * 1000);
 
-                const monthId = this.getMonthId(day.year(), day.month() + 1);
+                const monthId = this.getMonthId(day);
                 if (!treatedMonths[monthId]) {
                     // Month not refetch or invalidated already, do it now.
                     treatedMonths[monthId] = true;
@@ -628,10 +729,10 @@ export class AddonCalendarHelperProvider {
             });
 
             // Invalidate months and days.
-            invalidateTimestarts.map((fetchTime) => {
-                const day = moment(new Date(fetchTime * 1000));
+            invalidateTimestarts.forEach((fetchTime) => {
+                const day = moment(fetchTime * 1000);
 
-                const monthId = this.getMonthId(day.year(), day.month() + 1);
+                const monthId = this.getMonthId(day);
                 if (!treatedMonths[monthId]) {
                     // Month not refetch or invalidated already, do it now.
                     treatedMonths[monthId] = true;
@@ -664,11 +765,11 @@ export class AddonCalendarHelperProvider {
      * @param event Event that has been touched.
      * @param repeated Number of times the event is repeated.
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     refreshAfterChangeEvent(
         event: {
-            id?: number;
+            id: number;
             repeatid?: number;
             timestart: number;
         },
@@ -677,7 +778,7 @@ export class AddonCalendarHelperProvider {
     ): Promise<void> {
         return this.refreshAfterChangeEvents(
             [{
-                id: event.id!,
+                id: event.id,
                 repeatid: event.repeatid,
                 timestart: event.timestart,
                 repeated: repeated,
@@ -690,6 +791,7 @@ export class AddonCalendarHelperProvider {
      * Sort events by timestart.
      *
      * @param events List to sort.
+     * @returns Events sorted.
      */
     sortEvents(events: (AddonCalendarEventToDisplay)[]): (AddonCalendarEventToDisplay)[] {
         return events.sort((a, b) => {
@@ -722,4 +824,14 @@ export type AddonCalendarFilter = {
 export type AddonCalendarEventTypeOption = {
     name: string;
     value: AddonCalendarEventType;
+};
+
+/**
+ * Formatted event reminder.
+ */
+export type AddonCalendarEventReminder = {
+    id: number;
+    timestamp?: number; // Timestamp (in seconds).
+    label?: string; // Label to represent the reminder.
+    sublabel?: string; // Sub label.
 };

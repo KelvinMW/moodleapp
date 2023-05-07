@@ -16,9 +16,11 @@ import { Injectable } from '@angular/core';
 import { CoreComments } from '@features/comments/services/comments';
 import { CoreCourseActivityPrefetchHandlerBase } from '@features/course/classes/activity-prefetch-handler';
 import { CoreCourse, CoreCourseAnyModuleData } from '@features/course/services/course';
+import { CoreCourses } from '@features/courses/services/courses';
 import { CoreUser } from '@features/user/services/user';
 import { CoreFilepool } from '@services/filepool';
-import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
+import { CoreSitesReadingStrategy } from '@services/sites';
+import { CoreUtils } from '@services/utils/utils';
 import { CoreWSFile } from '@services/ws';
 import { makeSingleton } from '@singletons';
 import { AddonModGlossary, AddonModGlossaryEntry, AddonModGlossaryGlossary, AddonModGlossaryProvider } from '../glossary';
@@ -43,7 +45,7 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
             const glossary = await AddonModGlossary.getGlossary(courseId, module.id);
 
             const entries = await AddonModGlossary.fetchAllEntries(
-                AddonModGlossary.getEntriesByLetter.bind(AddonModGlossary.instance, glossary.id, 'ALL'),
+                (options) => AddonModGlossary.getEntriesByLetter(glossary.id, options),
                 {
                     cmId: module.id,
                 },
@@ -62,7 +64,7 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
      * @param module Module to get the files.
      * @param glossary Glossary
      * @param entries Entries of the Glossary.
-     * @return List of Files.
+     * @returns List of Files.
      */
     protected getFilesFromGlossaryAndEntries(
         module: CoreCourseAnyModuleData,
@@ -71,16 +73,12 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
     ): CoreWSFile[] {
         let files = this.getIntroFilesFromInstance(module, glossary);
 
-        const getInlineFiles = CoreSites.getCurrentSite()?.isVersionGreaterEqualThan('3.2');
-
         // Get entries files.
         entries.forEach((entry) => {
             files = files.concat(entry.attachments || []);
 
-            if (getInlineFiles && entry.definitioninlinefiles && entry.definitioninlinefiles.length) {
+            if (entry.definitioninlinefiles && entry.definitioninlinefiles.length) {
                 files = files.concat(entry.definitioninlinefiles);
-            } else if (entry.definition && !getInlineFiles) {
-                files = files.concat(CoreFilepool.extractDownloadableFilesFromHtmlAsFakeFileObjects(entry.definition));
             }
         });
 
@@ -98,7 +96,7 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
      * @inheritdoc
      */
     prefetch(module: CoreCourseAnyModuleData, courseId: number): Promise<void> {
-        return this.prefetchPackage(module, courseId, this.prefetchGlossary.bind(this, module, courseId));
+        return this.prefetchPackage(module, courseId, (siteId) => this.prefetchGlossary(module, courseId, siteId));
     }
 
     /**
@@ -107,7 +105,7 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
      * @param module The module object returned by WS.
      * @param courseId Course ID the module belongs to.
      * @param siteId Site ID.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async prefetchGlossary(module: CoreCourseAnyModuleData, courseId: number, siteId: string): Promise<void> {
         const options = {
@@ -127,43 +125,23 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
                     break;
                 case 'cat':
                     promises.push(AddonModGlossary.fetchAllEntries(
-                        AddonModGlossary.getEntriesByCategory.bind(
-                            AddonModGlossary.instance,
-                            glossary.id,
-                            AddonModGlossaryProvider.SHOW_ALL_CATEGORIES,
-                        ),
+                        (newOptions) => AddonModGlossary.getEntriesByCategory(glossary.id, newOptions),
                         options,
                     ));
                     break;
                 case 'date':
                     promises.push(AddonModGlossary.fetchAllEntries(
-                        AddonModGlossary.getEntriesByDate.bind(
-                            AddonModGlossary.instance,
-                            glossary.id,
-                            'CREATION',
-                            'DESC',
-                        ),
+                        (newOptions) => AddonModGlossary.getEntriesByDate(glossary.id, 'CREATION', newOptions),
                         options,
                     ));
                     promises.push(AddonModGlossary.fetchAllEntries(
-                        AddonModGlossary.getEntriesByDate.bind(
-                            AddonModGlossary.instance,
-                            glossary.id,
-                            'UPDATE',
-                            'DESC',
-                        ),
+                        (newOptions) => AddonModGlossary.getEntriesByDate(glossary.id, 'UPDATE', newOptions),
                         options,
                     ));
                     break;
                 case 'author':
                     promises.push(AddonModGlossary.fetchAllEntries(
-                        AddonModGlossary.getEntriesByAuthor.bind(
-                            AddonModGlossary.instance,
-                            glossary.id,
-                            'ALL',
-                            'LASTNAME',
-                            'ASC',
-                        ),
+                        (newOptions) => AddonModGlossary.getEntriesByAuthor(glossary.id, newOptions),
                         options,
                     ));
                     break;
@@ -173,7 +151,7 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
 
         // Fetch all entries to get information from.
         promises.push(AddonModGlossary.fetchAllEntries(
-            AddonModGlossary.getEntriesByLetter.bind(AddonModGlossary.instance, glossary.id, 'ALL'),
+            (newOptions) => AddonModGlossary.getEntriesByLetter(glossary.id, newOptions),
             options,
         ).then((entries) => {
             const promises: Promise<unknown>[] = [];
@@ -207,8 +185,11 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
         promises.push(AddonModGlossary.getAllCategories(glossary.id, options));
 
         // Prefetch data for link handlers.
-        promises.push(CoreCourse.getModuleBasicInfo(module.id, siteId));
-        promises.push(CoreCourse.getModuleBasicInfoByInstance(glossary.id, 'glossary', siteId));
+        promises.push(CoreCourse.getModuleBasicInfo(module.id, { siteId }));
+        promises.push(CoreCourse.getModuleBasicInfoByInstance(glossary.id, 'glossary', { siteId }));
+
+        // Get course data, needed to determine upload max size if it's configured to be course limit.
+        promises.push(CoreUtils.ignoreErrors(CoreCourses.getCourseByField('id', courseId, siteId)));
 
         await Promise.all(promises);
     }
@@ -218,7 +199,7 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
      */
     async sync(module: CoreCourseAnyModuleData, courseId: number, siteId?: string): Promise<AddonModGlossarySyncResult> {
         const results = await Promise.all([
-            AddonModGlossarySync.syncGlossaryEntries(module.instance!, undefined, siteId),
+            AddonModGlossarySync.syncGlossaryEntries(module.instance, undefined, siteId),
             AddonModGlossarySync.syncRatings(module.id, undefined, siteId),
         ]);
 

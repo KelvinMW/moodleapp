@@ -36,7 +36,7 @@ export class AddonModQuizReviewLinkHandlerService extends CoreContentLinksHandle
      * @param params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
      * @param courseId Course ID related to the URL. Optional but recommended.
      * @param data Extra data to handle the URL.
-     * @return List of (or promise resolved with list of) actions.
+     * @returns List of (or promise resolved with list of) actions.
      */
 
     getActions(
@@ -46,17 +46,13 @@ export class AddonModQuizReviewLinkHandlerService extends CoreContentLinksHandle
         courseId?: number,
         data?: Record<string, unknown>,
     ): CoreContentLinksAction[] | Promise<CoreContentLinksAction[]> {
-
-        courseId = Number(courseId || params.courseid || params.cid);
-        data = data || {};
+        const quizId = data?.instance ? Number(data.instance) : undefined;
 
         return [{
             action: (siteId): void => {
                 const attemptId = parseInt(params.attempt, 10);
                 const page = parseInt(params.page, 10);
-                const quizId = data!.instance ? Number(data!.instance) : undefined;
-
-                AddonModQuizHelper.handleReviewLink(attemptId, page, courseId, quizId, siteId);
+                AddonModQuizHelper.handleReviewLink(attemptId, page, quizId, siteId);
             },
         }];
     }

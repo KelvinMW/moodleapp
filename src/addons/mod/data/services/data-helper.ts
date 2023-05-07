@@ -18,8 +18,8 @@ import { CoreCourse } from '@features/course/services/course';
 import { CoreFileUploader, CoreFileUploaderStoreFilesResult } from '@features/fileuploader/services/fileuploader';
 import { CoreRatingOffline } from '@features/rating/services/rating-offline';
 import { FileEntry } from '@ionic-native/file/ngx';
-import { CoreSites } from '@services/sites';
-import { CoreDomUtils } from '@services/utils/dom';
+import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
+import { CoreDomUtils, ToastDuration } from '@services/utils/dom';
 import { CoreFormFields } from '@singletons/form';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
@@ -57,7 +57,7 @@ export class AddonModDataHelperProvider {
      * @param record Entry to modify.
      * @param offlineActions Offline data with the actions done.
      * @param fields Entry defined fields indexed by fieldid.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async applyOfflineActions(
         record: AddonModDataEntry,
@@ -86,7 +86,7 @@ export class AddonModDataHelperProvider {
                     record.groupid = action.groupid;
 
                     action.fields.forEach((offlineContent) => {
-                        if (typeof offlineContents[offlineContent.fieldid] == 'undefined') {
+                        if (offlineContents[offlineContent.fieldid] === undefined) {
                             offlineContents[offlineContent.fieldid] = {};
                         }
 
@@ -173,7 +173,11 @@ export class AddonModDataHelperProvider {
 
             CoreEvents.trigger(AddonModDataProvider.ENTRY_CHANGED, { dataId: dataId, entryId: entryId }, siteId);
 
-            CoreDomUtils.showToast(approve ? 'addon.mod_data.recordapproved' : 'addon.mod_data.recorddisapproved', true, 3000);
+            CoreDomUtils.showToast(
+                approve ? 'addon.mod_data.recordapproved' : 'addon.mod_data.recorddisapproved',
+                true,
+                ToastDuration.LONG,
+            );
         } catch {
             // Ignore error, it was already displayed.
         } finally {
@@ -187,18 +191,19 @@ export class AddonModDataHelperProvider {
      * @param template Template HMTL.
      * @param fields Fields that defines every content in the entry.
      * @param entry Entry.
-     * @param offset Entry offset.
      * @param mode Mode list or show.
      * @param actions Actions that can be performed to the record.
-     * @return Generated HTML.
+     * @param options Show fields options (sortBy, offset, etc).
+     *
+     * @returns Generated HTML.
      */
     displayShowFields(
         template: string,
         fields: AddonModDataField[],
         entry: AddonModDataEntry,
-        offset = 0,
         mode: AddonModDataTemplateMode,
         actions: Record<AddonModDataAction, boolean>,
+        options: AddonModDatDisplayFieldsOptions = {},
     ): string {
 
         if (!template) {
@@ -213,32 +218,62 @@ export class AddonModDataHelperProvider {
 
             // Replace field by a generic directive.
             const render = '<addon-mod-data-field-plugin [field]="fields[' + field.id + ']" [value]="entries[' + entry.id +
-                    '].contents[' + field.id + ']" mode="' + mode + '" [database]="database" (gotoEntry)="gotoEntry(' + entry.id +
-                    ')"></addon-mod-data-field-plugin>';
+                    '].contents[' + field.id + ']" mode="' + mode + '" [database]="database" (gotoEntry)="gotoEntry($event)">' +
+                    '</addon-mod-data-field-plugin>';
             template = template.replace(replaceRegex, render);
         });
 
         for (const action in actions) {
             const replaceRegex = new RegExp('##' + action + '##', 'gi');
             // Is enabled?
-            if (actions[action]) {
-                let render = '';
-                if (action == AddonModDataAction.MOREURL) {
-                    // Render more url directly because it can be part of an HTML attribute.
-                    render = CoreSites.getCurrentSite()!.getURL() + '/mod/data/view.php?d={{database.id}}&rid=' + entry.id;
-                } else if (action == 'approvalstatus') {
-                    render = Translate.instant('addon.mod_data.' + (entry.approved ? 'approved' : 'notapproved'));
-                } else {
-                    render = '<addon-mod-data-action action="' + action + '" [entry]="entries[' + entry.id + ']" mode="' + mode +
-                    '" [database]="database" [module]="module" [offset]="' + offset + '" [group]="group" ></addon-mod-data-action>';
-                }
-                template = template.replace(replaceRegex, render);
-            } else {
+            if (!actions[action]) {
                 template = template.replace(replaceRegex, '');
+
+                continue;
             }
+
+            if (action == AddonModDataAction.MOREURL) {
+                // Render more url directly because it can be part of an HTML attribute.
+                template = template.replace(
+                    replaceRegex,
+                    CoreSites.getRequiredCurrentSite().getURL() + '/mod/data/view.php?d={{database.id}}&rid=' + entry.id,
+                );
+
+                continue;
+            } else if (action == 'approvalstatus') {
+                template = template.replace(
+                    replaceRegex,
+                    Translate.instant('addon.mod_data.' + (entry.approved ? 'approved' : 'notapproved')),
+                );
+
+                continue;
+            }
+
+            template = template.replace(
+                replaceRegex,
+                `<addon-mod-data-action action="${action}" [entry]="entries[${entry.id}]" mode="${mode}" ` +
+                '[database]="database" [access]="access" [title]="title" ' +
+                (options.offset !== undefined ? `[offset]="${options.offset}" ` : '') +
+                (options.sortBy !== undefined ? `[sortBy]="${options.sortBy}" ` : '') +
+                (options.sortDirection !== undefined ? `sortDirection="${options.sortDirection}" ` : '') +
+                '[group]="group"></addon-mod-data-action>',
+            );
         }
 
-        return template;
+        // Replace otherfields found on template.
+        const regex = new RegExp('##otherfields##', 'gi');
+
+        if (!template.match(regex)) {
+            return template;
+        }
+
+        const unusedFields = fields.filter(field => !template.includes(`[field]="fields[${field.id}]`)).map((field) =>
+            `<p><strong>${field.name}</strong></p>` +
+                '<p><addon-mod-data-field-plugin [field]="fields[' + field.id + ']" [value]="entries[' + entry.id +
+                '].contents[' + field.id + ']" mode="' + mode + '" [database]="database" (gotoEntry)="gotoEntry($event)">' +
+                '</addon-mod-data-field-plugin></p>');
+
+        return template.replace(regex, unusedFields.join(''));
     }
 
     /**
@@ -247,7 +282,7 @@ export class AddonModDataHelperProvider {
      * @param database Database object.
      * @param fields The fields that define the contents.
      * @param options Other options.
-     * @return Promise resolved when the database is retrieved.
+     * @returns Promise resolved when the database is retrieved.
      */
     async fetchEntries(
         database: AddonModDataData,
@@ -270,7 +305,7 @@ export class AddonModDataHelperProvider {
             result.hasOfflineActions = !!actions.length;
 
             actions.forEach((action) => {
-                if (typeof offlineActions[action.entryid] == 'undefined') {
+                if (offlineActions[action.entryid] === undefined) {
                     offlineActions[action.entryid] = [];
                 }
                 offlineActions[action.entryid].push(action);
@@ -348,7 +383,7 @@ export class AddonModDataHelperProvider {
      * @param fields List of database fields.
      * @param entryId Entry ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the entry.
+     * @returns Promise resolved with the entry.
      */
     async fetchEntry(
         database: AddonModDataData,
@@ -393,12 +428,13 @@ export class AddonModDataHelperProvider {
      * @param database Database activity.
      * @param accessInfo Access info to the activity.
      * @param entry Entry or record where the actions will be performed.
-     * @return Keyed with the action names and boolean to evalute if it can or cannot be done.
+     * @returns Keyed with the action names and boolean to evalute if it can or cannot be done.
      */
     getActions(
         database: AddonModDataData,
         accessInfo: AddonModDataGetDataAccessInformationWSResponse,
         entry: AddonModDataEntry,
+        mode: AddonModDataTemplateMode,
     ): Record<AddonModDataAction, boolean> {
         return {
             add: false, // Not directly used on entries.
@@ -418,6 +454,10 @@ export class AddonModDataHelperProvider {
             approvalstatus: database.approval,
             comments: database.comments,
 
+            actionsmenu: entry.canmanageentry
+                || (database.approval && accessInfo.canapprove && !entry.deleted)
+                || mode === AddonModDataTemplateMode.LIST,
+
             // Unsupported actions.
             delcheck: false,
             export: false,
@@ -430,14 +470,18 @@ export class AddonModDataHelperProvider {
      * @param dataId Database id.
      * @param courseId Course id, if known.
      * @param siteId Site id, if not set, current site will be used.
-     * @return Resolved with course Id when done.
+     * @returns Resolved with course Id when done.
      */
     protected async getActivityCourseIdIfNotSet(dataId: number, courseId?: number, siteId?: string): Promise<number> {
         if (courseId) {
             return courseId;
         }
 
-        const module = await CoreCourse.getModuleBasicInfoByInstance(dataId, 'data', siteId);
+        const module = await CoreCourse.getModuleBasicInfoByInstance(
+            dataId,
+            'data',
+            { siteId, readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE },
+        );
 
         return module.course;
     }
@@ -449,7 +493,7 @@ export class AddonModDataHelperProvider {
      *
      * @param type Type of template.
      * @param fields List of database fields.
-     * @return Template HTML.
+     * @returns Template HTML.
      */
     getDefaultTemplate(type: AddonModDataTemplateType, fields: AddonModDataField[]): string {
         if (type == AddonModDataTemplateType.LIST_HEADER || type == AddonModDataTemplateType.LIST_FOOTER) {
@@ -485,7 +529,7 @@ export class AddonModDataHelperProvider {
             html.push(
                 '<tr class="lastrow">',
                 '<td class="controls template-field cell c0 lastcol" style="" colspan="2">',
-                '##edit##  ##more##  ##delete##  ##approve##  ##disapprove##  ##export##',
+                '##actionsmenu##  ##edit##  ##more##  ##delete##  ##approve##  ##disapprove##  ##export##',
                 '</td>',
                 '</tr>',
             );
@@ -493,7 +537,7 @@ export class AddonModDataHelperProvider {
             html.push(
                 '<tr class="lastrow">',
                 '<td class="controls template-field cell c0 lastcol" style="" colspan="2">',
-                '##edit##  ##delete##  ##approve##  ##disapprove##  ##export##',
+                '##actionsmenu##  ##edit##  ##delete##  ##approve##  ##disapprove##  ##export##',
                 '</td>',
                 '</tr>',
             );
@@ -534,7 +578,7 @@ export class AddonModDataHelperProvider {
      * @param entryContents Original entry contents.
      * @param offline True to prepare the data for an offline uploading, false otherwise.
      * @param siteId Site ID. If not defined, current site.
-     * @return That contains object with the answers.
+     * @returns That contains object with the answers.
      */
     async getEditDataFromForm(
         inputData: CoreFormFields,
@@ -578,8 +622,8 @@ export class AddonModDataHelperProvider {
                 // WS wants values in JSON format.
                 entryFieldDataToSend.push({
                     fieldid: fieldSubdata.fieldid,
-                    subfield: fieldSubdata.subfield || '',
-                    value: value ? JSON.stringify(value) : '',
+                    subfield: fieldSubdata.subfield ?? '',
+                    value: (value || value === 0) ? JSON.stringify(value) : '',
                 });
 
                 return;
@@ -599,7 +643,7 @@ export class AddonModDataHelperProvider {
      * @param inputData Array with the entered form values.
      * @param fields Fields that defines every content in the entry.
      * @param entryContents Original entry contents indexed by field id.
-     * @return That contains object with the files.
+     * @returns That contains object with the files.
      */
     async getEditTmpFiles(
         inputData: CoreFormFields,
@@ -626,7 +670,7 @@ export class AddonModDataHelperProvider {
      * @param entryId Entry ID or, if creating, timemodified.
      * @param fieldId Field ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the files.
+     * @returns Promise resolved with the files.
      */
     async getStoredFiles(dataId: number, entryId: number, fieldId: number, siteId?: string): Promise<FileEntry[]> {
         const folderPath = await AddonModDataOffline.getEntryFieldFolder(dataId, entryId, fieldId, siteId);
@@ -645,7 +689,7 @@ export class AddonModDataHelperProvider {
      * @param data Database object.
      * @param type Type of template.
      * @param fields List of database fields.
-     * @return Template HTML.
+     * @returns Template HTML.
      */
     getTemplate(data: AddonModDataData, type: AddonModDataTemplateType, fields: AddonModDataField[]): string {
         let template = data[type] || this.getDefaultTemplate(type, fields);
@@ -669,9 +713,8 @@ export class AddonModDataHelperProvider {
      *
      * @param inputData Object with the entered form values.
      * @param fields Fields that defines every content in the entry.
-     * @param dataId Database Id. If set, fils will be uploaded and itemId set.
      * @param entryContents Original entry contents indexed by field id.
-     * @return True if changed, false if not.
+     * @returns True if changed, false if not.
      */
     hasEditDataChanged(
         inputData: CoreFormFields,
@@ -703,7 +746,9 @@ export class AddonModDataHelperProvider {
                     courseId = await this.getActivityCourseIdIfNotSet(dataId, courseId, siteId);
                 }
 
-                AddonModData.deleteEntry(dataId, entryId, courseId!, siteId);
+                if (courseId) {
+                    await AddonModData.deleteEntry(dataId, entryId, courseId, siteId);
+                }
             } catch (message) {
                 CoreDomUtils.showErrorModalDefault(message, 'addon.mod_data.errordeleting', true);
 
@@ -715,13 +760,13 @@ export class AddonModDataHelperProvider {
             try {
                 await AddonModData.invalidateEntryData(dataId, entryId, siteId);
                 await AddonModData.invalidateEntriesData(dataId, siteId);
-            } catch (error) {
+            } catch {
                 // Ignore errors.
             }
 
             CoreEvents.trigger(AddonModDataProvider.ENTRY_CHANGED, { dataId, entryId, deleted: true }, siteId);
 
-            CoreDomUtils.showToast('addon.mod_data.recorddeleted', true, 3000);
+            CoreDomUtils.showToast('addon.mod_data.recorddeleted', true, ToastDuration.LONG);
 
             modal.dismiss();
         } catch {
@@ -739,7 +784,7 @@ export class AddonModDataHelperProvider {
      * @param fieldId Field ID.
      * @param files List of files.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if success, rejected otherwise.
+     * @returns Promise resolved if success, rejected otherwise.
      */
     async storeFiles(
         dataId: number,
@@ -764,7 +809,7 @@ export class AddonModDataHelperProvider {
      * @param files List of files.
      * @param offline True if files sould be stored for offline, false to upload them.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the itemId for the uploaded file/s.
+     * @returns Promise resolved with the itemId for the uploaded file/s.
      */
     async uploadOrStoreFiles(
         dataId: number,
@@ -815,3 +860,9 @@ export class AddonModDataHelperProvider {
 
 }
 export const AddonModDataHelper = makeSingleton(AddonModDataHelperProvider);
+
+export type AddonModDatDisplayFieldsOptions = {
+    sortBy?: string | number;
+    sortDirection?: string;
+    offset?: number;
+};

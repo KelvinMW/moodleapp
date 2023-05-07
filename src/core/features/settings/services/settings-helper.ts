@@ -14,6 +14,7 @@
 
 import { Injectable } from '@angular/core';
 import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreCronDelegate } from '@services/cron';
 import { CoreEvents } from '@singletons/events';
 import { CoreFilepool } from '@services/filepool';
@@ -27,6 +28,9 @@ import { CoreDomUtils } from '@services/utils/dom';
 import { CoreCourse } from '@features/course/services/course';
 import { makeSingleton, Translate } from '@singletons';
 import { CoreError } from '@classes/errors/error';
+import { Observable, Subject } from 'rxjs';
+import { CoreTextUtils } from '@services/utils/text';
+import { CoreNavigator } from '@services/navigator';
 
 /**
  * Object with space usage and cache entries that can be erased.
@@ -49,8 +53,8 @@ export const enum CoreColorScheme {
  * Constants to define zoom levels.
  */
 export const enum CoreZoomLevel {
-    NORMAL = 'normal',
-    LOW = 'low',
+    NONE = 'none',
+    MEDIUM = 'medium',
     HIGH = 'high',
 }
 
@@ -64,8 +68,9 @@ export class CoreSettingsHelperProvider {
     protected prefersDark?: MediaQueryList;
     protected colorSchemes: CoreColorScheme[] = [];
     protected currentColorScheme = CoreColorScheme.LIGHT;
+    protected darkModeObservable = new Subject<boolean>();
 
-    constructor() {
+    async initialize(): Promise<void> {
         this.prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 
         if (!CoreConstants.CONFIG.forceColorScheme) {
@@ -80,9 +85,9 @@ export class CoreSettingsHelperProvider {
                 }
             };
 
-            CoreEvents.on(CoreEvents.LOGIN, applySiteScheme.bind(this));
+            CoreEvents.on(CoreEvents.LOGIN, () => applySiteScheme());
 
-            CoreEvents.on(CoreEvents.SITE_UPDATED, applySiteScheme.bind(this));
+            CoreEvents.on(CoreEvents.SITE_UPDATED, () => applySiteScheme());
 
             CoreEvents.on(CoreEvents.LOGOUT, () => {
                 // Reset color scheme settings.
@@ -93,15 +98,22 @@ export class CoreSettingsHelperProvider {
         }
 
         // Listen for changes to the prefers-color-scheme media query.
-        this.prefersDark.addEventListener && this.prefersDark.addEventListener('change', this.toggleDarkModeListener.bind(this));
+        this.prefersDark.addEventListener && this.prefersDark.addEventListener('change', () => {
+            this.setColorScheme(this.currentColorScheme);
+        });
+
+        // Init zoom level.
+        await this.upgradeZoomLevel();
+
+        this.initDomSettings();
     }
 
     /**
      * Deletes files of a site and the tables that can be cleared.
      *
      * @param siteName Site Name.
-     * @param siteId: Site ID.
-     * @return Resolved with detailed new info when done.
+     * @param siteId Site ID.
+     * @returns Resolved with detailed new info when done.
      */
     async deleteSiteStorage(siteName: string, siteId: string): Promise<CoreSiteSpaceUsage> {
         const siteInfo: CoreSiteSpaceUsage = {
@@ -111,10 +123,13 @@ export class CoreSettingsHelperProvider {
 
         siteName = await CoreFilter.formatText(siteName, { clean: true, singleLine: true, filter: false }, [], siteId);
 
-        const title = Translate.instant('core.settings.deletesitefilestitle');
-        const message = Translate.instant('core.settings.deletesitefiles', { sitename: siteName });
+        const title = Translate.instant('addon.storagemanager.confirmdeleteallsitedata');
 
-        await CoreDomUtils.showConfirm(message, title);
+        await CoreDomUtils.showDeleteConfirm(
+            'addon.storagemanager.deleteallsitedatainfo',
+            { name: siteName },
+            { header:  title },
+        );
 
         const site = await CoreSites.getSite(siteId);
 
@@ -138,7 +153,7 @@ export class CoreSettingsHelperProvider {
                 siteInfo.spaceUsage = 0;
             } else {
                 // Error, recalculate the site usage.
-                CoreDomUtils.showErrorModal('core.settings.errordeletesitefiles', true);
+                CoreDomUtils.showErrorModal('addon.storagemanager.errordeletedownloadeddata', true);
 
                 siteInfo.spaceUsage = await site.getSpaceUsage();
             }
@@ -159,7 +174,7 @@ export class CoreSettingsHelperProvider {
      * Calculates each site's usage, and the total usage.
      *
      * @param siteId ID of the site. Current site if undefined.
-     * @return Resolved with detailed info when done.
+     * @returns Resolved with detailed info when done.
      */
     async getSiteSpaceUsage(siteId?: string): Promise<CoreSiteSpaceUsage> {
         const site = await CoreSites.getSite(siteId);
@@ -180,7 +195,7 @@ export class CoreSettingsHelperProvider {
      * Calculate the number of rows to be deleted on a site.
      *
      * @param site Site object.
-     * @return If there are rows to delete or not.
+     * @returns If there are rows to delete or not.
      */
     protected async calcSiteClearRows(site: CoreSite): Promise<number> {
         const clearTables = CoreSites.getSiteTableSchemasToClear(site);
@@ -199,11 +214,10 @@ export class CoreSettingsHelperProvider {
      * @param processors List of processors.
      * @param name Name of the processor to get.
      * @param fallback True to return first processor if not found, false to not return any. Defaults to true.
-     * @return Processor.
      * @deprecated since 3.9.5. This function has been moved to AddonNotificationsHelperProvider.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    getProcessor(processors: unknown[], name: string, fallback: boolean = true): undefined {
+    getProcessor(processors: unknown[], name: string, fallback: boolean = true): void {
         return;
     }
 
@@ -212,7 +226,7 @@ export class CoreSettingsHelperProvider {
      *
      * @param processorName Name of the processor to filter.
      * @param components Array of components.
-     * @return Filtered components.
+     * @returns Filtered components.
      * @deprecated since 3.9.5. This function has been moved to AddonNotificationsHelperProvider.
      */
     getProcessorComponents(processorName: string, components: unknown[]): unknown[] {
@@ -223,10 +237,10 @@ export class CoreSettingsHelperProvider {
      * Get the synchronization promise of a site.
      *
      * @param siteId ID of the site.
-     * @return Sync promise or null if site is not being syncrhonized.
+     * @returns Sync promise or null if site is not being syncrhonized.
      */
     getSiteSyncPromise(siteId: string): Promise<void> | void {
-        if (this.syncPromises[siteId]) {
+        if (this.syncPromises[siteId] !== undefined) {
             return this.syncPromises[siteId];
         }
     }
@@ -236,10 +250,10 @@ export class CoreSettingsHelperProvider {
      *
      * @param syncOnlyOnWifi True to sync only on wifi, false otherwise.
      * @param siteId ID of the site to synchronize.
-     * @return Promise resolved when synchronized, rejected if failure.
+     * @returns Promise resolved when synchronized, rejected if failure.
      */
     async synchronizeSite(syncOnlyOnWifi: boolean, siteId: string): Promise<void> {
-        if (this.syncPromises[siteId]) {
+        if (this.syncPromises[siteId] !== undefined) {
             // There's already a sync ongoing for this site, return the promise.
             return this.syncPromises[siteId];
         }
@@ -247,13 +261,14 @@ export class CoreSettingsHelperProvider {
         const site = await CoreSites.getSite(siteId);
         const hasSyncHandlers = CoreCronDelegate.hasManualSyncHandlers();
 
+        // All these errors should not happen on manual sync because are prevented on UI.
         if (site.isLoggedOut()) {
             // Cannot sync logged out sites.
             throw new CoreError(Translate.instant('core.settings.cannotsyncloggedout'));
-        } else if (hasSyncHandlers && !CoreApp.isOnline()) {
+        } else if (hasSyncHandlers && !CoreNetwork.isOnline()) {
             // We need connection to execute sync.
             throw new CoreError(Translate.instant('core.settings.cannotsyncoffline'));
-        } else if (hasSyncHandlers && syncOnlyOnWifi && CoreApp.isNetworkAccessLimited()) {
+        } else if (hasSyncHandlers && syncOnlyOnWifi && CoreNetwork.isNetworkAccessLimited()) {
             throw new CoreError(Translate.instant('core.settings.cannotsyncwithoutwifi'));
         }
 
@@ -262,7 +277,6 @@ export class CoreSettingsHelperProvider {
             CoreUtils.ignoreErrors(CoreFilepool.invalidateAllFiles(siteId)),
             // Invalidate and synchronize site data.
             site.invalidateWsCache(),
-            this.checkSiteLocalMobile(site),
             CoreSites.updateSiteInfo(site.getId()),
             CoreCronDelegate.forceSyncExecution(site.getId()),
         // eslint-disable-next-line arrow-body-style
@@ -274,30 +288,11 @@ export class CoreSettingsHelperProvider {
 
         try {
             await syncPromise;
+        } catch (error) {
+            throw CoreTextUtils.addTitleToError(error, Translate.instant('core.settings.sitesyncfailed'));
         } finally {
             delete this.syncPromises[siteId];
         }
-    }
-
-    /**
-     * Check if local_mobile was added to the site.
-     *
-     * @param site Site to check.
-     * @return Promise resolved if no action needed.
-     */
-    protected async checkSiteLocalMobile(site: CoreSite): Promise<void> {
-        try {
-            // Check if local_mobile was installed in Moodle.
-            await site.checkIfLocalMobileInstalledAndNotUsed();
-        } catch {
-            // Not added, nothing to do.
-            return;
-        }
-
-        // Local mobile was added. Throw invalid session to force reconnect and create a new token.
-        CoreEvents.trigger(CoreEvents.SESSION_EXPIRED, {}, site.getId());
-
-        throw new CoreError(Translate.instant('core.lostconnection'));
     }
 
     /**
@@ -307,19 +302,19 @@ export class CoreSettingsHelperProvider {
         // Check old setting and update the new.
         try {
             const fontSize = await CoreConfig.get<number>('CoreSettingsFontSize');
-            if (typeof fontSize == 'undefined') {
+            if (fontSize === undefined) {
                 // Already upgraded.
                 return;
             }
 
             // Reset the value to solve edge cases.
-            CoreConfig.set(CoreConstants.SETTINGS_ZOOM_LEVEL, CoreZoomLevel.NORMAL);
+            CoreConfig.set(CoreConstants.SETTINGS_ZOOM_LEVEL, CoreZoomLevel.NONE);
 
             if (fontSize < 100) {
                 if (fontSize > 90) {
                     CoreConfig.set(CoreConstants.SETTINGS_ZOOM_LEVEL, CoreZoomLevel.HIGH);
                 } else if (fontSize > 70) {
-                    CoreConfig.set(CoreConstants.SETTINGS_ZOOM_LEVEL, CoreZoomLevel.LOW);
+                    CoreConfig.set(CoreConstants.SETTINGS_ZOOM_LEVEL, CoreZoomLevel.MEDIUM);
                 }
             }
 
@@ -333,16 +328,16 @@ export class CoreSettingsHelperProvider {
     /**
      * Get saved Zoom Level setting.
      *
-     * @return The saved zoom Level option.
+     * @returns The saved zoom Level option.
      */
     async getZoomLevel(): Promise<CoreZoomLevel> {
-        return CoreConfig.get(CoreConstants.SETTINGS_ZOOM_LEVEL, CoreZoomLevel.NORMAL);
+        return CoreConfig.get(CoreConstants.SETTINGS_ZOOM_LEVEL, CoreConstants.CONFIG.defaultZoomLevel);
     }
 
     /**
      * Get saved zoom level value.
      *
-     * @return The saved zoom level value in %.
+     * @returns The saved zoom level value in %.
      */
     async getZoom(): Promise<number> {
         const zoomLevel = await this.getZoomLevel();
@@ -378,7 +373,7 @@ export class CoreSettingsHelperProvider {
      * Check if color scheme is disabled in a site.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with whether color scheme is disabled.
+     * @returns Promise resolved with whether color scheme is disabled.
      */
     async isColorSchemeDisabled(siteId?: string): Promise<boolean> {
         const site = await CoreSites.getSite(siteId);
@@ -390,7 +385,7 @@ export class CoreSettingsHelperProvider {
      * Check if color scheme is disabled in a site.
      *
      * @param site Site instance. If not defined, current site.
-     * @return Whether color scheme is disabled.
+     * @returns Whether color scheme is disabled.
      */
     isColorSchemeDisabledInSite(site?: CoreSite): boolean {
         site = site || CoreSites.getCurrentSite();
@@ -405,14 +400,14 @@ export class CoreSettingsHelperProvider {
      */
     applyZoomLevel(zoomLevel: CoreZoomLevel): void {
         const zoom = CoreConstants.CONFIG.zoomlevels[zoomLevel];
-        // @todo Since zoom is deprecated and fontSize is not working, we should do some research here.
-        document.documentElement.style.zoom = zoom + '%';
+
+        document.documentElement.style.setProperty('--zoom-level', zoom + '%');
     }
 
     /**
      * Get system allowed color schemes.
      *
-     * @return Allowed color schemes.
+     * @returns Allowed color schemes.
      */
     getAllowedColorSchemes(): CoreColorScheme[] {
         if (this.colorSchemes.length > 0) {
@@ -459,21 +454,61 @@ export class CoreSettingsHelperProvider {
     }
 
     /**
-     * Listener function to toggle dark mode.
-     */
-    protected toggleDarkModeListener(): void {
-        this.setColorScheme(this.currentColorScheme);
-    };
-
-    /**
      * Toggles dark mode based on enabled boolean.
      *
      * @param enable True to enable dark mode, false to disable.
      */
     protected toggleDarkMode(enable: boolean = false): void {
-        document.body.classList.toggle('dark', enable);
+        const isDark = CoreDomUtils.hasModeClass('dark');
 
-        CoreApp.setStatusBarColor();
+        if (isDark !== enable) {
+            CoreDomUtils.toggleModeClass('dark', enable, { includeLegacy: true });
+            this.darkModeObservable.next(enable);
+
+            CoreApp.setStatusBarColor();
+        }
+    }
+
+    /**
+     * Returns dark mode change observable.
+     *
+     * @returns Dark mode change observable.
+     */
+    onDarkModeChange(): Observable<boolean> {
+        return this.darkModeObservable;
+    }
+
+    /**
+     * Get if user enabled staging sites or not.
+     *
+     * @returns Staging sites.
+     */
+    async hasEnabledStagingSites(): Promise<boolean> {
+        const staging = await CoreConfig.get<number>('stagingSites', 0);
+
+        return !!staging;
+    }
+
+    /**
+     * Persist staging sites enabled status and refresh app to apply changes.
+     *
+     * @param enabled Enabled or disabled staging sites.
+     */
+    async setEnabledStagingSites(enabled: boolean): Promise<void> {
+        const reloadApp = !CoreSites.isLoggedIn();
+
+        if (reloadApp) {
+            await CoreDomUtils.showConfirm('Are you sure that you want to enable/disable staging sites?');
+        }
+
+        await CoreConfig.set('stagingSites', enabled ? 1 : 0);
+
+        if (!reloadApp) {
+            return;
+        }
+
+        await CoreNavigator.navigate('/');
+        window.location.reload();
     }
 
 }

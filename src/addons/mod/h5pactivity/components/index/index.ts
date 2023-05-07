@@ -12,23 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, Optional, OnInit, OnDestroy } from '@angular/core';
+import { Component, Optional, OnInit, OnDestroy, Output, EventEmitter } from '@angular/core';
 import { IonContent } from '@ionic/angular';
 
 import { CoreConstants } from '@/core/constants';
 import { CoreSite } from '@classes/site';
 import { CoreCourseModuleMainActivityComponent } from '@features/course/classes/main-activity-component';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
-import { CoreCourse } from '@features/course/services/course';
 import { CoreH5PDisplayOptions } from '@features/h5p/classes/core';
 import { CoreH5PHelper } from '@features/h5p/classes/helper';
 import { CoreH5P } from '@features/h5p/services/h5p';
 import { CoreXAPIOffline } from '@features/xapi/services/offline';
 import { CoreXAPI } from '@features/xapi/services/xapi';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFilepool } from '@services/filepool';
 import { CoreNavigator } from '@services/navigator';
-import { CoreSites } from '@services/sites';
+import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreWSFile } from '@services/ws';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
@@ -37,6 +36,10 @@ import {
     AddonModH5PActivityAccessInfo,
     AddonModH5PActivityData,
     AddonModH5PActivityProvider,
+    AddonModH5PActivityXAPIPostStateData,
+    AddonModH5PActivityXAPIStateData,
+    AddonModH5PActivityXAPIStatementsData,
+    MOD_H5PACTIVITY_STATE_ID,
 } from '../../services/h5pactivity';
 import {
     AddonModH5PActivitySync,
@@ -45,8 +48,8 @@ import {
 } from '../../services/h5pactivity-sync';
 import { CoreFileHelper } from '@services/file-helper';
 import { AddonModH5PActivityModuleHandlerService } from '../../services/handlers/module';
-import { CoreMainMenuPage } from '@features/mainmenu/pages/menu/menu';
-import { Platform } from '@singletons';
+import { CoreTextUtils } from '@services/utils/text';
+import { CoreUtils } from '@services/utils/utils';
 
 /**
  * Component that displays an H5P activity entry page.
@@ -56,6 +59,8 @@ import { Platform } from '@singletons';
     templateUrl: 'addon-mod-h5pactivity-index.html',
 })
 export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActivityComponent implements OnInit, OnDestroy {
+
+    @Output() onActivityFinish = new EventEmitter<boolean>();
 
     component = AddonModH5PActivityProvider.COMPONENT;
     moduleName = 'h5pactivity';
@@ -79,29 +84,30 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     trackComponent?: string; // Component for tracking.
     hasOffline = false;
     isOpeningPage = false;
+    canViewAllAttempts = false;
+    saveStateEnabled = false;
+    saveFreq?: number;
+    contentState?: string;
 
-    protected listeningResize = false;
     protected fetchContentDefaultError = 'addon.mod_h5pactivity.errorgetactivity';
     protected syncEventName = AddonModH5PActivitySyncProvider.AUTO_SYNCED;
     protected site: CoreSite;
     protected observer?: CoreEventObserver;
     protected messageListenerFunction: (event: MessageEvent) => Promise<void>;
-    protected resizeFunction: () => void;
+    protected checkCompletionAfterLog = false; // It's called later, when the user plays the package.
 
     constructor(
-        protected mainMenuPage: CoreMainMenuPage,
         protected content?: IonContent,
         @Optional() courseContentsPage?: CoreCourseContentsPage,
     ) {
         super('AddonModH5PActivityIndexComponent', content, courseContentsPage);
 
-        this.site = CoreSites.getCurrentSite()!;
+        this.site = CoreSites.getRequiredCurrentSite();
         this.siteCanDownload = this.site.canDownloadFiles() && !CoreH5P.isOfflineDisabledInSite();
 
         // Listen for messages from the iframe.
-        this.messageListenerFunction = this.onIframeMessage.bind(this);
+        this.messageListenerFunction = (event) => this.onIframeMessage(event);
         window.addEventListener('message', this.messageListenerFunction);
-        this.resizeFunction = this.contentResized.bind(this);
     }
 
     /**
@@ -110,74 +116,86 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     async ngOnInit(): Promise<void> {
         super.ngOnInit();
 
-        this.loadContent();
+        this.loadContent(false, true);
     }
 
     /**
      * @inheritdoc
      */
-    protected async fetchContent(refresh: boolean = false, sync: boolean = false, showErrors: boolean = false): Promise<void> {
-        try {
-            this.h5pActivity = await AddonModH5PActivity.getH5PActivity(this.courseId, this.module.id, {
-                siteId: this.siteId,
-            });
+    protected async fetchContent(refresh?: boolean, sync = false, showErrors = false): Promise<void> {
+        // Always show loading and stop playing, the package needs to be reloaded with the latest data.
+        this.showLoading = true;
+        this.playing = false;
 
-            this.dataRetrieved.emit(this.h5pActivity);
-            this.description = this.h5pActivity.intro;
-            this.displayOptions = CoreH5PHelper.decodeDisplayOptions(this.h5pActivity.displayoptions);
+        this.h5pActivity = await AddonModH5PActivity.getH5PActivity(this.courseId, this.module.id, {
+            siteId: this.siteId,
+        });
 
-            if (sync) {
-                await this.syncActivity(showErrors);
-            }
+        this.dataRetrieved.emit(this.h5pActivity);
+        this.description = this.h5pActivity.intro;
+        this.displayOptions = CoreH5PHelper.decodeDisplayOptions(this.h5pActivity.displayoptions);
 
-            await Promise.all([
-                this.checkHasOffline(),
-                this.fetchAccessInfo(),
-                this.fetchDeployedFileData(),
-            ]);
+        if (sync) {
+            await this.syncActivity(showErrors);
+        }
 
-            this.trackComponent = this.accessInfo?.cansubmit ? AddonModH5PActivityProvider.TRACK_COMPONENT : '';
+        await Promise.all([
+            this.checkHasOffline(),
+            this.fetchAccessInfo(),
+            this.fetchDeployedFileData(),
+        ]);
 
-            if (this.h5pActivity.package && this.h5pActivity.package[0]) {
-                // The online player should use the original file, not the trusted one.
-                this.onlinePlayerUrl = CoreH5P.h5pPlayer.calculateOnlinePlayerUrl(
-                    this.site.getURL(),
-                    this.h5pActivity.package[0].fileurl,
-                    this.displayOptions,
-                    this.trackComponent,
-                );
-            }
+        await this.loadContentState(); // Loading the state requires the access info.
 
-            if (!this.siteCanDownload || this.state == CoreConstants.DOWNLOADED) {
-                // Cannot download the file or already downloaded, play the package directly.
-                this.play();
+        this.trackComponent = this.accessInfo?.cansubmit ? AddonModH5PActivityProvider.TRACK_COMPONENT : '';
+        this.canViewAllAttempts = !!this.h5pActivity.enabletracking && !!this.accessInfo?.canreviewattempts &&
+                AddonModH5PActivity.canGetUsersAttemptsInSite();
 
-            } else if ((this.state == CoreConstants.NOT_DOWNLOADED || this.state == CoreConstants.OUTDATED) && CoreApp.isOnline() &&
+        if (this.h5pActivity.package && this.h5pActivity.package[0]) {
+            // The online player should use the original file, not the trusted one.
+            this.onlinePlayerUrl = CoreH5P.h5pPlayer.calculateOnlinePlayerUrl(
+                this.site.getURL(),
+                this.h5pActivity.package[0].fileurl,
+                this.displayOptions,
+                this.trackComponent,
+            );
+        }
+
+        if (!this.siteCanDownload || this.state == CoreConstants.DOWNLOADED) {
+            // Cannot download the file or already downloaded, play the package directly.
+            this.play();
+
+        } else if ((this.state == CoreConstants.NOT_DOWNLOADED || this.state == CoreConstants.OUTDATED) && CoreNetwork.isOnline() &&
                     this.deployedFile?.filesize && CoreFilepool.shouldDownload(this.deployedFile.filesize)) {
-                // Package is small, download it automatically. Don't block this function for this.
-                this.downloadAutomatically();
-            }
-        } finally {
-            this.fillContextMenu(refresh);
+            // Package is small, download it automatically. Don't block this function for this.
+            this.downloadAutomatically();
         }
     }
 
     /**
      * Fetch the access info and store it in the right variables.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async checkHasOffline(): Promise<void> {
-        this.hasOffline = await CoreXAPIOffline.contextHasStatements(this.h5pActivity!.context, this.siteId);
+        if (!this.h5pActivity) {
+            return;
+        }
+
+        this.hasOffline = await CoreXAPIOffline.contextHasData(this.h5pActivity.context, this.siteId);
     }
 
     /**
      * Fetch the access info and store it in the right variables.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchAccessInfo(): Promise<void> {
-        this.accessInfo = await AddonModH5PActivity.getAccessInformation(this.h5pActivity!.id, {
+        if (!this.h5pActivity) {
+            return;
+        }
+
+        this.accessInfo = await AddonModH5PActivity.getAccessInformation(this.h5pActivity.id, {
             cmId: this.module.id,
             siteId: this.siteId,
         });
@@ -186,15 +204,15 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     /**
      * Fetch the deployed file data if needed and store it in the right variables.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchDeployedFileData(): Promise<void> {
-        if (!this.siteCanDownload) {
+        if (!this.siteCanDownload || !this.h5pActivity) {
             // Cannot download the file, no need to fetch the file data.
             return;
         }
 
-        this.deployedFile = await AddonModH5PActivity.getDeployedFile(this.h5pActivity!, {
+        this.deployedFile = await AddonModH5PActivity.getDeployedFile(this.h5pActivity, {
             displayOptions: this.displayOptions,
             siteId: this.siteId,
         });
@@ -214,15 +232,53 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     }
 
     /**
+     * Load the content's state (if enabled and there's any).
+     */
+    protected async loadContentState(): Promise<void> {
+        if (!this.h5pActivity || !this.accessInfo || !AddonModH5PActivity.isSaveStateEnabled(this.h5pActivity, this.accessInfo)) {
+            this.saveStateEnabled = false;
+
+            return;
+        }
+
+        this.saveStateEnabled = true;
+        this.saveFreq = this.h5pActivity.savestatefreq;
+
+        const contentState = await CoreXAPI.getState(
+            AddonModH5PActivityProvider.TRACK_COMPONENT,
+            this.h5pActivity.context,
+            MOD_H5PACTIVITY_STATE_ID,
+            {
+                appComponent: AddonModH5PActivityProvider.COMPONENT,
+                appComponentId: this.h5pActivity.coursemodule,
+                readingStrategy: CoreSitesReadingStrategy.PREFER_NETWORK,
+            },
+        );
+
+        if (contentState === null) {
+            return;
+        }
+
+        const contentStateObj = CoreTextUtils.parseJSON<{h5p: string}>(contentState, { h5p: '{}' });
+
+        // The H5P state doesn't always use JSON, so an h5p property was added to jsonize it.
+        this.contentState = contentStateObj.h5p ?? '{}';
+    }
+
+    /**
      * Calculate the state of the deployed file.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async calculateFileState(): Promise<void> {
+        if (!this.fileUrl || !this.deployedFile) {
+            return;
+        }
+
         this.state = await CoreFilepool.getFileStateByUrl(
             this.site.getId(),
-            this.fileUrl!,
-            this.deployedFile!.timemodified,
+            this.fileUrl,
+            this.deployedFile.timemodified,
         );
 
         this.showFileState();
@@ -264,13 +320,17 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
      * Download the file and play it.
      *
      * @param event Click event.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async downloadAndPlay(event?: MouseEvent): Promise<void> {
         event?.preventDefault();
         event?.stopPropagation();
 
-        if (!CoreApp.isOnline()) {
+        if (!this.deployedFile) {
+            return;
+        }
+
+        if (!CoreNetwork.isOnline()) {
             CoreDomUtils.showErrorModal('core.networkerrormsg', true);
 
             return;
@@ -278,7 +338,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
 
         try {
             // Confirm the download if needed.
-            await CoreDomUtils.confirmDownloadSize({ size: this.deployedFile!.filesize!, total: true });
+            await CoreDomUtils.confirmDownloadSize({ size: this.deployedFile.filesize || 0, total: true });
 
             await this.downloadDeployedFile();
 
@@ -299,7 +359,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     /**
      * Download the file automatically.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async downloadAutomatically(): Promise<void> {
         try {
@@ -316,20 +376,28 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     /**
      * Download athe H5P deployed file or restores an ongoing download.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async downloadDeployedFile(): Promise<void> {
+        if (!this.fileUrl || !this.deployedFile) {
+            return;
+        }
+
+        const deployedFile = this.deployedFile;
         this.downloading = true;
         this.progressMessage = 'core.downloading';
+
+        // Delete offline states when downloading the package because it means the package has changed or user deleted it.
+        this.deleteOfflineStates();
 
         try {
             await CoreFilepool.downloadUrl(
                 this.site.getId(),
-                this.fileUrl!,
+                this.fileUrl,
                 false,
                 this.component,
                 this.componentId,
-                this.deployedFile!.timemodified,
+                deployedFile.timemodified,
                 (data: DownloadProgressData) => {
                     if (!data) {
                         return;
@@ -343,7 +411,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
                         this.progressMessage = data.message;
                     } else if (data.loaded !== undefined) {
                         // Downloading or unzipping.
-                        const totalSize = this.progressMessage == 'core.downloading' ? this.deployedFile!.filesize : data.total;
+                        const totalSize = this.progressMessage == 'core.downloading' ? deployedFile.filesize : data.total;
 
                         if (totalSize !== undefined) {
                             const percentageNumber = (Number(data.loaded / totalSize) * 100);
@@ -365,19 +433,21 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     /**
      * Play the package.
      */
-    play(): void {
+    async play(): Promise<void> {
+        if (!this.h5pActivity) {
+            return;
+        }
+
         this.playing = true;
 
         // Mark the activity as viewed.
-        AddonModH5PActivity.logView(this.h5pActivity!.id, this.h5pActivity!.name, this.siteId);
+        await AddonModH5PActivity.logView(this.h5pActivity.id, this.h5pActivity.name, this.siteId);
 
-        CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-
-        this.setResizeListener();
+        this.checkCompletion();
     }
 
     /**
-     * Go to view user events.
+     * Go to view user attempts.
      */
     async viewMyAttempts(): Promise<void> {
         this.isOpeningPage = true;
@@ -393,13 +463,100 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     }
 
     /**
+     * Go to view all user attempts.
+     */
+    async viewAllAttempts(): Promise<void> {
+        this.isOpeningPage = true;
+
+        try {
+            await CoreNavigator.navigateToSitePath(
+                `${AddonModH5PActivityModuleHandlerService.PAGE_NAME}/${this.courseId}/${this.module.id}/users`,
+            );
+        } finally {
+            this.isOpeningPage = false;
+        }
+    }
+
+    /**
      * Treat an iframe message event.
      *
      * @param event Event.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async onIframeMessage(event: MessageEvent): Promise<void> {
-        if (!event.data || !CoreXAPI.canPostStatementsInSite(this.site) || !this.isCurrentXAPIPost(event.data)) {
+        const data = event.data;
+        if (!data || !this.h5pActivity) {
+            return;
+        }
+
+        if (CoreXAPI.canPostStatementsInSite(this.site) && this.isCurrentXAPIPostStatement(data)) {
+            this.postStatements(data);
+        } else if (this.saveStateEnabled && this.isCurrentXAPIState(data, 'xapi_post_state') && this.isXAPIPostState(data)) {
+            this.postState(data);
+        } else if (this.saveStateEnabled && this.isCurrentXAPIState(data, 'xapi_delete_state')) {
+            this.deleteState(data);
+        }
+    }
+
+    /**
+     * Check if an event is an H5P event meant for this app.
+     *
+     * @param data Event data.
+     * @returns Whether it's an H5P event meant for this app.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    protected isH5PEventForApp(data: any): boolean {
+        return data.environment === 'moodleapp' && data.context === 'h5p';
+    }
+
+    /**
+     * Check if an activity ID (an IRI) belongs to the current activity.
+     *
+     * @param activityId Activity ID (IRI).
+     * @returns Whether it belongs to the current activity.
+     */
+    protected activityIdIsCurrentActivity(activityId?: string): boolean {
+        if (!activityId || !this.h5pActivity) {
+            return false;
+        }
+
+        if (!this.site.containsUrl(activityId)) {
+            // The event belongs to another site, weird scenario. Maybe some JS running in background.
+            return false;
+        }
+
+        const match = activityId.match(/xapi\/activity\/(\d+)/);
+
+        return !!match && Number(match[1]) === this.h5pActivity.context;
+    }
+
+    /**
+     * Check if an event is an XAPI post statement of the current activity.
+     *
+     * @param data Event data.
+     * @returns Whether it's an XAPI post statement of the current activity.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    protected isCurrentXAPIPostStatement(data: any): data is AddonModH5PActivityXAPIStatementsData {
+        if (!this.h5pActivity) {
+            return false;
+        }
+
+        if (!this.isH5PEventForApp(data) || data.action !== 'xapi_post_statement' || !data.statements) {
+            return false;
+        }
+
+        // Check the event belongs to this activity.
+        return this.activityIdIsCurrentActivity(data.statements[0] && data.statements[0].object && data.statements[0].object.id);
+    }
+
+    /**
+     * Post statements.
+     *
+     * @param data Event data.
+     */
+    protected async postStatements(data: AddonModH5PActivityXAPIStatementsData): Promise<void> {
+        if (!this.h5pActivity) {
             return;
         }
 
@@ -407,25 +564,33 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
             const options = {
                 offline: this.hasOffline,
                 courseId: this.courseId,
-                extra: this.h5pActivity!.name,
+                extra: this.h5pActivity.name,
                 siteId: this.site.getId(),
             };
 
             const sent = await CoreXAPI.postStatements(
-                this.h5pActivity!.context,
-                event.data.component,
-                JSON.stringify(event.data.statements),
+                this.h5pActivity.context,
+                data.component,
+                JSON.stringify(data.statements),
                 options,
             );
 
             this.hasOffline = !sent;
+            this.deleteOfflineStates(); // Posting statements means attempt has finished, delete any offline state.
 
             if (sent) {
                 try {
                     // Invalidate attempts.
-                    await AddonModH5PActivity.invalidateUserAttempts(this.h5pActivity!.id, undefined, this.siteId);
-                } catch (error) {
+                    await AddonModH5PActivity.invalidateUserAttempts(this.h5pActivity.id, undefined, this.siteId);
+                } catch {
                     // Ignore errors.
+                }
+
+                // Check if the H5P has ended. Final statements don't include a subContentId.
+                const hasEnded = data.statements.some(statement => !statement.object.id.includes('subContentId='));
+                if (hasEnded) {
+                    this.onActivityFinish.emit(hasEnded);
+                    this.checkCompletion();
                 }
             }
         } catch (error) {
@@ -434,38 +599,111 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     }
 
     /**
-     * Check if an event is an XAPI post statement of the current activity.
+     * Check if an event is an XAPI state event of the current activity.
      *
      * @param data Event data.
-     * @return Whether it's an XAPI post statement of the current activity.
+     * @param action Action to check.
+     * @returns Whether it's an XAPI state event of the current activity.
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    protected isCurrentXAPIPost(data: any): boolean {
-        if (data.environment != 'moodleapp' || data.context != 'h5p' || data.action != 'xapi_post_statement' || !data.statements) {
+    protected isCurrentXAPIState(data: any, action: string): data is AddonModH5PActivityXAPIStateData {
+        if (!this.h5pActivity) {
+            return false;
+        }
+
+        if (!this.isH5PEventForApp(data) || data.action !== action) {
             return false;
         }
 
         // Check the event belongs to this activity.
-        const trackingUrl = data.statements[0] && data.statements[0].object && data.statements[0].object.id;
-        if (!trackingUrl) {
-            return false;
+        return this.activityIdIsCurrentActivity(data.activityId);
+    }
+
+    /**
+     * Check if an xAPI state event data is a post state event.
+     *
+     * @param data Event data.
+     * @returns Whether it's an XAPI post state.
+     */
+    protected isXAPIPostState(data: AddonModH5PActivityXAPIStateData): data is AddonModH5PActivityXAPIPostStateData {
+        return 'stateData' in data;
+    }
+
+    /**
+     * Post state.
+     *
+     * @param data Event data.
+     */
+    protected async postState(data: AddonModH5PActivityXAPIPostStateData): Promise<void> {
+        try {
+            const options = {
+                offline: this.hasOffline,
+                courseId: this.courseId,
+                extra: this.h5pActivity?.name,
+                siteId: this.site.getId(),
+            };
+
+            const sent = await CoreXAPI.postState(
+                data.component,
+                data.activityId,
+                data.agent,
+                data.stateId,
+                data.stateData,
+                options,
+            );
+
+            this.hasOffline = !sent;
+        } catch (error) {
+            CoreDomUtils.showErrorModalDefault(error, 'Error sending tracking data.');
+        }
+    }
+
+    /**
+     * Delete state.
+     *
+     * @param data Event data.
+     */
+    protected async deleteState(data: AddonModH5PActivityXAPIStateData): Promise<void> {
+        try {
+            await CoreXAPI.deleteState(
+                data.component,
+                data.activityId,
+                data.agent,
+                data.stateId,
+                {
+                    siteId: this.site.getId(),
+                },
+            );
+        } catch (error) {
+            CoreDomUtils.showErrorModalDefault(error, 'Error sending tracking data.');
+        }
+    }
+
+    /**
+     * Delete offline states for current activity.
+     */
+    protected async deleteOfflineStates(): Promise<void> {
+        if (!this.h5pActivity) {
+            return;
         }
 
-        if (!this.site.containsUrl(trackingUrl)) {
-            // The event belongs to another site, weird scenario. Maybe some JS running in background.
-            return false;
-        }
-
-        const match = trackingUrl.match(/xapi\/activity\/(\d+)/);
-
-        return match && match[1] == this.h5pActivity!.context;
+        await CoreUtils.ignoreErrors(CoreXAPIOffline.deleteStates(AddonModH5PActivityProvider.TRACK_COMPONENT, {
+            itemId: this.h5pActivity.context,
+        }));
     }
 
     /**
      * @inheritdoc
      */
-    protected sync(): Promise<AddonModH5PActivitySyncResult> {
-        return AddonModH5PActivitySync.syncActivity(this.h5pActivity!.context, this.site.getId());
+    protected async sync(): Promise<AddonModH5PActivitySyncResult> {
+        if (!this.h5pActivity) {
+            return {
+                updated: false,
+                warnings: [],
+            };
+        }
+
+        return AddonModH5PActivitySync.syncActivity(this.h5pActivity.context, this.site.getId());
     }
 
     /**
@@ -476,65 +714,17 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     }
 
     /**
-     * @inheritdoc
-     */
-    async gotoBlog(): Promise<void> {
-        this.isOpeningPage = true;
-
-        try {
-            await super.gotoBlog();
-        } finally {
-            this.isOpeningPage = false;
-        }
-    }
-
-    /**
-     * Set the resize listener if needed.
-     */
-    setResizeListener(): void {
-        if (!this.playing || this.listeningResize) {
-            return;
-        }
-
-        this.listeningResize = true;
-        window.addEventListener('resize', this.contentResized.bind(this));
-        this.contentResized();
-    }
-
-    /**
-     * On content resize, change visibility of the main menu: show on portrait and hide on landscape.
-     */
-    contentResized(): void {
-        this.mainMenuPage.changeVisibility(Platform.isPortrait());
-    }
-
-    /**
-     * @inheritdoc
-     */
-    ionViewDidEnter(): void {
-        this.setResizeListener();
-    }
-
-    /**
-     * @inheritdoc
-     */
-    ionViewWillLeave(): void {
-        this.mainMenuPage.changeVisibility(true);
-
-        if (this.listeningResize) {
-            this.listeningResize = false;
-            window.removeEventListener('resize', this.resizeFunction);
-        }
-    }
-
-    /**
      * Component destroyed.
      */
     ngOnDestroy(): void {
         super.ngOnDestroy();
 
         this.observer?.off();
-        window.removeEventListener('message', this.messageListenerFunction);
+
+        // Wait a bit to make sure all messages have been received.
+        setTimeout(() => {
+            window.removeEventListener('message', this.messageListenerFunction);
+        }, 2000);
     }
 
 }

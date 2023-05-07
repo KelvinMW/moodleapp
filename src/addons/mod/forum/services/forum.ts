@@ -13,13 +13,14 @@
 // limitations under the License.
 
 import { Injectable } from '@angular/core';
+import { CoreError } from '@classes/errors/error';
 import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
 import { CoreCourseCommonModWSOptions } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreRatingInfo } from '@features/rating/services/rating';
 import { CoreTagItem } from '@features/tag/services/tag';
 import { CoreUser } from '@features/user/services/user';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFileEntry } from '@services/file-helper';
 import { CoreGroups } from '@services/groups';
 import { CoreSitesCommonWSOptions, CoreSites, CoreSitesReadingStrategy } from '@services/sites';
@@ -77,7 +78,7 @@ export class AddonModForumProvider {
      *
      * @param forumId Forum ID.
      * @param groupId Group ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCanAddDiscussionCacheKey(forumId: number, groupId: number): string {
         return this.getCommonCanAddDiscussionCacheKey(forumId) + groupId;
@@ -88,7 +89,7 @@ export class AddonModForumProvider {
      * TODO: Use getForumDataCacheKey as a prefix.
      *
      * @param forumId Forum ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCommonCanAddDiscussionCacheKey(forumId: number): string {
         return ROOT_CACHE_KEY + 'canadddiscussion:' + forumId + ':';
@@ -98,7 +99,7 @@ export class AddonModForumProvider {
      * Get prefix cache key for all forum activity data WS calls.
      *
      * @param forumId Forum ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getForumDataPrefixCacheKey(forumId: number): string {
         return ROOT_CACHE_KEY + forumId;
@@ -110,7 +111,7 @@ export class AddonModForumProvider {
      * @param forumId Forum ID.
      * @param discussionId Discussion ID.
      * @param postId Course ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getDiscussionPostDataCacheKey(forumId: number, discussionId: number, postId: number): string {
         return this.getForumDiscussionDataCacheKey(forumId, discussionId) + ':post:' + postId;
@@ -119,8 +120,9 @@ export class AddonModForumProvider {
     /**
      * Get cache key for forum data WS calls.
      *
-     * @param courseId Course ID.
-     * @return Cache key.
+     * @param forumId Forum ID.
+     * @param discussionId Discussion ID.
+     * @returns Cache key.
      */
     protected getForumDiscussionDataCacheKey(forumId: number, discussionId: number): string {
         return this.getForumDataPrefixCacheKey(forumId) + ':discussion:' + discussionId;
@@ -130,7 +132,7 @@ export class AddonModForumProvider {
      * Get cache key for forum data WS calls.
      *
      * @param courseId Course ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getForumDataCacheKey(courseId: number): string {
         return ROOT_CACHE_KEY + 'forum:' + courseId;
@@ -141,7 +143,7 @@ export class AddonModForumProvider {
      * TODO: Use getForumDataCacheKey as a prefix.
      *
      * @param forumId Forum ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAccessInformationCacheKey(forumId: number): string {
         return ROOT_CACHE_KEY + 'accessInformation:' + forumId;
@@ -152,10 +154,20 @@ export class AddonModForumProvider {
      * TODO: Use getForumDiscussionDataCacheKey instead.
      *
      * @param discussionId Discussion ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getDiscussionPostsCacheKey(discussionId: number): string {
         return ROOT_CACHE_KEY + 'discussion:' + discussionId;
+    }
+
+    /**
+     * Get common cache key for forum discussions list WS calls.
+     *
+     * @param forumId Forum ID.
+     * @returns Cache key.
+     */
+    protected getDiscussionsListCommonCacheKey(forumId: number): string {
+        return ROOT_CACHE_KEY + 'discussions:' + forumId;
     }
 
     /**
@@ -163,13 +175,17 @@ export class AddonModForumProvider {
      *
      * @param forumId Forum ID.
      * @param sortOrder Sort order.
-     * @return Cache key.
+     * @param groupId Group ID.
+     * @returns Cache key.
      */
-    protected getDiscussionsListCacheKey(forumId: number, sortOrder: number): string {
-        let key = ROOT_CACHE_KEY + 'discussions:' + forumId;
+    protected getDiscussionsListCacheKey(forumId: number, sortOrder: number, groupId?: number): string {
+        let key = this.getDiscussionsListCommonCacheKey(forumId);
 
         if (sortOrder != AddonModForumProvider.SORTORDER_LASTPOST_DESC) {
             key += ':' + sortOrder;
+        }
+        if (groupId) {
+            key += `:group${groupId}`;
         }
 
         return key;
@@ -184,7 +200,7 @@ export class AddonModForumProvider {
      * @param options Options (subscribe, pin, ...).
      * @param groupId Group this discussion belongs to.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the discussion is created.
+     * @returns Promise resolved when the discussion is created.
      */
     async addNewDiscussionOnline(
         forumId: number,
@@ -224,7 +240,7 @@ export class AddonModForumProvider {
      * @param forumId Forum ID.
      * @param groupId Group ID.
      * @param options Other options.
-     * @return Promise resolved with an object with the following properties:
+     * @returns Promise resolved with an object with the following properties:
      *         - status (boolean)
      *         - canpindiscussions (boolean)
      *         - cancreateattachment (boolean)
@@ -252,11 +268,11 @@ export class AddonModForumProvider {
             throw new Error('Invalid response calling mod_forum_can_add_discussion');
         }
 
-        if (typeof result.canpindiscussions == 'undefined') {
+        if (result.canpindiscussions === undefined) {
             // WS doesn't support it yet, default it to false to prevent students from seeing the option.
             result.canpindiscussions = false;
         }
-        if (typeof result.cancreateattachment == 'undefined') {
+        if (result.cancreateattachment === undefined) {
             // WS doesn't support it yet, default it to true since usually the users will be able to create them.
             result.cancreateattachment = true;
         }
@@ -269,7 +285,7 @@ export class AddonModForumProvider {
      *
      * @param forumId Forum ID.
      * @param options Other options.
-     * @return Promise resolved with an object with the following properties:
+     * @returns Promise resolved with an object with the following properties:
      *         - status (boolean)
      *         - canpindiscussions (boolean)
      *         - cancreateattachment (boolean)
@@ -283,7 +299,7 @@ export class AddonModForumProvider {
      *
      * @param postId Post id.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      * @since 3.8
      */
     async deletePost(postId: number, siteId?: string): Promise<AddonModForumDeletePostWSResponse> {
@@ -299,7 +315,7 @@ export class AddonModForumProvider {
      * Extract the starting post of a discussion from a list of posts. The post is removed from the array passed as a parameter.
      *
      * @param posts Posts to search.
-     * @return Starting post or undefined if not found.
+     * @returns Starting post or undefined if not found.
      */
     extractStartingPost(posts: AddonModForumPost[]): AddonModForumPost | undefined {
         const index = posts.findIndex((post) => !post.parentid);
@@ -308,18 +324,9 @@ export class AddonModForumProvider {
     }
 
     /**
-     * There was a bug adding new discussions to All Participants (see MDL-57962). Check if it's fixed.
-     *
-     * @return True if fixed, false otherwise.
-     */
-    isAllParticipantsFixed(): boolean {
-        return !!CoreSites.getCurrentSite()?.isVersionGreaterEqualThan(['3.1.5', '3.2.2']);
-    }
-
-    /**
      * Returns whether or not getDiscussionPost WS available or not.
      *
-     * @return If WS is available.
+     * @returns If WS is available.
      * @since 3.8
      */
     isGetDiscussionPostAvailable(): boolean {
@@ -330,7 +337,7 @@ export class AddonModForumProvider {
      * Returns whether or not getDiscussionPost WS available or not.
      *
      * @param site Site. If not defined, current site.
-     * @return If WS is available.
+     * @returns If WS is available.
      * @since 3.7
      */
     isGetDiscussionPostsAvailable(site?: CoreSite): boolean {
@@ -342,7 +349,7 @@ export class AddonModForumProvider {
     /**
      * Returns whether or not deletePost WS available or not.
      *
-     * @return If WS is available.
+     * @returns If WS is available.
      * @since 3.8
      */
     isDeletePostAvailable(): boolean {
@@ -352,7 +359,7 @@ export class AddonModForumProvider {
     /**
      * Returns whether or not updatePost WS available or not.
      *
-     * @return If WS is available.
+     * @returns If WS is available.
      * @since 3.8
      */
     isUpdatePostAvailable(): boolean {
@@ -364,7 +371,7 @@ export class AddonModForumProvider {
      *
      * @param cmId Forum cmid.
      * @param discussions List of discussions to format.
-     * @return Promise resolved with the formatted discussions.
+     * @returns Promise resolved with the formatted discussions.
      */
     formatDiscussionsGroups(cmId: number, discussions: AddonModForumDiscussion[]): Promise<AddonModForumDiscussion[]>;
     formatDiscussionsGroups(cmId: number, discussions: AddonModForumOfflineDiscussion[]): Promise<AddonModForumOfflineDiscussion[]>;
@@ -408,7 +415,7 @@ export class AddonModForumProvider {
      *
      * @param courseId Course ID.
      * @param options Other options.
-     * @return Promise resolved when the forums are retrieved.
+     * @returns Promise resolved when the forums are retrieved.
      */
     async getCourseForums(courseId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModForumData[]> {
         const site = await CoreSites.getSite(options.siteId);
@@ -433,7 +440,7 @@ export class AddonModForumProvider {
      * @param discussionId Discussion ID.
      * @param postId Post ID.
      * @param options Other options.
-     * @return Promise resolved when the post is retrieved.
+     * @returns Promise resolved when the post is retrieved.
      */
     async getDiscussionPost(
         forumId: number,
@@ -472,7 +479,7 @@ export class AddonModForumProvider {
      * @param courseId Course ID.
      * @param cmId Course module ID.
      * @param options Other options.
-     * @return Promise resolved when the forum is retrieved.
+     * @returns Promise resolved when the forum is retrieved.
      */
     async getForum(courseId: number, cmId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModForumData> {
         const forums = await this.getCourseForums(courseId, options);
@@ -480,7 +487,7 @@ export class AddonModForumProvider {
         const forum = forums.find(forum => forum.cmid == cmId);
 
         if (!forum) {
-            throw new Error('Forum not found');
+            throw new CoreError(Translate.instant('core.course.modulenotfound'));
         }
 
         return forum;
@@ -492,7 +499,7 @@ export class AddonModForumProvider {
      * @param courseId Course ID.
      * @param forumId Forum ID.
      * @param options Other options.
-     * @return Promise resolved when the forum is retrieved.
+     * @returns Promise resolved when the forum is retrieved.
      */
     async getForumById(courseId: number, forumId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModForumData> {
         const forums = await this.getCourseForums(courseId, options);
@@ -510,7 +517,7 @@ export class AddonModForumProvider {
      *
      * @param forumId Forum ID.
      * @param options Other options.
-     * @return Object with access information.
+     * @returns Object with access information.
      * @since 3.7
      */
     async getAccessInformation(
@@ -546,7 +553,7 @@ export class AddonModForumProvider {
      *
      * @param discussionId Discussion ID.
      * @param options Other options.
-     * @return Promise resolved with forum posts and rating info.
+     * @returns Promise resolved with forum posts and rating info.
      */
     async getDiscussionPosts(discussionId: number, options: CoreCourseCommonModWSOptions = {}): Promise<{
         posts: AddonModForumPost[];
@@ -638,7 +645,7 @@ export class AddonModForumProvider {
      * @param direction Direction of the sorting (ASC / DESC).
      */
     sortDiscussionPosts(posts: AddonModForumPost[], direction: string): void {
-        // @todo: Check children when sorting.
+        // @todo Check children when sorting.
         posts.sort((a, b) => {
             const timeCreatedA = Number(a.timecreated) || 0;
             const timeCreatedB = Number(b.timecreated) || 0;
@@ -659,7 +666,7 @@ export class AddonModForumProvider {
      * Return whether discussion lists can be sorted.
      *
      * @param site Site. If not defined, current site.
-     * @return True if discussion lists can be sorted.
+     * @returns True if discussion lists can be sorted.
      */
     isDiscussionListSortingAvailable(site?: CoreSite): boolean {
         site = site || CoreSites.getCurrentSite();
@@ -670,7 +677,7 @@ export class AddonModForumProvider {
     /**
      * Return the list of available sort orders.
      *
-     * @return List of sort orders.
+     * @returns List of sort orders.
      */
     getAvailableSortOrders(): AddonModForumSortOrder[] {
         const sortOrders = [
@@ -709,11 +716,31 @@ export class AddonModForumProvider {
     }
 
     /**
+     * Get sort order selected by the user.
+     *
+     * @returns Promise resolved with sort order.
+     */
+    async getSelectedSortOrder(): Promise<AddonModForumSortOrder> {
+        const sortOrders = this.getAvailableSortOrders();
+        let sortOrderValue: number | null = null;
+
+        if (this.isDiscussionListSortingAvailable()) {
+            const preferenceValue = await CoreUtils.ignoreErrors(
+                CoreUser.getUserPreference(AddonModForumProvider.PREFERENCE_SORTORDER),
+            );
+
+            sortOrderValue = preferenceValue ? parseInt(preferenceValue, 10) : null;
+        }
+
+        return sortOrders.find(sortOrder => sortOrder.value === sortOrderValue) || sortOrders[0];
+    }
+
+    /**
      * Get forum discussions.
      *
      * @param forumId Forum ID.
      * @param options Other options.
-     * @return Promise resolved with an object with:
+     * @returns Promise resolved with an object with:
      *         - discussions: List of discussions. Note that for every discussion in the list discussion.id is the main post ID but
      *         discussion ID is discussion.discussion.
      *         - canLoadMore: True if there may be more discussions to load.
@@ -737,6 +764,7 @@ export class AddonModForumProvider {
             // Since Moodle 3.7.
             method = 'mod_forum_get_forum_discussions';
             (params as AddonModForumGetForumDiscussionsWSParams).sortorder = options.sortOrder;
+            (params as AddonModForumGetForumDiscussionsWSParams).groupid = options.groupId;
         } else {
             if (options.sortOrder !== AddonModForumProvider.SORTORDER_LASTPOST_DESC) {
                 throw new Error('Sorting not supported with the old WS method.');
@@ -764,7 +792,7 @@ export class AddonModForumProvider {
         } catch (error) {
             // Try to get the data from cache stored with the old WS method.
             if (
-                CoreApp.isOnline() ||
+                CoreNetwork.isOnline() ||
                 method !== 'mod_forum_get_forum_discussions' ||
                 options.sortOrder !== AddonModForumProvider.SORTORDER_LASTPOST_DESC
             ) {
@@ -804,13 +832,8 @@ export class AddonModForumProvider {
      * If a page fails, the discussions until that page will be returned along with a flag indicating an error occurred.
      *
      * @param forumId Forum ID.
-     * @param cmId Forum cmid.
-     * @param sortOrder Sort order.
-     * @param forceCache True to always get the value from cache, false otherwise.
-     * @param numPages Number of pages to get. If not defined, all pages.
-     * @param startPage Page to start. If not defined, first page.
-     * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with an object with:
+     * @param options Get discussion in pages options.
+     * @returns Promise resolved with an object with:
      *         - discussions: List of discussions.
      *         - error: True if an error occurred, false otherwise.
      */
@@ -818,13 +841,11 @@ export class AddonModForumProvider {
         forumId: number,
         options: AddonModForumGetDiscussionsInPagesOptions = {},
     ): Promise<{ discussions: AddonModForumDiscussion[]; error: boolean }> {
-        options.page = options.page || 0;
-
         const result = {
             discussions: [] as AddonModForumDiscussion[],
             error: false,
         };
-        let numPages = typeof options.numPages == 'undefined' ? -1 : options.numPages;
+        let numPages = options.numPages === undefined ? -1 : options.numPages;
 
         if (!numPages) {
             return result;
@@ -832,7 +853,10 @@ export class AddonModForumProvider {
 
         const getPage = (page: number): Promise<{ discussions: AddonModForumDiscussion[]; error: boolean }> =>
             // Get page discussions.
-            this.getDiscussions(forumId, options).then((response) => {
+            this.getDiscussions(forumId, {
+                ...options,
+                page,
+            }).then((response) => {
                 result.discussions = result.discussions.concat(response.discussions);
                 numPages--;
 
@@ -849,7 +873,7 @@ export class AddonModForumProvider {
             })
         ;
 
-        return getPage(options.page);
+        return getPage(options.page ?? 0);
     }
 
     /**
@@ -857,7 +881,7 @@ export class AddonModForumProvider {
      *
      * @param forumId Forum ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateCanAddDiscussion(forumId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -870,7 +894,7 @@ export class AddonModForumProvider {
      *
      * @param moduleId The module ID.
      * @param courseId Course ID.
-     * @return Promise resolved when data is invalidated.
+     * @returns Promise resolved when data is invalidated.
      */
     async invalidateContent(moduleId: number, courseId: number): Promise<void> {
         // Get the forum first, we need the forum ID.
@@ -889,7 +913,7 @@ export class AddonModForumProvider {
                     .getDiscussionsInPages(forum.id, {
                         cmId: forum.cmid,
                         sortOrder: sortOrder.value,
-                        readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE,
+                        readingStrategy: CoreSitesReadingStrategy.ONLY_CACHE,
                     })
                     .then((response) => {
                         // Now invalidate the WS calls.
@@ -916,7 +940,7 @@ export class AddonModForumProvider {
      *
      * @param forumId Forum ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAccessInformation(forumId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -930,7 +954,7 @@ export class AddonModForumProvider {
      * @param discussionId Discussion ID.
      * @param forumId Forum ID. If not set, we can't invalidate individual post information.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateDiscussionPosts(discussionId: number, forumId?: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -948,22 +972,19 @@ export class AddonModForumProvider {
      *
      * @param forumId Forum ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateDiscussionsList(forumId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
 
-        await CoreUtils.allPromises(
-            this.getAvailableSortOrders()
-                .map(sortOrder => site.invalidateWsCacheForKey(this.getDiscussionsListCacheKey(forumId, sortOrder.value))),
-        );
+        await site.invalidateWsCacheForKeyStartingWith(this.getDiscussionsListCommonCacheKey(forumId));
     }
 
     /**
      * Invalidates forum data.
      *
      * @param courseId Course ID.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateForumData(courseId: number): Promise<void> {
         const site = CoreSites.getCurrentSite();
@@ -977,7 +998,7 @@ export class AddonModForumProvider {
      * @param id Module ID.
      * @param name Name of the forum.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the WS call is successful.
+     * @returns Promise resolved when the WS call is successful.
      */
     logView(id: number, name?: string, siteId?: string): Promise<void> {
         const params = {
@@ -1003,7 +1024,7 @@ export class AddonModForumProvider {
      * @param forumId Forum ID.
      * @param name Name of the forum.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the WS call is successful.
+     * @returns Promise resolved when the WS call is successful.
      */
     logDiscussionView(id: number, forumId: number, name?: string, siteId?: string): Promise<void> {
         const params = {
@@ -1035,7 +1056,7 @@ export class AddonModForumProvider {
      * @param options Options (subscribe, attachments, ...).
      * @param siteId Site ID. If not defined, current site.
      * @param allowOffline True if it can be stored in offline, false otherwise.
-     * @return Promise resolved with a boolean indicating if the test was sent online or not.
+     * @returns Promise resolved with a boolean indicating if the test was sent online or not.
      */
     async replyPost(
         postId: number,
@@ -1073,7 +1094,7 @@ export class AddonModForumProvider {
             return false;
         };
 
-        if (!CoreApp.isOnline() && allowOffline) {
+        if (!CoreNetwork.isOnline() && allowOffline) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -1109,7 +1130,7 @@ export class AddonModForumProvider {
      * @param message New post's message.
      * @param options Options (subscribe, attachments, ...).
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the created post id.
+     * @returns Promise resolved with the created post id.
      */
     async replyPostOnline(
         postId: number,
@@ -1150,7 +1171,7 @@ export class AddonModForumProvider {
      * @param discussionId DIscussion id.
      * @param locked True to lock, false to unlock.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      * @since 3.7
      */
     async setLockState(
@@ -1172,8 +1193,7 @@ export class AddonModForumProvider {
     /**
      * Returns whether the set pin state WS is available.
      *
-     * @param site Site. If not defined, current site.
-     * @return Whether it's available.
+     * @returns Whether it's available.
      * @since 3.7
      */
     isSetPinStateAvailableForSite(): boolean {
@@ -1184,9 +1204,9 @@ export class AddonModForumProvider {
      * Pin or unpin a discussion.
      *
      * @param discussionId Discussion id.
-     * @param locked True to pin, false to unpin.
+     * @param pinned True to pin, false to unpin.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      * @since 3.7
      */
     async setPinState(discussionId: number, pinned: boolean, siteId?: string): Promise<void> {
@@ -1205,7 +1225,7 @@ export class AddonModForumProvider {
      * @param discussionId Discussion id.
      * @param starred True to star, false to unstar.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      * @since 3.7
      */
     async toggleFavouriteState(discussionId: number, starred: boolean, siteId?: string): Promise<void> {
@@ -1266,7 +1286,7 @@ export class AddonModForumProvider {
      * @param message New post's message.
      * @param options Options (subscribe, attachments, ...).
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with success boolean when done.
+     * @returns Promise resolved with success boolean when done.
      */
     async updatePost(
         postId: number,
@@ -1301,7 +1321,7 @@ export class AddonModForumProvider {
      * Convert the new format to the exporter one so it's the same as in other WebServices.
      *
      * @param post Post returned by the new WS.
-     * @return Post using the same format as other WebServices.
+     * @returns Post using the same format as other WebServices.
      */
     protected translateWSPost(post: AddonModForumWSPost): AddonModForumPost {
         (post as unknown as AddonModForumPost).tags = (post.tags || []).map((tag) => {
@@ -1507,6 +1527,7 @@ export type AddonModForumLegacyPost = {
 export type AddonModForumGetDiscussionsOptions = CoreCourseCommonModWSOptions & {
     sortOrder?: number; // Sort order.
     page?: number; // Page. Defaults to 0.
+    groupId?: number; // Group ID.
 };
 
 /**
@@ -1558,9 +1579,9 @@ export type AddonModForumAccessInformation = {
 };
 
 /**
- * Reply info.
+ * Post creation or edition data.
  */
-export type AddonModForumReply = {
+export type AddonModForumPostFormData = {
     id: number;
     subject: string | null; // Null means original data is not set.
     message: string | null; // Null means empty or just white space.
@@ -2087,6 +2108,7 @@ export type AddonModForumNewDiscussionData = {
     cmId: number;
     discussionIds?: number[] | null;
     discTimecreated?: number;
+    groupId?: number; // The discussion group if it's created in a certain group, ALL_PARTICIPANTS for all participants.
 };
 
 /**

@@ -21,6 +21,7 @@ import { CoreTimeUtils } from '@services/utils/time';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreWSExternalFile } from '@services/ws';
 import { makeSingleton } from '@singletons';
+import { CorePath } from '@singletons/path';
 import {
     CoreQuestionAnswerDBRecord,
     CoreQuestionDBRecord,
@@ -136,7 +137,7 @@ export class CoreQuestionProvider {
      *
      * @param prevAnswers Object with previous answers.
      * @param newAnswers Object with new answers.
-     * @return Whether all answers are equal.
+     * @returns Whether all answers are equal.
      */
     compareAllAnswers(prevAnswers: Record<string, unknown>, newAnswers: Record<string, unknown>): boolean {
         // Get all the keys.
@@ -162,7 +163,7 @@ export class CoreQuestionProvider {
      *
      * @param answers List of answers.
      * @param removePrefix Whether to remove the prefix in the answer's name.
-     * @return Object with name -> value.
+     * @returns Object with name -> value.
      */
     convertAnswersArrayToObject(answers: CoreQuestionAnswerDBRecord[], removePrefix?: boolean): Record<string, string> {
         const result: Record<string, string> = {};
@@ -186,7 +187,7 @@ export class CoreQuestionProvider {
      * @param attemptId Attempt ID.
      * @param name Answer's name.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the answer.
+     * @returns Promise resolved with the answer.
      */
     async getAnswer(component: string, attemptId: number, name: string, siteId?: string): Promise<CoreQuestionAnswerDBRecord> {
         const site = await CoreSites.getSite(siteId);
@@ -200,7 +201,7 @@ export class CoreQuestionProvider {
      * @param component Component the attempt belongs to.
      * @param attemptId Attempt ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the answers.
+     * @returns Promise resolved with the answers.
      */
     async getAttemptAnswers(component: string, attemptId: number, siteId?: string): Promise<CoreQuestionAnswerDBRecord[]> {
         const site = await CoreSites.getSite(siteId);
@@ -214,7 +215,7 @@ export class CoreQuestionProvider {
      * @param component Component the attempt belongs to.
      * @param attemptId Attempt ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the questions.
+     * @returns Promise resolved with the questions.
      */
     async getAttemptQuestions(component: string, attemptId: number, siteId?: string): Promise<CoreQuestionDBRecord[]> {
         const site = await CoreSites.getSite(siteId);
@@ -226,7 +227,7 @@ export class CoreQuestionProvider {
      * Get all the answers that aren't "extra" (sequencecheck, certainty, ...).
      *
      * @param answers Object with all the answers.
-     * @return Object with the basic answers.
+     * @returns Object with the basic answers.
      */
     getBasicAnswers<T = string>(answers: Record<string, T>): Record<string, T> {
         const result: Record<string, T> = {};
@@ -244,7 +245,7 @@ export class CoreQuestionProvider {
      * Get all the answers that aren't "extra" (sequencecheck, certainty, ...).
      *
      * @param answers List of answers.
-     * @return List with the basic answers.
+     * @returns List with the basic answers.
      */
     protected getBasicAnswersFromArray(answers: CoreQuestionAnswerDBRecord[]): CoreQuestionAnswerDBRecord[] {
         const result: CoreQuestionAnswerDBRecord[] = [];
@@ -265,7 +266,7 @@ export class CoreQuestionProvider {
      * @param attemptId Attempt ID.
      * @param slot Question slot.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the question.
+     * @returns Promise resolved with the question.
      */
     async getQuestion(component: string, attemptId: number, slot: number, siteId?: string): Promise<CoreQuestionDBRecord> {
         const site = await CoreSites.getSite(siteId);
@@ -281,7 +282,7 @@ export class CoreQuestionProvider {
      * @param slot Question slot.
      * @param filter Whether it should ignore "extra" answers like sequencecheck or certainty.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the answers.
+     * @returns Promise resolved with the answers.
      */
     async getQuestionAnswers(
         component: string,
@@ -310,10 +311,10 @@ export class CoreQuestionProvider {
      *
      * @param question Question.
      * @param componentId Component ID.
-     * @return Question component ID.
+     * @returns Question component ID.
      */
     getQuestionComponentId(question: CoreQuestionQuestionParsed, componentId: string | number): string {
-        return componentId + '_' + question.number;
+        return componentId + '_' + question.questionnumber;
     }
 
     /**
@@ -323,7 +324,7 @@ export class CoreQuestionProvider {
      * @param component Component the question is related to.
      * @param componentId Question component ID, returned by getQuestionComponentId.
      * @param siteId Site ID. If not defined, current site.
-     * @return Folder path.
+     * @returns Folder path.
      */
     getQuestionFolder(type: string, component: string, componentId: string, siteId?: string): string {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -331,14 +332,14 @@ export class CoreQuestionProvider {
         const siteFolderPath = CoreFile.getSiteFolder(siteId);
         const questionFolderPath = 'offlinequestion/' + type + '/' + component + '/' + componentId;
 
-        return CoreTextUtils.concatenatePaths(siteFolderPath, questionFolderPath);
+        return CorePath.concatenatePaths(siteFolderPath, questionFolderPath);
     }
 
     /**
      * Extract the question slot from a question name.
      *
      * @param name Question name.
-     * @return Question slot.
+     * @returns Question slot.
      */
     getQuestionSlotFromName(name: string): number {
         if (name) {
@@ -355,7 +356,7 @@ export class CoreQuestionProvider {
      * Get question state based on state name.
      *
      * @param name State name.
-     * @return State.
+     * @returns State.
      */
     getState(name?: string): CoreQuestionState {
         return STATES[name || 'cannotdeterminestatus'];
@@ -365,7 +366,7 @@ export class CoreQuestionProvider {
      * Check if an answer is extra data like sequencecheck or certainty.
      *
      * @param name Answer name.
-     * @return Whether it's extra data.
+     * @returns Whether it's extra data.
      */
     isExtraAnswer(name: string): boolean {
         // Maybe the name still has the prefix.
@@ -378,12 +379,16 @@ export class CoreQuestionProvider {
      * Parse questions of a WS response.
      *
      * @param questions Questions to parse.
-     * @return Parsed questions.
+     * @returns Parsed questions.
      */
     parseQuestions(questions: CoreQuestionQuestionWSData[]): CoreQuestionQuestionParsed[] {
         const parsedQuestions: CoreQuestionQuestionParsed[] = questions;
 
         parsedQuestions.forEach((question) => {
+            if (typeof question.questionnumber === 'undefined' && typeof question.number === 'number') {
+                question.questionnumber = String(question.number);
+            }
+
             if (!question.settings) {
                 return;
             }
@@ -400,7 +405,7 @@ export class CoreQuestionProvider {
      * @param component Component the attempt belongs to.
      * @param attemptId Attempt ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async removeAttemptAnswers(component: string, attemptId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -414,7 +419,7 @@ export class CoreQuestionProvider {
      * @param component Component the attempt belongs to.
      * @param attemptId Attempt ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async removeAttemptQuestions(component: string, attemptId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -429,7 +434,7 @@ export class CoreQuestionProvider {
      * @param attemptId Attempt ID.
      * @param name Answer's name.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async removeAnswer(component: string, attemptId: number, name: string, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -444,7 +449,7 @@ export class CoreQuestionProvider {
      * @param attemptId Attempt ID.
      * @param slot Question slot.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async removeQuestion(component: string, attemptId: number, slot: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -459,7 +464,7 @@ export class CoreQuestionProvider {
      * @param attemptId Attempt ID.
      * @param slot Question slot.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async removeQuestionAnswers(component: string, attemptId: number, slot: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -471,7 +476,7 @@ export class CoreQuestionProvider {
      * Remove the prefix from a question answer name.
      *
      * @param name Question name.
-     * @return Name without prefix.
+     * @returns Name without prefix.
      */
     removeQuestionPrefix(name: string): string {
         if (name) {
@@ -491,7 +496,7 @@ export class CoreQuestionProvider {
      * @param answers Object with the answers to save.
      * @param timemodified Time modified to set in the answers. If not defined, current time.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async saveAnswers(
         component: string,
@@ -535,7 +540,7 @@ export class CoreQuestionProvider {
      * @param question The question to save.
      * @param state Question's state.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async saveQuestion(
         component: string,
@@ -546,14 +551,11 @@ export class CoreQuestionProvider {
         state: string,
         siteId?: string,
     ): Promise<void> {
-
         const site = await CoreSites.getSite(siteId);
         const entry: CoreQuestionDBRecord = {
             component,
             componentid: componentId,
             attemptid: attemptId,
-            userid: userId,
-            number: question.number, // eslint-disable-line id-blacklist
             slot: question.slot,
             state: state,
         };
@@ -593,14 +595,16 @@ export type CoreQuestionQuestionWSData = {
     lastactiontime?: number; // The timestamp of the most recent step in this question attempt.
     hasautosavedstep?: boolean; // Whether this question attempt has autosaved data.
     flagged: boolean; // Whether the question is flagged or not.
-    // eslint-disable-next-line id-blacklist
-    number?: number; // Question ordering number in the quiz.
+    questionnumber?: string; // @since 4.2. Question ordering number in the quiz.
     state?: string; // The state where the question is in. It won't be returned if the user cannot see it.
     status?: string; // Current formatted state of the question.
     blockedbyprevious?: boolean; // Whether the question is blocked by the previous question.
     mark?: string; // The mark awarded. It will be returned only if the user is allowed to see it.
     maxmark?: number; // The maximum mark possible for this question attempt.
     settings?: string; // Question settings (JSON encoded).
+
+    /** @deprecated Since 4.2. Use questionnumber instead. */
+    number?: number; // eslint-disable-line id-blacklist
 };
 /**
  * Question data with parsed data.

@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { CoreConstants } from '@/core/constants';
+import { CoreConstants, ModPurpose } from '@/core/constants';
 import { Injectable, Type } from '@angular/core';
-import { CoreCourse, CoreCourseAnyModuleData, CoreCourseModuleContentFile } from '@features/course/services/course';
-import { CoreCourseModule } from '@features/course/services/course-helper';
+import { CoreModuleHandlerBase } from '@features/course/classes/module-base-handler';
+import { CoreCourse } from '@features/course/services/course';
+import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@features/course/services/module-delegate';
 import { CoreCourseModulePrefetchDelegate } from '@features/course/services/module-prefetch-delegate';
 import { CoreFileHelper } from '@services/file-helper';
-import { CoreNavigationOptions, CoreNavigator } from '@services/navigator';
+import { CoreSites } from '@services/sites';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
-import { CoreWSFile } from '@services/ws';
 import { makeSingleton, Translate } from '@singletons';
 import { AddonModResourceIndexComponent } from '../../components/index';
 import { AddonModResource, AddonModResourceCustomData } from '../resource';
@@ -33,12 +33,13 @@ import { AddonModResourceHelper } from '../resource-helper';
  * Handler to support resource modules.
  */
 @Injectable({ providedIn: 'root' })
-export class AddonModResourceModuleHandlerService implements CoreCourseModuleHandler {
+export class AddonModResourceModuleHandlerService extends CoreModuleHandlerBase implements CoreCourseModuleHandler {
 
     static readonly PAGE_NAME = 'mod_resource';
 
     name = 'AddonModResource';
     modName = 'resource';
+    protected pageName = AddonModResourceModuleHandlerService.PAGE_NAME;
 
     supportedFeatures = {
         [CoreConstants.FEATURE_MOD_ARCHETYPE]: CoreConstants.MOD_ARCHETYPE_RESOURCE,
@@ -50,6 +51,7 @@ export class AddonModResourceModuleHandlerService implements CoreCourseModuleHan
         [CoreConstants.FEATURE_GRADE_OUTCOMES]: false,
         [CoreConstants.FEATURE_BACKUP_MOODLE2]: true,
         [CoreConstants.FEATURE_SHOW_DESCRIPTION]: true,
+        [CoreConstants.FEATURE_MOD_PURPOSE]: ModPurpose.MOD_PURPOSE_CONTENT,
     };
 
     /**
@@ -60,56 +62,52 @@ export class AddonModResourceModuleHandlerService implements CoreCourseModuleHan
     }
 
     /**
-     * Get the data required to display the module in the course contents view.
-     *
-     * @param module The module object.
-     * @param courseId The course ID.
-     * @param sectionId The section ID.
-     * @return Data to render the module.
+     * @inheritdoc
      */
-    getData(module: CoreCourseAnyModuleData, courseId: number): CoreCourseModuleHandlerData {
-        const updateStatus = (status: string): void => {
-            handlerData.buttons![0].hidden = status !== CoreConstants.DOWNLOADED ||
-                AddonModResourceHelper.isDisplayedInIframe(module);
-        };
+    async getData(
+        module: CoreCourseModuleData,
+        courseId: number,
+        sectionId?: number,
+        forCoursePage?: boolean,
+    ): Promise<CoreCourseModuleHandlerData> {
         const openWithPicker = CoreFileHelper.defaultIsOpenWithPicker();
 
-        const handlerData: CoreCourseModuleHandlerData = {
-            icon: CoreCourse.getModuleIconSrc(this.modName, 'modicon' in module ? module.modicon : undefined),
-            title: module.name,
-            class: 'addon-mod_resource-handler',
-            showDownloadButton: true,
-            action(event: Event, module: CoreCourseModule, courseId: number, options?: CoreNavigationOptions): void {
-                options = options || {};
-                options.params = options.params || {};
-                Object.assign(options.params, { module });
-                const routeParams = '/' + courseId + '/' + module.id;
+        const handlerData = await super.getData(module, courseId, sectionId, forCoursePage);
+        handlerData.updateStatus = (status) => {
+            if (!handlerData.buttons) {
+                return;
+            }
 
-                CoreNavigator.navigateToSitePath(AddonModResourceModuleHandlerService.PAGE_NAME + routeParams, options);
-            },
-            updateStatus: updateStatus.bind(this),
-            buttons: [{
-                hidden: true,
-                icon: openWithPicker ? 'fas-share-square' : 'fas-file',
-                label: module.name + ': ' + Translate.instant(openWithPicker ? 'core.openwith' : 'addon.mod_resource.openthefile'),
-                action: async (event: Event, module: CoreCourseModule, courseId: number): Promise<void> => {
-                    const hide = await this.hideOpenButton(module, courseId);
-                    if (!hide) {
-                        AddonModResourceHelper.openModuleFile(module, courseId);
-                    }
-                },
-            }],
+            handlerData.buttons[0].hidden = status !== CoreConstants.DOWNLOADED ||
+                AddonModResourceHelper.isDisplayedInIframe(module);
         };
+        handlerData.buttons = [{
+            hidden: true,
+            icon: openWithPicker ? 'fas-share-from-square' : 'fas-file',
+            label: module.name + ': ' + Translate.instant(openWithPicker ? 'core.openwith' : 'addon.mod_resource.openthefile'),
+            action: async (event: Event, module: CoreCourseModuleData, courseId: number): Promise<void> => {
+                const hide = await this.hideOpenButton(module);
+                if (!hide) {
+                    AddonModResourceHelper.openModuleFile(module, courseId);
 
-        this.getResourceData(module, courseId, handlerData).then((data) => {
-            handlerData.icon = data.icon;
-            handlerData.extraBadge = data.extra;
-            handlerData.extraBadgeColor = 'light';
+                    CoreCourse.storeModuleViewed(courseId, module.id);
+                }
+            },
+        }];
+
+        this.getResourceData(module, courseId, handlerData).then((extra) => {
+            handlerData.extraBadge = extra;
 
             return;
         }).catch(() => {
             // Ignore errors.
         });
+
+        try {
+            handlerData.icon = this.getIconSrc(module);
+        } catch {
+            // Ignore errors.
+        }
 
         return handlerData;
     }
@@ -118,15 +116,14 @@ export class AddonModResourceModuleHandlerService implements CoreCourseModuleHan
      * Returns if contents are loaded to show open button.
      *
      * @param module The module object.
-     * @param courseId The course ID.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
-    protected async hideOpenButton(module: CoreCourseAnyModuleData, courseId: number): Promise<boolean> {
-        if (!('contentsinfo' in module) || !module.contentsinfo) {
-            await CoreCourse.loadModuleContents(module, courseId, undefined, false, false, undefined, this.modName);
+    protected async hideOpenButton(module: CoreCourseModuleData): Promise<boolean> {
+        if (!module.contentsinfo) { // Not informed before 3.7.6.
+            await CoreCourse.loadModuleContents(module, undefined, undefined, false, false, undefined, this.modName);
         }
 
-        const status = await CoreCourseModulePrefetchDelegate.getModuleStatus(module, courseId);
+        const status = await CoreCourseModulePrefetchDelegate.getModuleStatus(module, module.course);
 
         return status !== CoreConstants.DOWNLOADED || AddonModResourceHelper.isDisplayedInIframe(module);
     }
@@ -136,30 +133,32 @@ export class AddonModResourceModuleHandlerService implements CoreCourseModuleHan
      *
      * @param module The module object.
      * @param courseId The course ID.
-     * @return Resource data.
+     * @returns Resource data.
      */
     protected async getResourceData(
-        module: CoreCourseAnyModuleData,
+        module: CoreCourseModuleData,
         courseId: number,
         handlerData: CoreCourseModuleHandlerData,
-    ): Promise<AddonResourceHandlerData> {
+    ): Promise<string> {
         const promises: Promise<void>[] = [];
-        let infoFiles: CoreWSFile[] = [];
         let options: AddonModResourceCustomData = {};
 
         // Check if the button needs to be shown or not.
-        promises.push(this.hideOpenButton(module, courseId).then((hideOpenButton) => {
-            handlerData.buttons![0].hidden = hideOpenButton;
+        promises.push(this.hideOpenButton(module).then((hideOpenButton) => {
+            if (!handlerData.buttons) {
+                return;
+            }
+
+            handlerData.buttons[0].hidden = hideOpenButton;
 
             return;
         }));
 
-        if ('customdata' in module && typeof module.customdata != 'undefined') {
+        if (module.customdata !== undefined) {
             options = CoreTextUtils.unserialize(CoreTextUtils.parseJSON(module.customdata));
-        } else if (AddonModResource.isGetResourceWSAvailable()) {
+        } else {
             // Get the resource data.
             promises.push(AddonModResource.getResourceData(courseId, module.id).then((info) => {
-                infoFiles = info.contentfiles;
                 options = CoreTextUtils.unserialize(info.displayoptions);
 
                 return;
@@ -168,28 +167,14 @@ export class AddonModResourceModuleHandlerService implements CoreCourseModuleHan
 
         await Promise.all(promises);
 
-        const files: (CoreCourseModuleContentFile | CoreWSFile)[] = module.contents && module.contents.length
-            ? module.contents
-            : infoFiles;
-
-        const resourceData: AddonResourceHandlerData = {
-            icon: '',
-            extra: '',
-        };
         const extra: string[] = [];
 
-        if ('contentsinfo' in module && module.contentsinfo) {
+        if (module.contentsinfo) {
             // No need to use the list of files.
-            const mimetype = module.contentsinfo.mimetypes[0];
-            if (mimetype) {
-                resourceData.icon = CoreMimetypeUtils.getMimetypeIcon(mimetype);
-            }
-            resourceData.extra = CoreTextUtils.cleanTags(module.afterlink);
-
-        } else if (files && files.length) {
+            extra.push(CoreTextUtils.cleanTags(module.afterlink));
+        } else if (module.contents && module.contents[0]) {
+            const files = module.contents;
             const file = files[0];
-
-            resourceData.icon = CoreMimetypeUtils.getFileIcon(file.filename || '');
 
             if (options.showsize) {
                 const size = options.filedetails
@@ -231,30 +216,56 @@ export class AddonModResourceModuleHandlerService implements CoreCourseModuleHan
                     ));
                 }
             }
-
-            resourceData.extra += extra.join(' ');
         }
 
-        // No previously set, just set the icon.
-        if (resourceData.icon == '') {
-            resourceData.icon = CoreCourse.getModuleIconSrc(this.modName, 'modicon' in module ? module.modicon : undefined);
-        }
-
-        return resourceData;
+        return extra.join(' ');
     }
 
     /**
      * @inheritdoc
      */
-    async getMainComponent(): Promise<Type<unknown> | undefined> {
+    getIconSrc(module?: CoreCourseModuleData): string | undefined {
+        if (!module) {
+            return;
+        }
+
+        if (CoreSites.getCurrentSite()?.isVersionGreaterEqualThan('4.0')) {
+            return CoreCourse.getModuleIconSrc(module.modname, module.modicon);
+        }
+        let mimetypeIcon = '';
+
+        if (module.contentsinfo) {
+            // No need to use the list of files.
+            const mimetype = module.contentsinfo.mimetypes[0];
+            if (mimetype) {
+                mimetypeIcon = CoreMimetypeUtils.getMimetypeIcon(mimetype);
+            }
+
+        } else if (module.contents && module.contents[0]) {
+            const files = module.contents;
+            const file = files[0];
+
+            mimetypeIcon = CoreMimetypeUtils.getFileIcon(file.filename || '');
+        }
+
+        return CoreCourse.getModuleIconSrc(module.modname, module.modicon, mimetypeIcon);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    async getMainComponent(): Promise<Type<unknown>> {
         return AddonModResourceIndexComponent;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    iconIsShape(module?: CoreCourseModuleData | undefined, modicon?: string | undefined): boolean | undefined {
+        const iconUrl = module?.modicon ?? modicon;
+
+        return !iconUrl?.startsWith('assets/img/files/');
     }
 
 }
 export const AddonModResourceModuleHandler = makeSingleton(AddonModResourceModuleHandlerService);
-
-type AddonResourceHandlerData = {
-    icon: string;
-    extra: string;
-}
-;

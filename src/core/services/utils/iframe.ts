@@ -16,20 +16,22 @@ import { Injectable } from '@angular/core';
 import { WKUserScriptWindow } from 'cordova-plugin-wkuserscript';
 import { WKWebViewCookiesWindow } from 'cordova-plugin-wkwebview-cookies';
 
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFile } from '@services/file';
 import { CoreFileHelper } from '@services/file-helper';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreTextUtils } from '@services/utils/text';
 import { CoreUrlUtils } from '@services/utils/url';
-import { CoreUtils, PromiseDefer } from '@services/utils/utils';
+import { CoreUtils } from '@services/utils/utils';
 
-import { makeSingleton, Network, Platform, NgZone, Translate, Diagnostic } from '@singletons';
+import { makeSingleton, NgZone, Translate, Diagnostic } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import { CoreUrl } from '@singletons/url';
 import { CoreWindow } from '@singletons/window';
 import { CoreContentLinksHelper } from '@features/contentlinks/services/contentlinks-helper';
+import { CorePath } from '@singletons/path';
+import { CorePromisedValue } from '@classes/promised-value';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Possible types of frame elements.
@@ -48,15 +50,10 @@ export class CoreIframeUtilsProvider {
     static readonly FRAME_TAGS = ['iframe', 'frame', 'object', 'embed'];
 
     protected logger: CoreLogger;
-    protected waitAutoLoginDefer?: PromiseDefer<void>;
+    protected waitAutoLoginDefer?: CorePromisedValue<void>;
 
     constructor() {
-        this.logger = CoreLogger.getInstance('CoreUtilsProvider');
-
-        if (CoreApp.isIOS() && 'WKUserScript' in window) {
-            // eslint-disable-next-line promise/catch-or-return
-            Platform.ready().then(() => this.injectiOSScripts(window));
-        }
+        this.logger = CoreLogger.getInstance('CoreIframeUtilsProvider');
     }
 
     /**
@@ -64,12 +61,12 @@ export class CoreIframeUtilsProvider {
      *
      * @param element The frame to check (iframe, embed, ...).
      * @param isSubframe Whether it's a frame inside another frame.
-     * @return True if frame is online and the app is offline, false otherwise.
+     * @returns True if frame is online and the app is offline, false otherwise.
      */
     checkOnlineFrameInOffline(element: CoreFrameElement, isSubframe?: boolean): boolean {
         const src = 'src' in element ? element.src : element.data;
 
-        if (src && src != 'about:blank' && !CoreUrlUtils.isLocalFileUrl(src) && !CoreApp.isOnline()) {
+        if (src && src != 'about:blank' && !CoreUrlUtils.isLocalFileUrl(src) && !CoreNetwork.isOnline()) {
             if (element.classList.contains('core-iframe-offline-disabled')) {
                 // Iframe already hidden, stop.
                 return true;
@@ -79,7 +76,7 @@ export class CoreIframeUtilsProvider {
             this.addOfflineWarning(element, src, isSubframe);
 
             // If the network changes, check it again.
-            const subscription = Network.onConnect().subscribe(() => {
+            const subscription = CoreNetwork.onConnect().subscribe(() => {
                 // Execute the callback in the Angular zone, so change detection doesn't stop working.
                 NgZone.run(() => {
                     if (!this.checkOnlineFrameInOffline(element, isSubframe)) {
@@ -90,7 +87,7 @@ export class CoreIframeUtilsProvider {
             });
 
             return true;
-        } else if (element.classList.contains('core-iframe-offline-disabled')) {
+        } else if (element.classList.contains('core-iframe-offline-disabled') && element.parentElement) {
             // Reload the frame.
             if ('src' in element) {
                 // eslint-disable-next-line no-self-assign
@@ -101,7 +98,7 @@ export class CoreIframeUtilsProvider {
             }
 
             // Remove the warning and show the iframe
-            CoreDomUtils.removeElement(element.parentElement!, 'div.core-iframe-offline-warning');
+            CoreDomUtils.removeElement(element.parentElement, 'div.core-iframe-offline-warning');
             element.classList.remove('core-iframe-offline-disabled');
 
             if (isSubframe) {
@@ -118,7 +115,7 @@ export class CoreIframeUtilsProvider {
      * @param element The frame to check (iframe, embed, ...).
      * @param src Frame src.
      * @param isSubframe Whether it's a frame inside another frame.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async addOfflineWarning(element: HTMLElement, src: string, isSubframe?: boolean): Promise<void> {
         const site = CoreSites.getCurrentSite();
@@ -137,7 +134,7 @@ export class CoreIframeUtilsProvider {
         const canHandleLink = await CoreContentLinksHelper.canHandleLink(src, undefined, username);
 
         if (!canHandleLink) {
-            // @todo: The not connected icon isn't seen due to the div's height. Also, it's quite big.
+            // @todo The not connected icon isn't seen due to the div's height. Also, it's quite big.
             div.innerHTML = (isSubframe ? '' : '<div class="core-iframe-network-error"></div>') +
                 '<p>' + Translate.instant('core.networkerroriframemsg') + '</p>';
 
@@ -188,7 +185,7 @@ export class CoreIframeUtilsProvider {
      *
      * @param iframe Iframe element.
      * @param url Original URL.
-     * @return Promise resolved with the URL.
+     * @returns Promise resolved with the URL.
      */
     async getAutoLoginUrlForIframe(iframe: HTMLIFrameElement, url: string): Promise<string> {
         const currentSite = CoreSites.getCurrentSite();
@@ -198,26 +195,25 @@ export class CoreIframeUtilsProvider {
 
         if (this.waitAutoLoginDefer) {
             // Another iframe is already using auto-login. Wait for it to finish.
-            await this.waitAutoLoginDefer.promise;
+            await this.waitAutoLoginDefer;
 
             // Return the original URL, we can't request a new auto-login.
             return url;
         }
 
         // First iframe requesting auto-login.
-        this.waitAutoLoginDefer = CoreUtils.promiseDefer();
+        this.waitAutoLoginDefer = new CorePromisedValue();
 
         const finalUrl = await currentSite.getAutoLoginUrl(url, false);
 
         // Resolve the promise once the iframe is loaded, or after a certain time.
-        let unblocked = false;
         const unblock = () => {
-            if (unblocked) {
+            if (!this.waitAutoLoginDefer) {
+                // Not blocked.
                 return;
             }
 
-            unblocked = true;
-            this.waitAutoLoginDefer!.resolve();
+            this.waitAutoLoginDefer.resolve();
             delete this.waitAutoLoginDefer;
         };
 
@@ -232,9 +228,15 @@ export class CoreIframeUtilsProvider {
      * Please notice that the element should be an iframe, embed or similar.
      *
      * @param element Element to treat (iframe, embed, ...).
-     * @return Window and Document.
+     * @returns Window and Document.
      */
     getContentWindowAndDocument(element: CoreFrameElement): { window: Window | null; document: Document | null } {
+        const src = 'src' in element ? element.src : element.data;
+        if (!CoreUrlUtils.isLocalFileUrl(src)) {
+            // No permissions to access the iframe.
+            return { window: null, document: null };
+        }
+
         let contentWindow: Window | null = 'contentWindow' in element ? element.contentWindow : null;
         let contentDocument: Document | null = null;
 
@@ -242,7 +244,7 @@ export class CoreIframeUtilsProvider {
             contentDocument = 'contentDocument' in element && element.contentDocument
                 ? element.contentDocument
                 : contentWindow && contentWindow.document;
-        } catch (ex) {
+        } catch {
             // Ignore errors.
         }
 
@@ -255,7 +257,7 @@ export class CoreIframeUtilsProvider {
             // It's probably an <embed>. Try to get the window and the document.
             try {
                 contentDocument = element.getSVGDocument();
-            } catch (ex) {
+            } catch {
                 // Ignore errors.
             }
 
@@ -315,10 +317,10 @@ export class CoreIframeUtilsProvider {
             };
         }
 
-        if (contentDocument) {
+        if (contentDocument.body) {
             // Search sub frames.
             CoreIframeUtilsProvider.FRAME_TAGS.forEach((tag) => {
-                const elements = Array.from(contentDocument.querySelectorAll(tag));
+                const elements = Array.from(contentDocument.body.querySelectorAll(tag));
                 elements.forEach((subElement: CoreFrameElement) => {
                     this.treatFrame(subElement, true);
                 });
@@ -338,6 +340,8 @@ export class CoreIframeUtilsProvider {
             return;
         }
 
+        element.classList.add('core-loading');
+
         const treatElement = (sendResizeEvent: boolean = false) => {
             this.checkOnlineFrameInOffline(element, isSubframe);
 
@@ -353,9 +357,12 @@ export class CoreIframeUtilsProvider {
                 this.treatFrameLinks(element, document);
             }
 
+            // Iframe content has been loaded.
             // Send a resize events to the iframe so it calculates the right size if needed.
             if (window && sendResizeEvent) {
-                setTimeout(() => window.dispatchEvent(new Event('resize')), 1000);
+                element.classList.remove('core-loading');
+
+                setTimeout(() => window.dispatchEvent && window.dispatchEvent(new Event('resize')), 1000);
             }
         };
 
@@ -396,7 +403,7 @@ export class CoreIframeUtilsProvider {
 
             // Add click listener to the link, this way if the iframe has added a listener to the link it will be executed first.
             link.treated = true;
-            link.addEventListener('click', this.linkClicked.bind(this, link, element));
+            link.addEventListener('click', event => this.linkClicked(link, element, event));
         }, {
             capture: true, // Use capture to fix this listener not called if the element clicked is too deep in the DOM.
         });
@@ -408,7 +415,7 @@ export class CoreIframeUtilsProvider {
      * @param url URL passed to window.open.
      * @param name Name passed to window.open.
      * @param element HTML element of the frame.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async windowOpen(url: string, name: string, element?: CoreFrameElement): Promise<void> {
         const scheme = CoreUrlUtils.getUrlScheme(url);
@@ -420,7 +427,7 @@ export class CoreIframeUtilsProvider {
             if (src) {
                 const dirAndFile = CoreFile.getFileAndDirectoryFromPath(src);
                 if (dirAndFile.directory) {
-                    url = CoreTextUtils.concatenatePaths(dirAndFile.directory, url);
+                    url = CorePath.concatenatePaths(dirAndFile.directory, url);
                 } else {
                     this.logger.warn('Cannot get iframe dir path to open relative url', url, element);
 
@@ -446,26 +453,13 @@ export class CoreIframeUtilsProvider {
             } else {
                 element.setAttribute('src', url);
             }
-        } else if (CoreUrlUtils.isLocalFileUrl(url)) {
-            // It's a local file.
-            const filename = url.substr(url.lastIndexOf('/') + 1);
-
-            if (!CoreFileHelper.isOpenableInApp({ filename })) {
-                try {
-                    await CoreFileHelper.showConfirmOpenUnsupportedFile();
-                } catch (error) {
-                    return; // Cancelled, stop.
-                }
-            }
-
+        } else {
             try {
-                await CoreUtils.openFile(url);
+                // It's an external link or a local file, check if it can be opened in the app.
+                await CoreWindow.open(url, name);
             } catch (error) {
                 CoreDomUtils.showErrorModal(error);
             }
-        } else {
-            // It's an external link, check if it can be opened in the app.
-            await CoreWindow.open(url, name);
         }
     }
 
@@ -475,11 +469,11 @@ export class CoreIframeUtilsProvider {
      * @param link Link clicked, or data of the link clicked.
      * @param element Frame element.
      * @param event Click event.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async linkClicked(
         link: CoreIframeHTMLAnchorElement | {href: string; target?: string; originalHref?: string},
-        element?: HTMLFrameElement | HTMLObjectElement,
+        element?: CoreFrameElement,
         event?: Event,
     ): Promise<void> {
         if (event && event.defaultPrevented) {
@@ -521,17 +515,17 @@ export class CoreIframeUtilsProvider {
             if (!CoreSites.isLoggedIn()) {
                 CoreUtils.openInBrowser(link.href);
             } else {
-                await CoreSites.getCurrentSite()!.openInBrowserWithAutoLoginIfSameSite(link.href);
+                await CoreSites.getCurrentSite()?.openInBrowserWithAutoLogin(link.href);
             }
         } else if (link.target == '_parent' || link.target == '_top' || link.target == '_blank') {
             // Opening links with _parent, _top or _blank can break the app. We'll open it in InAppBrowser.
             event && event.preventDefault();
 
-            const filename = link.href.substr(link.href.lastIndexOf('/') + 1);
+            const filename = link.href.substring(link.href.lastIndexOf('/') + 1);
 
             if (!CoreFileHelper.isOpenableInApp({ filename })) {
                 try {
-                    await CoreFileHelper.showConfirmOpenUnsupportedFile();
+                    await CoreFileHelper.showConfirmOpenUnsupportedFile(false, { filename });
                 } catch (error) {
                     return; // Cancelled, stop.
                 }
@@ -542,7 +536,7 @@ export class CoreIframeUtilsProvider {
             } catch (error) {
                 CoreDomUtils.showErrorModal(error);
             }
-        } else if (CoreApp.isIOS() && (!link.target || link.target == '_self') && element) {
+        } else if (CorePlatform.isIOS() && (!link.target || link.target == '_self') && element) {
             // In cordova ios 4.1.0 links inside iframes stopped working. We'll manually treat them.
             event && event.preventDefault();
             if (element.tagName.toLowerCase() == 'object') {
@@ -558,24 +552,24 @@ export class CoreIframeUtilsProvider {
      *
      * @param userScriptWindow Window.
      */
-    private injectiOSScripts(userScriptWindow: WKUserScriptWindow) {
+    injectiOSScripts(userScriptWindow: WKUserScriptWindow): void {
         const wwwPath = CoreFile.getWWWAbsolutePath();
-        const linksPath = CoreTextUtils.concatenatePaths(wwwPath, 'assets/js/iframe-treat-links.js');
+        const linksPath = CorePath.concatenatePaths(wwwPath, 'assets/js/iframe-treat-links.js');
 
         userScriptWindow.WKUserScript?.addScript({ id: 'CoreIframeUtilsLinksScript', file: linksPath });
 
         // Handle post messages received by iframes.
-        window.addEventListener('message', this.handleIframeMessage.bind(this));
+        window.addEventListener('message', (event) => this.handleIframeMessage(event));
     }
 
     /**
      * Fix cookies for an iframe URL.
      *
      * @param url URL of the iframe.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async fixIframeCookies(url: string): Promise<void> {
-        if (!CoreApp.isIOS() || !url || CoreUrlUtils.isLocalFileUrl(url)) {
+        if (!CorePlatform.isIOS() || !url || CoreUrlUtils.isLocalFileUrl(url)) {
             // No need to fix cookies.
             return;
         }
@@ -601,17 +595,17 @@ export class CoreIframeUtilsProvider {
     /**
      * Check whether the help should be displayed in current OS.
      *
-     * @return Boolean.
+     * @returns Boolean.
      */
     shouldDisplayHelp(): boolean {
-        return CoreApp.isIOS() && CoreApp.getPlatformMajorVersion() >= 14;
+        return CorePlatform.isIOS() && CorePlatform.getPlatformMajorVersion() >= 14;
     }
 
     /**
      * Check whether the help should be displayed for a certain iframe.
      *
      * @param url Iframe URL.
-     * @return Boolean.
+     * @returns Boolean.
      */
     shouldDisplayHelpForUrl(url: string): boolean {
         return this.shouldDisplayHelp() && !CoreUrlUtils.isLocalFileUrl(url);

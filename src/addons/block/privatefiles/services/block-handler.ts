@@ -16,7 +16,7 @@ import { Injectable } from '@angular/core';
 import { CoreBlockHandlerData } from '@features/block/services/block-delegate';
 import { CoreBlockOnlyTitleComponent } from '@features/block/components/only-title-block/only-title-block';
 import { CoreBlockBaseHandler } from '@features/block/classes/base-block-handler';
-import { AddonPrivateFilesMainMenuHandlerService } from '@/addons/privatefiles/services/handlers/mainmenu';
+import { AddonPrivateFilesUserHandlerService } from '@addons/privatefiles/services/handlers/user';
 import { makeSingleton } from '@singletons';
 
 /**
@@ -31,7 +31,7 @@ export class AddonBlockPrivateFilesHandlerService extends CoreBlockBaseHandler {
     /**
      * Returns the data needed to render the block.
      *
-     * @return Data or promise resolved with the data.
+     * @returns Data or promise resolved with the data.
      */
     getDisplayData(): CoreBlockHandlerData {
 
@@ -39,7 +39,7 @@ export class AddonBlockPrivateFilesHandlerService extends CoreBlockBaseHandler {
             title: 'addon.block_privatefiles.pluginname',
             class: 'addon-block-private-files',
             component: CoreBlockOnlyTitleComponent,
-            link: AddonPrivateFilesMainMenuHandlerService.PAGE_NAME,
+            link: AddonPrivateFilesUserHandlerService.PAGE_NAME,
             linkParams: { root: 'my' },
             navOptions: {
                 preferCurrentTab: false,

@@ -26,12 +26,12 @@ export class AddonCalendarMainMenuHandlerService implements CoreMainMenuHandler 
     static readonly PAGE_NAME = 'calendar';
 
     name = 'AddonCalendar';
-    priority = 900;
+    priority = 550;
 
     /**
      * Check if the handler is enabled on a site level.
      *
-     * @return Whether or not the handler is enabled on a site level.
+     * @returns Whether or not the handler is enabled on a site level.
      */
     async isEnabled(): Promise<boolean> {
         return !AddonCalendar.isCalendarDisabledInSite();
@@ -40,13 +40,13 @@ export class AddonCalendarMainMenuHandlerService implements CoreMainMenuHandler 
     /**
      * Returns the data needed to render the handler.
      *
-     * @return Data needed to render the handler.
+     * @returns Data needed to render the handler.
      */
     getDisplayData(): CoreMainMenuHandlerData {
         return {
             icon: 'far-calendar',
             title: 'addon.calendar.calendar',
-            page: AddonCalendar.getMainCalendarPagePath(),
+            page: AddonCalendarMainMenuHandlerService.PAGE_NAME,
             class: 'addon-calendar-handler',
         };
     }

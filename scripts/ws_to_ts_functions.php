@@ -18,6 +18,14 @@
  * Helper functions for converting a Moodle WS structure to a TS type.
  */
 
+use core_external\external_api;
+use core_external\external_function_parameters;
+use core_external\external_value;
+use core_external\external_warnings;
+use core_external\external_files;
+use core_external\external_single_structure;
+use core_external\external_multiple_structure;
+
 /**
  * Get the structure of a WS params or returns.
  */
@@ -70,7 +78,7 @@ function fix_comment($desc) {
     if (count($lines) > 1) {
         $desc = array_shift($lines)."\n";
 
-        foreach ($lines as $i => $line) {
+        foreach ($lines as $line) {
             $spaces = strlen($line) - strlen(ltrim($line));
             $desc .= str_repeat(' ', $spaces - 3) . '// '. ltrim($line)."\n";
         }
@@ -138,9 +146,7 @@ function convert_to_ts($key, $value, $boolisnumber = false, $indentation = '', $
             $type = 'number';
         }
 
-        $result = convert_key_type($key, $type, $value->required, $indentation);
-
-        return $result;
+        return convert_key_type($key, $type, $value->required, $indentation);
 
     } else if ($value instanceof external_single_structure) {
         // It's an object.
@@ -278,7 +284,7 @@ function remove_default_closures($value) {
 
     } else if ($value instanceof external_single_structure) {
 
-        foreach ($value->keys as $key => $subvalue) {
+        foreach ($value->keys as $subvalue) {
             remove_default_closures($subvalue);
         }
 

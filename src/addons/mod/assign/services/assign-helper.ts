@@ -15,7 +15,7 @@
 import { Injectable } from '@angular/core';
 import { CoreFileUploader, CoreFileUploaderStoreFilesResult } from '@features/fileuploader/services/fileuploader';
 import { CoreSites, CoreSitesCommonWSOptions } from '@services/sites';
-import { FileEntry } from '@ionic-native/file/ngx';
+import { FileEntry, DirectoryEntry } from '@ionic-native/file/ngx';
 import {
     AddonModAssignProvider,
     AddonModAssignAssign,
@@ -25,6 +25,7 @@ import {
     AddonModAssign,
     AddonModAssignPlugin,
     AddonModAssignSavePluginData,
+    AddonModAssignSubmissionStatusValues,
 } from './assign';
 import { AddonModAssignOffline } from './assign-offline';
 import { CoreUtils } from '@services/utils/utils';
@@ -44,19 +45,38 @@ import { CoreFileEntry } from '@services/file-helper';
 export class AddonModAssignHelperProvider {
 
     /**
+     * Calculate the end time (timestamp) for an assign and submission.
+     *
+     * @param assign Assign instance.
+     * @param submission Submission.
+     * @returns End time.
+     */
+    calculateEndTime(assign: AddonModAssignAssign, submission?: AddonModAssignSubmissionFormatted): number {
+        const timeDue = (submission?.timestarted || 0) + (assign.timelimit || 0);
+
+        if (assign.duedate) {
+            return Math.min(timeDue, assign.duedate);
+        } else if (assign.cutoffdate) {
+            return Math.min(timeDue, assign.cutoffdate);
+        }
+
+        return timeDue;
+    }
+
+    /**
      * Check if a submission can be edited in offline.
      *
      * @param assign Assignment.
      * @param submission Submission.
-     * @return Whether it can be edited offline.
+     * @returns Whether it can be edited offline.
      */
     async canEditSubmissionOffline(assign: AddonModAssignAssign, submission?: AddonModAssignSubmission): Promise<boolean> {
         if (!submission) {
             return false;
         }
 
-        if (submission.status == AddonModAssignProvider.SUBMISSION_STATUS_NEW ||
-                submission.status == AddonModAssignProvider.SUBMISSION_STATUS_REOPENED) {
+        if (submission.status == AddonModAssignSubmissionStatusValues.NEW ||
+                submission.status == AddonModAssignSubmissionStatusValues.REOPENED) {
             // It's a new submission, allow creating it in offline.
             return true;
         }
@@ -106,7 +126,7 @@ export class AddonModAssignHelperProvider {
      *
      * @param assign Assignment.
      * @param previousSubmission Submission to copy.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async copyPreviousAttempt(assign: AddonModAssignAssign, previousSubmission: AddonModAssignSubmission): Promise<void> {
         const pluginData: AddonModAssignSavePluginData = {};
@@ -127,7 +147,7 @@ export class AddonModAssignHelperProvider {
     /**
      * Create an empty feedback object.
      *
-     * @return Feedback.
+     * @returns Feedback.
      */
     createEmptyFeedback(): AddonModAssignSubmissionFeedback {
         return {
@@ -140,7 +160,7 @@ export class AddonModAssignHelperProvider {
     /**
      * Create an empty submission object.
      *
-     * @return Submission.
+     * @returns Submission.
      */
     createEmptySubmission(): AddonModAssignSubmissionFormatted {
         return {
@@ -149,7 +169,7 @@ export class AddonModAssignHelperProvider {
             attemptnumber: 0,
             timecreated: 0,
             timemodified: 0,
-            status: '',
+            status: AddonModAssignSubmissionStatusValues.NEW,
             groupid: 0,
         };
     }
@@ -161,7 +181,7 @@ export class AddonModAssignHelperProvider {
      * @param folderName Name of the plugin folder. Must be unique (both in submission and feedback plugins).
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async deleteStoredSubmissionFiles(assignId: number, folderName: string, userId?: number, siteId?: string): Promise<void> {
         const folderPath = await AddonModAssignOffline.getSubmissionPluginFolder(assignId, folderName, userId, siteId);
@@ -176,7 +196,7 @@ export class AddonModAssignHelperProvider {
      * @param userId User Id.
      * @param feedback Feedback data.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async discardFeedbackPluginData(
         assignId: number,
@@ -198,7 +218,7 @@ export class AddonModAssignHelperProvider {
      *
      * @param assign Assignment object.
      * @param submission Submission to inspect.
-     * @return Whether the submission is empty.
+     * @returns Whether the submission is empty.
      */
     isSubmissionEmpty(assign: AddonModAssignAssign, submission?: AddonModAssignSubmission): boolean {
         if (!submission) {
@@ -223,7 +243,7 @@ export class AddonModAssignHelperProvider {
      * @param assign Assignment object.
      * @param groupId Group Id.
      * @param options Other options.
-     * @return Promise resolved with the list of participants and summary of submissions.
+     * @returns Promise resolved with the list of participants and summary of submissions.
      */
     async getParticipants(
         assign: AddonModAssignAssign,
@@ -271,7 +291,7 @@ export class AddonModAssignHelperProvider {
      * @param assign Assignment object including all config.
      * @param subtype Subtype name (assignsubmission or assignfeedback)
      * @param type Name of the subplugin.
-     * @return Object containing all configurations of the subplugin selected.
+     * @returns Object containing all configurations of the subplugin selected.
      */
     getPluginConfig(assign: AddonModAssignAssign, subtype: string, type: string): AddonModAssignPluginConfig {
         const configs: AddonModAssignPluginConfig = {};
@@ -290,7 +310,7 @@ export class AddonModAssignHelperProvider {
      *
      * @param assign Assignment object including all config.
      * @param subtype Subtype name (assignsubmission or assignfeedback)
-     * @return List of enabled plugins for the assign.
+     * @returns List of enabled plugins for the assign.
      */
     getPluginsEnabled(assign: AddonModAssignAssign, subtype: string): AddonModAssignPlugin[] {
         const enabled: AddonModAssignPlugin[] = [];
@@ -315,7 +335,7 @@ export class AddonModAssignHelperProvider {
      * @param folderName Name of the plugin folder. Must be unique (both in submission and feedback plugins).
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the files.
+     * @returns Promise resolved with the files.
      */
     async getStoredSubmissionFiles(
         assignId: number,
@@ -333,7 +353,7 @@ export class AddonModAssignHelperProvider {
      *
      * @param assign Assignment.
      * @param previousSubmission Submission to copy.
-     * @return Promise resolved with the size.
+     * @returns Promise resolved with the size.
      */
     async getSubmissionSizeForCopy(assign: AddonModAssignAssign, previousSubmission: AddonModAssignSubmission): Promise<number> {
         let totalSize = 0;
@@ -358,7 +378,7 @@ export class AddonModAssignHelperProvider {
      * @param assign Assignment.
      * @param submission Submission to check data.
      * @param inputData Data entered in the submission form.
-     * @return Promise resolved with the size.
+     * @returns Promise resolved with the size.
      */
     async getSubmissionSizeForEdit(
         assign: AddonModAssignAssign,
@@ -390,7 +410,7 @@ export class AddonModAssignHelperProvider {
      * @param submissions Submissions to get the data for.
      * @param groupId Group Id.
      * @param options Other options.
-     * @return Promise always resolved. Resolve param is the formatted submissions.
+     * @returns Promise always resolved. Resolve param is the formatted submissions.
      */
     async getSubmissionsUserData(
         assign: AddonModAssignAssign,
@@ -398,70 +418,41 @@ export class AddonModAssignHelperProvider {
         groupId?: number,
         options: CoreSitesCommonWSOptions = {},
     ): Promise<AddonModAssignSubmissionFormatted[]> {
-        // Create new options including all existing ones.
-        const modOptions: CoreCourseCommonModWSOptions = { cmId: assign.cmid, ...options };
+        const participants = await this.getParticipants(assign, groupId, options);
 
-        const parts = await this.getParticipants(assign, groupId, options);
+        const blind = !!assign.blindmarking && !assign.revealidentities;
+        const teamsubmission = !!assign.teamsubmission;
 
-        const blind = assign.blindmarking && !assign.revealidentities;
-        const promises: Promise<void>[] = [];
-        const result: AddonModAssignSubmissionFormatted[] = [];
-        const participants: {[id: number]: AddonModAssignParticipant} = CoreUtils.arrayToObject(parts, 'id');
+        if (teamsubmission) {
+            // On team submission discard user submissions.
+            submissions = submissions.filter((submission) => submission.userid == 0);
+        }
 
-        submissions.forEach((submission) => {
-            submission.submitid = submission.userid && submission.userid > 0 ? submission.userid : submission.blindid;
-            if (typeof submission.submitid == 'undefined' || submission.submitid <= 0) {
-                return;
-            }
+        return participants.map((participant) => {
+            const groupId = participant.groupid ??
+                (participant.groups && participant.groups[0] ? participant.groups[0].id : 0);
 
-            const participant = participants[submission.submitid];
-            if (!participant) {
-                // Avoid permission denied error. Participant not found on list.
-                return;
-            }
-
-            delete participants[submission.submitid];
-
-            if (!blind) {
-                submission.userfullname = participant.fullname;
-                submission.userprofileimageurl = participant.profileimageurl;
-            }
-
-            submission.manyGroups = !!participant.groups && participant.groups.length > 1;
-            submission.noGroups = !!participant.groups && participant.groups.length == 0;
-            if (participant.groupname) {
-                submission.groupid = participant.groupid!;
-                submission.groupname = participant.groupname;
-            }
-
-            let promise = Promise.resolve();
-            if (submission.userid && submission.userid > 0 && blind) {
-                // Blind but not blinded! (Moodle < 3.1.1, 3.2).
-                delete submission.userid;
-
-                promise = AddonModAssign.getAssignmentUserMappings(assign.id, submission.submitid, modOptions)
-                    .then((blindId) => {
-                        submission.blindid = blindId;
-
-                        return;
-                    });
-            }
-
-            promises.push(promise.then(() => {
-                // Add to the list.
-                if (submission.userfullname || submission.blindid) {
-                    result.push(submission);
+            const foundSubmission = submissions.find((submission) => {
+                if (teamsubmission) {
+                    return submission.groupid == groupId;
                 }
 
-                return;
-            }));
-        });
+                const submitId = submission.userid && submission.userid > 0 ? submission.userid : submission.blindid;
 
-        await Promise.all(promises);
+                return participant.id == submitId;
+            });
 
-        // Create a submission for each participant left in the list (the participants already treated were removed).
-        CoreUtils.objectToArray(participants).forEach((participant: AddonModAssignParticipant) => {
-            const submission = this.createEmptySubmission();
+            let submission: AddonModAssignSubmissionFormatted | undefined;
+            if (!foundSubmission) {
+                // Create submission if none.
+                submission = this.createEmptySubmission();
+                submission.groupid = groupId;
+                submission.status = participant.submitted
+                    ? AddonModAssignSubmissionStatusValues.SUBMITTED
+                    : AddonModAssignSubmissionStatusValues.NEW;
+            } else {
+                submission = Object.assign({}, foundSubmission);
+            }
 
             submission.submitid = participant.id;
 
@@ -476,16 +467,13 @@ export class AddonModAssignHelperProvider {
             submission.manyGroups = !!participant.groups && participant.groups.length > 1;
             submission.noGroups = !!participant.groups && participant.groups.length == 0;
             if (participant.groupname) {
-                submission.groupid = participant.groupid!;
+                submission.groupid = participant.groupid;
                 submission.groupname = participant.groupname;
             }
-            submission.status = participant.submitted ? AddonModAssignProvider.SUBMISSION_STATUS_SUBMITTED :
-                AddonModAssignProvider.SUBMISSION_STATUS_NEW;
 
-            result.push(submission);
+            return submission;
+
         });
-
-        return result;
     }
 
     /**
@@ -495,7 +483,7 @@ export class AddonModAssignHelperProvider {
      * @param submission The submission.
      * @param feedback Feedback data.
      * @param userId The user ID.
-     * @return Promise resolved with true if data has changed, resolved with false otherwise.
+     * @returns Promise resolved with true if data has changed, resolved with false otherwise.
      */
     async hasFeedbackDataChanged(
         assign: AddonModAssignAssign,
@@ -533,7 +521,7 @@ export class AddonModAssignHelperProvider {
      * @param assign Assignment.
      * @param submission Submission to check data.
      * @param inputData Data entered in the submission form.
-     * @return Promise resolved with true if data has changed, resolved with false otherwise.
+     * @returns Promise resolved with true if data has changed, resolved with false otherwise.
      */
     async hasSubmissionDataChanged(
         assign: AddonModAssignAssign,
@@ -572,7 +560,7 @@ export class AddonModAssignHelperProvider {
      * @param userId User Id.
      * @param feedback Feedback data.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with plugin data to send to server.
+     * @returns Promise resolved with plugin data to send to server.
      */
     async prepareFeedbackPluginData(
         assignId: number,
@@ -599,7 +587,7 @@ export class AddonModAssignHelperProvider {
      * @param submission Submission to check data.
      * @param inputData Data entered in the submission form.
      * @param offline True to prepare the data for an offline submission, false otherwise.
-     * @return Promise resolved with plugin data to send to server.
+     * @returns Promise resolved with plugin data to send to server.
      */
     async prepareSubmissionPluginData(
         assign: AddonModAssignAssign,
@@ -637,7 +625,7 @@ export class AddonModAssignHelperProvider {
      * @param files List of files.
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if success, rejected otherwise.
+     * @returns Promise resolved if success, rejected otherwise.
      */
     async storeSubmissionFiles(
         assignId: number,
@@ -659,7 +647,7 @@ export class AddonModAssignHelperProvider {
      * @param file Online file or local FileEntry.
      * @param itemId Draft ID to use. Undefined or 0 to create a new draft ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the itemId.
+     * @returns Promise resolved with the itemId.
      */
     uploadFile(assignId: number, file: CoreFileEntry, itemId?: number, siteId?: string): Promise<number> {
         return CoreFileUploader.uploadOrReuploadFile(file, itemId, AddonModAssignProvider.COMPONENT, assignId, siteId);
@@ -673,7 +661,7 @@ export class AddonModAssignHelperProvider {
      * @param assignId Assignment ID.
      * @param files List of files.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the itemId.
+     * @returns Promise resolved with the itemId.
      */
     uploadFiles(assignId: number, files: CoreFileEntry[], siteId?: string): Promise<number> {
         return CoreFileUploader.uploadOrReuploadFiles(files, AddonModAssignProvider.COMPONENT, assignId, siteId);
@@ -688,7 +676,7 @@ export class AddonModAssignHelperProvider {
      * @param offline True if files sould be stored for offline, false to upload them.
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async uploadOrStoreFiles(
         assignId: number,
@@ -737,8 +725,9 @@ export const AddonModAssignHelper = makeSingleton(AddonModAssignHelperProvider);
  * Assign submission with some calculated data.
  */
 export type AddonModAssignSubmissionFormatted =
-    Omit<AddonModAssignSubmission, 'userid'> & {
+    Omit<AddonModAssignSubmission, 'userid'|'groupid'> & {
         userid?: number; // Student id.
+        groupid?: number; // Group id.
         blindid?: number; // Calculated in the app. Blindid of the user that did the submission.
         submitid?: number; // Calculated in the app. Userid or blindid of the user that did the submission.
         userfullname?: string; // Calculated in the app. Full name of the user that did the submission.

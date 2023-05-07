@@ -29,7 +29,7 @@ export class CoreCourseOfflineProvider {
      *
      * @param cmId The module ID to remove the completion.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async deleteManualCompletion(cmId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -41,12 +41,12 @@ export class CoreCourseOfflineProvider {
      * Get all offline manual completions for a certain course.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the list of completions.
+     * @returns Promise resolved with the list of completions.
      */
     async getAllManualCompletions(siteId?: string): Promise<CoreCourseManualCompletionDBRecord[]> {
         const site = await CoreSites.getSite(siteId);
 
-        return await site.getDb().getRecords(MANUAL_COMPLETION_TABLE);
+        return site.getDb().getRecords(MANUAL_COMPLETION_TABLE);
     }
 
     /**
@@ -54,12 +54,12 @@ export class CoreCourseOfflineProvider {
      *
      * @param courseId Course ID the module belongs to.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the list of completions.
+     * @returns Promise resolved with the list of completions.
      */
     async getCourseManualCompletions(courseId: number, siteId?: string): Promise<CoreCourseManualCompletionDBRecord[]> {
         const site = await CoreSites.getSite(siteId);
 
-        return await site.getDb().getRecords(MANUAL_COMPLETION_TABLE, { courseid: courseId });
+        return site.getDb().getRecords(MANUAL_COMPLETION_TABLE, { courseid: courseId });
     }
 
     /**
@@ -67,12 +67,12 @@ export class CoreCourseOfflineProvider {
      *
      * @param cmId The module ID to remove the completion.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the completion, rejected if failure or not found.
+     * @returns Promise resolved with the completion, rejected if failure or not found.
      */
     async getManualCompletion(cmId: number, siteId?: string): Promise<CoreCourseManualCompletionDBRecord> {
         const site = await CoreSites.getSite(siteId);
 
-        return await site.getDb().getRecord(MANUAL_COMPLETION_TABLE, { cmid: cmId });
+        return site.getDb().getRecord(MANUAL_COMPLETION_TABLE, { cmid: cmId });
     }
 
     /**
@@ -81,9 +81,9 @@ export class CoreCourseOfflineProvider {
      * @param cmId The module ID to store the completion.
      * @param completed Whether the module is completed or not.
      * @param courseId Course ID the module belongs to.
-     * @param courseName Course name. Recommended, it is used to display a better warning message.
+     * @param courseName Not used since 4.0.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when completion is successfully stored.
+     * @returns Promise resolved when completion is successfully stored.
      */
     async markCompletedManually(
         cmId: number,
@@ -99,7 +99,6 @@ export class CoreCourseOfflineProvider {
             cmid: cmId,
             completed: completed ? 1 : 0,
             courseid: courseId,
-            coursename: courseName || '',
             timecompleted: Date.now(),
         };
         await site.getDb().insertRecord(MANUAL_COMPLETION_TABLE, entry);

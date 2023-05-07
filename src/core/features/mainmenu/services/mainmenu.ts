@@ -14,7 +14,6 @@
 
 import { Injectable } from '@angular/core';
 
-import { CoreApp } from '@services/app';
 import { CoreLang, CoreLangLanguage } from '@services/lang';
 import { CoreSites } from '@services/sites';
 import { CoreConstants } from '@/core/constants';
@@ -22,6 +21,22 @@ import { CoreMainMenuDelegate, CoreMainMenuHandlerToDisplay } from './mainmenu-d
 import { Device, makeSingleton } from '@singletons';
 import { CoreArray } from '@singletons/array';
 import { CoreTextUtils } from '@services/utils/text';
+import { CoreScreen } from '@services/screen';
+import { CorePlatform } from '@services/platform';
+
+declare module '@singletons/events' {
+
+    /**
+     * Augment CoreEventsData interface with events specific to this service.
+     *
+     * @see https://www.typescriptlang.org/docs/handbook/declaration-merging.html#module-augmentation
+     */
+    export interface CoreEventsData {
+        [CoreMainMenuProvider.MAIN_MENU_HANDLER_BADGE_UPDATED]: CoreMainMenuHandlerBadgeUpdatedEventData;
+        [CoreMainMenuProvider.MAIN_MENU_VISIBILITY_UPDATED]: void;
+    }
+
+}
 
 /**
  * Service that provides some features regarding Main Menu.
@@ -32,17 +47,13 @@ export class CoreMainMenuProvider {
     static readonly NUM_MAIN_HANDLERS = 4;
     static readonly ITEM_MIN_WIDTH = 72; // Min with of every item, based on 5 items on a 360 pixel wide screen.
     static readonly MORE_PAGE_NAME = 'more';
-
-    protected tablet = false;
-
-    constructor() {
-        this.tablet = !!(window?.innerWidth && window.innerWidth >= 576 && window.innerHeight >= 576);
-    }
+    static readonly MAIN_MENU_HANDLER_BADGE_UPDATED = 'main_menu_handler_badge_updated';
+    static readonly MAIN_MENU_VISIBILITY_UPDATED = 'main_menu_visbility_updated';
 
     /**
      * Get the current main menu handlers.
      *
-     * @return Promise resolved with the current main menu handlers.
+     * @returns Promise resolved with the current main menu handlers.
      */
     async getCurrentMainMenuHandlers(): Promise<CoreMainMenuHandlerToDisplay[]> {
         const handlers = await CoreMainMenuDelegate.getHandlersWhenLoaded();
@@ -54,7 +65,7 @@ export class CoreMainMenuProvider {
      * Get a list of custom menu items.
      *
      * @param siteId Site to get custom items from.
-     * @return List of custom menu items.
+     * @returns List of custom menu items.
      */
     async getCustomMenuItems(siteId?: string): Promise<CoreMainMenuCustomItem[]> {
         const customItems = await Promise.all([
@@ -69,7 +80,7 @@ export class CoreMainMenuProvider {
      * Get a list of custom menu items for a certain site.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return List of custom menu items.
+     * @returns List of custom menu items.
      */
     protected async getCustomMenuItemsFromSite(siteId?: string): Promise<CoreMainMenuCustomItem[]> {
         const site = await CoreSites.getSite(siteId);
@@ -103,7 +114,7 @@ export class CoreMainMenuProvider {
             const id = url + '#' + type;
             if (!icon) {
                 // Icon not defined, use default one.
-                icon = type == 'embedded' ? 'fa-expand' : 'fa-link'; // @todo: Find a better icon for embedded.
+                icon = type == 'embedded' ? 'fa-expand' : 'fa-link'; // @todo Find a better icon for embedded.
             }
 
             if (!map[id]) {
@@ -162,13 +173,13 @@ export class CoreMainMenuProvider {
         }
 
         // Remove undefined values.
-        return result.filter((entry) => typeof entry != 'undefined');
+        return result.filter((entry) => entry !== undefined);
     }
 
     /**
      * Get a list of custom menu items from config.
      *
-     * @return List of custom menu items.
+     * @returns List of custom menu items.
      */
     protected async getCustomItemsFromConfig(): Promise<CoreMainMenuCustomItem[]> {
         const items = CoreConstants.CONFIG.customMainMenuItems;
@@ -185,9 +196,9 @@ export class CoreMainMenuProvider {
             osversion: Device.version,
         };
 
-        if (CoreApp.isAndroid()) {
+        if (CorePlatform.isAndroid()) {
             replacements.devicetype = 'Android';
-        } else if (CoreApp.isIOS()) {
+        } else if (CorePlatform.isIOS()) {
             replacements.devicetype = 'iPhone or iPad';
         } else {
             replacements.devicetype = 'Other';
@@ -207,13 +218,13 @@ export class CoreMainMenuProvider {
     /**
      * Get the number of items to be shown on the main menu bar.
      *
-     * @return Number of items depending on the device width.
+     * @returns Number of items depending on the device width.
      */
     getNumItems(): number {
         if (!this.isResponsiveMainMenuItemsDisabledInCurrentSite() && window && window.innerWidth) {
             let numElements: number;
 
-            if (this.tablet) {
+            if (CoreScreen.isTablet) {
                 // Tablet, menu will be displayed vertically.
                 numElements = Math.floor(window.innerHeight / CoreMainMenuProvider.ITEM_MIN_WIDTH);
             } else {
@@ -233,26 +244,17 @@ export class CoreMainMenuProvider {
     /**
      * Get tabs placement depending on the device size.
      *
-     * @return Tabs placement including side value.
+     * @returns Tabs placement including side value.
      */
     getTabPlacement(): 'bottom' | 'side' {
-        const tablet = !!(window.innerWidth && window.innerWidth >= 576 && (window.innerHeight >= 576 ||
-                ((CoreApp.isKeyboardVisible() || CoreApp.isKeyboardOpening()) && window.innerHeight >= 200)));
-
-        if (tablet != this.tablet) {
-            this.tablet = tablet;
-
-            // @todo Resize so content margins can be updated.
-        }
-
-        return tablet ? 'side' : 'bottom';
+        return CoreScreen.isTablet ? 'side' : 'bottom';
     }
 
     /**
      * Check if a certain page is the root of a main menu tab.
      *
-     * @param page Name of the page.
-     * @return Promise resolved with boolean: whether it's the root of a main menu tab.
+     * @param pageName Name of the page.
+     * @returns Promise resolved with boolean: whether it's the root of a main menu tab.
      */
     async isMainMenuTab(pageName: string): Promise<boolean> {
         if (pageName == CoreMainMenuProvider.MORE_PAGE_NAME) {
@@ -265,8 +267,8 @@ export class CoreMainMenuProvider {
     /**
      * Check if a certain page is the root of a main menu handler currently displayed.
      *
-     * @param page Name of the page.
-     * @return Promise resolved with boolean: whether it's the root of a main menu handler.
+     * @param pageName Name of the page.
+     * @returns Promise resolved with boolean: whether it's the root of a main menu handler.
      */
     async isCurrentMainMenuHandler(pageName: string): Promise<boolean> {
         const handlers = await this.getCurrentMainMenuHandlers();
@@ -283,7 +285,7 @@ export class CoreMainMenuProvider {
     /**
      * Check if responsive main menu items is disabled in the current site.
      *
-     * @return Whether it's disabled.
+     * @returns Whether it's disabled.
      */
     protected isResponsiveMainMenuItemsDisabledInCurrentSite(): boolean {
         const site = CoreSites.getCurrentSite();
@@ -341,3 +343,8 @@ type CustomMenuItemsMap = Record<string, {
         };
     };
 }>;
+
+export type CoreMainMenuHandlerBadgeUpdatedEventData = {
+    handler: string; // Handler name.
+    value: number; // New counter value.
+};

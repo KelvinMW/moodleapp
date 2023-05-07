@@ -31,10 +31,10 @@ import { AddonModFeedbackHelper, AddonModFeedbackNonRespondent } from '../../ser
 export class AddonModFeedbackNonRespondentsPage implements OnInit {
 
     protected cmId!: number;
-    protected courseId!: number;
     protected feedback?: AddonModFeedbackWSFeedback;
     protected page = 0;
 
+    courseId!: number;
     selectedGroup!: number;
     groupInfo?: CoreGroupInfo;
     users: AddonModFeedbackNonRespondent[] = [];
@@ -47,9 +47,17 @@ export class AddonModFeedbackNonRespondentsPage implements OnInit {
      * @inheritdoc
      */
     ngOnInit(): void {
-        this.cmId = CoreNavigator.getRouteNumberParam('cmId')!;
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.selectedGroup = CoreNavigator.getRouteNumberParam('group') || 0;
+        try {
+            this.cmId = CoreNavigator.getRequiredRouteNumberParam('cmId');
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.selectedGroup = CoreNavigator.getRouteNumberParam('group') || 0;
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         this.fetchData();
     }
@@ -58,7 +66,7 @@ export class AddonModFeedbackNonRespondentsPage implements OnInit {
      * Fetch all the data required for the view.
      *
      * @param refresh Empty events array first.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchData(refresh: boolean = false): Promise<void> {
         this.page = 0;
@@ -87,12 +95,12 @@ export class AddonModFeedbackNonRespondentsPage implements OnInit {
      * Load Group responses.
      *
      * @param groupId If defined it will change group if not, it will load more users for the same group.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async loadGroupUsers(groupId?: number): Promise<void> {
         this.loadMoreError = false;
 
-        if (typeof groupId == 'undefined') {
+        if (groupId === undefined) {
             this.page++;
         } else {
             this.selectedGroup = groupId;

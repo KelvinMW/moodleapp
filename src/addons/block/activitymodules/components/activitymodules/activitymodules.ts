@@ -21,6 +21,7 @@ import { ContextLevel, CoreConstants } from '@/core/constants';
 import { Translate } from '@singletons';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreNavigator } from '@services/navigator';
+import { CoreCourseHelper } from '@features/course/services/course-helper';
 
 /**
  * Component to render an "activity modules" block.
@@ -28,6 +29,7 @@ import { CoreNavigator } from '@services/navigator';
 @Component({
     selector: 'addon-block-activitymodules',
     templateUrl: 'addon-block-activitymodules.html',
+    styleUrls: ['activitymodules.scss'],
 })
 export class AddonBlockActivityModulesComponent extends CoreBlockBaseComponent implements OnInit {
 
@@ -42,16 +44,16 @@ export class AddonBlockActivityModulesComponent extends CoreBlockBaseComponent i
     /**
      * Perform the invalidate content function.
      *
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
-    protected async invalidateContent(): Promise<void> {
+    async invalidateContent(): Promise<void> {
         await CoreCourse.invalidateSections(this.instanceId);
     }
 
     /**
      * Fetch the data to render the block.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchContent(): Promise<void> {
         const sections = await CoreCourse.getSections(this.getCourseId(), false, true);
@@ -66,14 +68,14 @@ export class AddonBlockActivityModulesComponent extends CoreBlockBaseComponent i
             }
 
             section.modules.forEach((mod) => {
-                if (mod.uservisible === false || !CoreCourse.moduleHasView(mod) ||
-                    typeof modFullNames[mod.modname] != 'undefined') {
+                if (!CoreCourseHelper.canUserViewModule(mod, section) || !CoreCourse.moduleHasView(mod) ||
+                    modFullNames[mod.modname] !== undefined) {
                     // Ignore this module.
                     return;
                 }
 
                 // Get the archetype of the module type.
-                if (typeof archetypes[mod.modname] == 'undefined') {
+                if (archetypes[mod.modname] === undefined) {
                     archetypes[mod.modname] = CoreCourseModuleDelegate.supportsFeature<number>(
                         mod.modname,
                         CoreConstants.FEATURE_MOD_ARCHETYPE,
@@ -96,16 +98,13 @@ export class AddonBlockActivityModulesComponent extends CoreBlockBaseComponent i
         // Sort the modnames alphabetically.
         modFullNames = CoreUtils.sortValues(modFullNames);
         for (const modName in modFullNames) {
-            let icon: string;
+            const iconModName = modName === 'resources' ? 'page' : modName;
 
-            if (modName === 'resources') {
-                icon = CoreCourse.getModuleIconSrc('page', modIcons['page']);
-            } else {
-                icon = CoreCourseModuleDelegate.getModuleIconSrc(modName, modIcons[modName]) || '';
-            }
+            const icon = await CoreCourseModuleDelegate.getModuleIconSrc(iconModName, modIcons[iconModName]);
 
             this.entries.push({
-                icon: icon,
+                icon,
+                iconModName,
                 name: modFullNames[modName],
                 modName,
             });
@@ -115,7 +114,7 @@ export class AddonBlockActivityModulesComponent extends CoreBlockBaseComponent i
     /**
      * Obtain the appropiate course id for the block.
      *
-     * @return Course id.
+     * @returns Course id.
      */
     protected getCourseId(): number {
         if (this.contextLevel == ContextLevel.COURSE) {
@@ -145,4 +144,5 @@ type AddonBlockActivityModuleEntry = {
     icon: string;
     name: string;
     modName: string;
+    iconModName: string;
 };

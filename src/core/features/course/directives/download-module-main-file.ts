@@ -15,8 +15,8 @@
 import { Directive, Input, OnInit, ElementRef } from '@angular/core';
 
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreCourse, CoreCourseModuleContentFile, CoreCourseWSModule } from '@features/course/services/course';
-import { CoreCourseHelper } from '@features/course/services/course-helper';
+import { CoreCourse, CoreCourseModuleContentFile } from '@features/course/services/course';
+import { CoreCourseHelper, CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreUtilsOpenFileOptions } from '@services/utils/utils';
 
 /**
@@ -31,7 +31,7 @@ import { CoreUtilsOpenFileOptions } from '@services/utils/utils';
 })
 export class CoreCourseDownloadModuleMainFileDirective implements OnInit {
 
-    @Input() module?: CoreCourseWSModule; // The module.
+    @Input() module?: CoreCourseModuleData; // The module.
     @Input() moduleId?: string | number; // The module ID. Required if module is not supplied.
     @Input() courseId?: string | number; // The course ID.
     @Input() component?: string; // Component to link the file to.
@@ -46,7 +46,7 @@ export class CoreCourseDownloadModuleMainFileDirective implements OnInit {
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     ngOnInit(): void {
         this.element.addEventListener('click', async (ev: Event) => {
@@ -58,20 +58,23 @@ export class CoreCourseDownloadModuleMainFileDirective implements OnInit {
             ev.stopPropagation();
 
             const modal = await CoreDomUtils.showModalLoading();
-            const courseId = typeof this.courseId == 'string' ? parseInt(this.courseId, 10) : this.courseId;
+            const courseId = this.courseId ? Number(this.courseId) : undefined;
 
             try {
                 if (!this.module) {
-                    // Try to get the module from cache.
-                    this.moduleId = typeof this.moduleId == 'string' ? parseInt(this.moduleId, 10) : this.moduleId;
-                    this.module = await CoreCourse.getModule(this.moduleId!, courseId);
+                    const moduleId = Number(this.moduleId);
+                    if (!moduleId) {
+                        return;
+                    }
+
+                    this.module = await CoreCourse.getModule(moduleId, courseId);
                 }
 
-                const componentId = this.componentId || module.id;
+                const componentId = this.componentId ? Number(this.componentId) : this.module.id;
 
                 await CoreCourseHelper.downloadModuleAndOpenFile(
                     this.module,
-                    courseId ?? this.module.course!,
+                    courseId ?? this.module.course,
                     this.component,
                     componentId,
                     this.files,

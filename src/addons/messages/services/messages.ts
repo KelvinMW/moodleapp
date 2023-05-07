@@ -15,7 +15,7 @@
 import { Injectable } from '@angular/core';
 import { CoreLogger } from '@singletons/logger';
 import { CoreSites } from '@services/sites';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreUser, CoreUserBasicData } from '@features/user/services/user';
 import {
     AddonMessagesOffline,
@@ -32,6 +32,7 @@ import { makeSingleton } from '@singletons';
 import { CoreError } from '@classes/errors/error';
 import { AddonMessagesSyncEvents, AddonMessagesSyncProvider } from './messages-sync';
 import { CoreWSError } from '@classes/errors/wserror';
+import { AddonNotificationsPreferencesNotificationProcessorState } from '@addons/notifications/services/notifications';
 
 const ROOT_CACHE_KEY = 'mmaMessages:';
 
@@ -95,8 +96,8 @@ export class AddonMessagesProvider {
      *
      * @param userId User ID of the person to add.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved when done.
-     * @deprecatedonmoodle since Moodle 3.6
+     * @returns Resolved when done.
+     * @deprecated since Moodle 3.6
      */
     protected async addContact(userId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -115,7 +116,7 @@ export class AddonMessagesProvider {
      *
      * @param userId User ID of the person to block.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async blockContact(userId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -148,7 +149,7 @@ export class AddonMessagesProvider {
      *
      * @param userId ID of the user who made the contact request.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      * @since 3.6
      */
     async confirmContactRequest(userId: number, siteId?: string): Promise<void> {
@@ -177,7 +178,7 @@ export class AddonMessagesProvider {
      *
      * @param userId ID of the receiver of the contact request.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      * @since 3.6
      */
     async createContactRequest(userId: number, siteId?: string): Promise<void> {
@@ -213,7 +214,7 @@ export class AddonMessagesProvider {
      *
      * @param userId ID of the user who made the contact request.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      * @since 3.6
      */
     async declineContactRequest(userId: number, siteId?: string): Promise<void> {
@@ -241,7 +242,7 @@ export class AddonMessagesProvider {
      * @param conversationId Conversation to delete.
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Promise resolved when the conversation has been deleted.
+     * @returns Promise resolved when the conversation has been deleted.
      */
     async deleteConversation(conversationId: number, siteId?: string, userId?: number): Promise<void> {
         await this.deleteConversations([conversationId], siteId, userId);
@@ -253,7 +254,7 @@ export class AddonMessagesProvider {
      * @param conversationIds Conversations to delete.
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Promise resolved when the conversations have been deleted.
+     * @returns Promise resolved when the conversations have been deleted.
      */
     async deleteConversations(conversationIds: number[], siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -281,7 +282,7 @@ export class AddonMessagesProvider {
      *
      * @param message Message to delete.
      * @param deleteForAll Whether the message should be deleted for all users.
-     * @return Promise resolved when the message has been deleted.
+     * @returns Promise resolved when the message has been deleted.
      */
     deleteMessage(message: AddonMessagesConversationMessageFormatted, deleteForAll?: boolean): Promise<void> {
         if ('id' in message) {
@@ -307,7 +308,7 @@ export class AddonMessagesProvider {
      * @param id Message ID.
      * @param read True if message is read, false otherwise.
      * @param userId User we want to delete the message for. If not defined, use current user.
-     * @return Promise resolved when the message has been deleted.
+     * @returns Promise resolved when the message has been deleted.
      */
     async deleteMessageOnline(id: number, read: boolean, userId?: number): Promise<void> {
         userId = userId || CoreSites.getCurrentSiteUserId();
@@ -317,7 +318,7 @@ export class AddonMessagesProvider {
             userid: userId,
         };
 
-        if (typeof read != 'undefined') {
+        if (read !== undefined) {
             params.read = read;
         }
 
@@ -331,7 +332,7 @@ export class AddonMessagesProvider {
      *
      * @param id Message ID.
      * @param userId User we want to delete the message for. If not defined, use current user.
-     * @return Promise resolved when the message has been deleted.
+     * @returns Promise resolved when the message has been deleted.
      */
     async deleteMessageForAllOnline(id: number, userId?: number): Promise<void> {
         userId = userId || CoreSites.getCurrentSiteUserId();
@@ -351,7 +352,7 @@ export class AddonMessagesProvider {
      *
      * @param conversation Conversation to format.
      * @param userId User ID viewing the conversation.
-     * @return Formatted conversation.
+     * @returns Formatted conversation.
      */
     protected formatConversation(
         conversation: AddonMessagesConversationFormatted,
@@ -391,7 +392,7 @@ export class AddonMessagesProvider {
      * Get the cache key for blocked contacts.
      *
      * @param userId The user who's contacts we're looking for.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForBlockedContacts(userId: number): string {
         return ROOT_CACHE_KEY + 'blockedContacts:' + userId;
@@ -400,7 +401,7 @@ export class AddonMessagesProvider {
     /**
      * Get the cache key for contacts.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForContacts(): string {
         return ROOT_CACHE_KEY + 'contacts';
@@ -409,7 +410,7 @@ export class AddonMessagesProvider {
     /**
      * Get the cache key for comfirmed contacts.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForUserContacts(): string {
         return ROOT_CACHE_KEY + 'userContacts';
@@ -418,7 +419,7 @@ export class AddonMessagesProvider {
     /**
      * Get the cache key for contact requests.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForContactRequests(): string {
         return ROOT_CACHE_KEY + 'contactRequests';
@@ -427,7 +428,7 @@ export class AddonMessagesProvider {
     /**
      * Get the cache key for contact requests count.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForContactRequestsCount(): string {
         return ROOT_CACHE_KEY + 'contactRequestsCount';
@@ -437,7 +438,7 @@ export class AddonMessagesProvider {
      * Get the cache key for a discussion.
      *
      * @param userId The other person with whom the current user is having the discussion.
-     * @return Cache key.
+     * @returns Cache key.
      */
     getCacheKeyForDiscussion(userId: number): string {
         return ROOT_CACHE_KEY + 'discussion:' + userId;
@@ -447,7 +448,7 @@ export class AddonMessagesProvider {
      * Get the cache key for the message count.
      *
      * @param userId User ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForMessageCount(userId: number): string {
         return ROOT_CACHE_KEY + 'count:' + userId;
@@ -456,7 +457,7 @@ export class AddonMessagesProvider {
     /**
      * Get the cache key for unread conversation counts.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForUnreadConversationCounts(): string {
         return ROOT_CACHE_KEY + 'unreadConversationCounts';
@@ -465,7 +466,7 @@ export class AddonMessagesProvider {
     /**
      * Get the cache key for the list of discussions.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForDiscussions(): string {
         return ROOT_CACHE_KEY + 'discussions';
@@ -476,7 +477,7 @@ export class AddonMessagesProvider {
      *
      * @param userId User ID.
      * @param conversationId Conversation ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForConversation(userId: number, conversationId: number): string {
         return ROOT_CACHE_KEY + 'conversation:' + userId + ':' + conversationId;
@@ -487,7 +488,7 @@ export class AddonMessagesProvider {
      *
      * @param userId User ID.
      * @param otherUserId Other user ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForConversationBetweenUsers(userId: number, otherUserId: number): string {
         return ROOT_CACHE_KEY + 'conversationBetweenUsers:' + userId + ':' + otherUserId;
@@ -498,7 +499,7 @@ export class AddonMessagesProvider {
      *
      * @param userId User ID.
      * @param conversationId Conversation ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForConversationMembers(userId: number, conversationId: number): string {
         return ROOT_CACHE_KEY + 'conversationMembers:' + userId + ':' + conversationId;
@@ -509,7 +510,7 @@ export class AddonMessagesProvider {
      *
      * @param userId User ID.
      * @param conversationId Conversation ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForConversationMessages(userId: number, conversationId: number): string {
         return ROOT_CACHE_KEY + 'conversationMessages:' + userId + ':' + conversationId;
@@ -521,7 +522,7 @@ export class AddonMessagesProvider {
      * @param userId User ID.
      * @param type Filter by type.
      * @param favourites Filter favourites.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForConversations(userId: number, type?: number, favourites?: boolean): string {
         return this.getCommonCacheKeyForUserConversations(userId) + ':' + type + ':' + favourites;
@@ -530,7 +531,7 @@ export class AddonMessagesProvider {
     /**
      * Get cache key for conversation counts.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForConversationCounts(): string {
         return ROOT_CACHE_KEY + 'conversationCounts';
@@ -541,7 +542,7 @@ export class AddonMessagesProvider {
      *
      * @param userId User ID.
      * @param otherUserId The other user ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForMemberInfo(userId: number, otherUserId: number): string {
         return ROOT_CACHE_KEY + 'memberInfo:' + userId + ':' + otherUserId;
@@ -551,7 +552,7 @@ export class AddonMessagesProvider {
      * Get cache key for get self conversation.
      *
      * @param userId User ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCacheKeyForSelfConversation(userId: number): string {
         return ROOT_CACHE_KEY + 'selfconversation:' + userId;
@@ -561,7 +562,7 @@ export class AddonMessagesProvider {
      * Get common cache key for get user conversations.
      *
      * @param userId User ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getCommonCacheKeyForUserConversations(userId: number): string {
         return this.getRootCacheKeyForConversations() + userId;
@@ -570,7 +571,7 @@ export class AddonMessagesProvider {
     /**
      * Get root cache key for get conversations.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getRootCacheKeyForConversations(): string {
         return ROOT_CACHE_KEY + 'conversations:';
@@ -580,8 +581,8 @@ export class AddonMessagesProvider {
      * Get all the contacts of the current user.
      *
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the WS data.
-     * @deprecatedonmoodle since Moodle 3.6
+     * @returns Promise resolved with the WS data.
+     * @deprecated since Moodle 3.6
      */
     async getAllContacts(siteId?: string): Promise<AddonMessagesGetContactsWSResponse> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -607,7 +608,7 @@ export class AddonMessagesProvider {
      * Get all the users blocked by the current user.
      *
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the WS data.
+     * @returns Promise resolved with the WS data.
      */
     async getBlockedContacts(siteId?: string): Promise<AddonMessagesGetBlockedUsersWSResponse> {
         const site = await CoreSites.getSite(siteId);
@@ -632,8 +633,8 @@ export class AddonMessagesProvider {
      * This excludes the blocked users.
      *
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the WS data.
-     * @deprecatedonmoodle since Moodle 3.6
+     * @returns Promise resolved with the WS data.
+     * @deprecated since Moodle 3.6
      */
     async getContacts(siteId?: string): Promise<AddonMessagesGetContactsWSResponse> {
         const site = await CoreSites.getSite(siteId);
@@ -673,7 +674,7 @@ export class AddonMessagesProvider {
      * @param limitFrom Position of the first contact to fetch.
      * @param limitNum Number of contacts to fetch. Default is AddonMessagesProvider.LIMIT_CONTACTS.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the list of user contacts.
+     * @returns Promise resolved with the list of user contacts.
      * @since 3.6
      */
     async getUserContacts(
@@ -717,7 +718,7 @@ export class AddonMessagesProvider {
      * @param limitFrom Position of the first contact request to fetch.
      * @param limitNum Number of contact requests to fetch. Default is AddonMessagesProvider.LIMIT_CONTACTS.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the list of contact requests.
+     * @returns Promise resolved with the list of contact requests.
      * @since 3.6
      */
     async getContactRequests(
@@ -763,7 +764,7 @@ export class AddonMessagesProvider {
      * Get the number of contact requests sent to the current user.
      *
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved with the number of contact requests.
+     * @returns Resolved with the number of contact requests.
      * @since 3.6
      */
     async getContactRequestsCount(siteId?: string): Promise<number> {
@@ -804,7 +805,7 @@ export class AddonMessagesProvider {
      * @param newestFirst Whether to order messages by newest first.
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      * @since 3.6
      */
     async getConversation(
@@ -863,7 +864,7 @@ export class AddonMessagesProvider {
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID. If not defined, current user in the site.
      * @param preferCache True if shouldn't call WS if data is cached, false otherwise.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      * @since 3.6
      */
     async getConversationBetweenUsers(
@@ -911,8 +912,10 @@ export class AddonMessagesProvider {
      * @param conversationId Conversation ID to fetch.
      * @param limitFrom Offset for members list.
      * @param limitTo Limit of members.
+     * @param includeContactRequests Include contact requests.
      * @param siteId Site ID. If not defined, use current site.
-     * @param userId User ID. If not defined, current user in
+     * @param userId User ID. If not defined, current user in.
+     * @returns Conversation members.
      * @since 3.6
      */
     async getConversationMembers(
@@ -961,7 +964,7 @@ export class AddonMessagesProvider {
      *
      * @param conversationId Conversation ID to fetch.
      * @param options Options.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      * @since 3.6
      */
     async getConversationMessages(
@@ -1043,7 +1046,7 @@ export class AddonMessagesProvider {
      * @param userId User ID. If not defined, current user in the site.
      * @param forceCache True if it should return cached data. Has priority over ignoreCache.
      * @param ignoreCache True if it should ignore cached data (it will always fail in offline or server down).
-     * @return Promise resolved with the conversations.
+     * @returns Promise resolved with the conversations.
      * @since 3.6
      */
     async getConversations(
@@ -1075,10 +1078,10 @@ export class AddonMessagesProvider {
             preSets.getFromCache = false;
             preSets.emergencyCache = false;
         }
-        if (typeof type != 'undefined' && type != null) {
+        if (type !== undefined && type != null) {
             params.type = type;
         }
-        if (typeof favourites != 'undefined' && favourites != null) {
+        if (favourites !== undefined && favourites != null) {
             params.favourites = !!favourites;
         }
         if (site.isVersionGreaterEqualThan('3.7') && type != AddonMessagesProvider.MESSAGE_CONVERSATION_TYPE_GROUP) {
@@ -1115,7 +1118,7 @@ export class AddonMessagesProvider {
      * Get conversation counts by type.
      *
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with favourite,
+     * @returns Promise resolved with favourite,
      *         individual, group and self conversation counts.
      * @since 3.6
      */
@@ -1153,7 +1156,7 @@ export class AddonMessagesProvider {
      * @param lfSentRead Number of read sent messages already fetched, so fetch will be done from this.
      * @param notUsed Deprecated since 3.9.5
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with messages and a boolean telling if can load more messages.
+     * @returns Promise resolved with messages and a boolean telling if can load more messages.
      */
     async getDiscussion(
         userId: number,
@@ -1229,7 +1232,7 @@ export class AddonMessagesProvider {
      * If the site is 3.6 or higher, please use getConversations.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with an object where the keys are the user ID of the other user.
+     * @returns Promise resolved with an object where the keys are the user ID of the other user.
      */
     async getDiscussions(siteId?: string): Promise<{[userId: number]: AddonMessagesDiscussion}> {
         const discussions: { [userId: number]: AddonMessagesDiscussion } = {};
@@ -1244,7 +1247,7 @@ export class AddonMessagesProvider {
             userId: number,
             userFullname: string,
         ): void => {
-            if (typeof discussions[userId] === 'undefined') {
+            if (discussions[userId] === undefined) {
                 discussions[userId] = {
                     fullname: userFullname,
                     profileimageurl: '',
@@ -1259,7 +1262,7 @@ export class AddonMessagesProvider {
 
             // Extract the most recent message. Pending messages are considered more recent than messages already sent.
             const discMessage = discussions[userId].message;
-            if (typeof discMessage === 'undefined' || (!discMessage.pending && message.pending) ||
+            if (discMessage === undefined || (!discMessage.pending && message.pending) ||
                 (discMessage.pending == message.pending && (discMessage.timecreated < message.timecreated ||
                     (discMessage.timecreated == message.timecreated && discMessage.id < messageId)))) {
 
@@ -1319,7 +1322,7 @@ export class AddonMessagesProvider {
      *
      * @param discussions List of discussions.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise always resolved. Resolve param is the formatted discussions.
+     * @returns Promise always resolved. Resolve param is the formatted discussions.
      */
     protected async getDiscussionsUserImg(
         discussions: { [userId: number]: AddonMessagesDiscussion },
@@ -1351,7 +1354,7 @@ export class AddonMessagesProvider {
      * @param otherUserId The other user ID.
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Promise resolved with the member info.
+     * @returns Promise resolved with the member info.
      * @since 3.6
      */
     async getMemberInfo(otherUserId: number, siteId?: string, userId?: number): Promise<AddonMessagesConversationMember> {
@@ -1381,7 +1384,7 @@ export class AddonMessagesProvider {
     /**
      * Get the cache key for the get message preferences call.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getMessagePreferencesCacheKey(): string {
         return ROOT_CACHE_KEY + 'messagePreferences';
@@ -1391,7 +1394,7 @@ export class AddonMessagesProvider {
      * Get message preferences.
      *
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the message preferences.
+     * @returns Promise resolved with the message preferences.
      */
     async getMessagePreferences(siteId?: string): Promise<AddonMessagesMessagePreferences> {
         this.logger.debug('Get message preferences');
@@ -1424,7 +1427,7 @@ export class AddonMessagesProvider {
      * @param params Parameters to pass to the WS.
      * @param preSets Set of presets for the WS.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the data.
+     * @returns Promise resolved with the data.
      */
     protected async getMessages(
         params: AddonMessagesGetMessagesWSParams,
@@ -1457,7 +1460,7 @@ export class AddonMessagesProvider {
      * @param limitFromRead Number of unread messages already fetched, so fetch will be done from this number.
      * @param notUsed // Deprecated 3.9.5
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the data.
+     * @returns Promise resolved with the data.
      */
     async getRecentMessages(
         params: AddonMessagesGetMessagesWSParams,
@@ -1510,7 +1513,7 @@ export class AddonMessagesProvider {
      * @param newestFirst Whether to order messages by newest first.
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID to get the self conversation for. If not defined, current user in the site.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      * @since 3.7
      */
     async getSelfConversation(
@@ -1542,7 +1545,7 @@ export class AddonMessagesProvider {
      * Get unread conversation counts by type.
      *
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved with the unread favourite, individual and group conversation counts.
+     * @returns Resolved with the unread favourite, individual and group conversation counts.
      */
     async getUnreadConversationCounts(
         siteId?: string,
@@ -1567,9 +1570,8 @@ export class AddonMessagesProvider {
                 self: result.types[AddonMessagesProvider.MESSAGE_CONVERSATION_TYPE_SELF] || 0,
             };
 
-        } else if (this.isMessageCountEnabled()) {
-            // @since 3.2
-            const params: { useridto: number } = {
+        } else {
+            const params: AddonMessageGetUnreadConversationsCountWSParams = {
                 useridto: site.getUserId(),
             };
             const preSets: CoreSiteWSPreSets = {
@@ -1577,37 +1579,11 @@ export class AddonMessagesProvider {
                 typeExpected: 'number',
             };
 
-            const count: number = await site.read('core_message_get_unread_conversations_count', params, preSets);
+            const count = await site.read<number>('core_message_get_unread_conversations_count', params, preSets);
 
             counts = { favourites: 0, individual: count, group: 0, self: 0 };
-        } else {
-            // Fallback call.
-            const params: AddonMessagesGetMessagesWSParams = {
-                read: false,
-                limitfrom: 0,
-                limitnum: AddonMessagesProvider.LIMIT_MESSAGES + 1,
-                useridto: site.getUserId(),
-                useridfrom: 0,
-            };
-
-            const response = await this.getMessages(params, {}, siteId);
-
-            // Count the discussions by filtering same senders.
-            const discussions = {};
-            response.messages.forEach((message) => {
-                discussions[message.useridto] = 1;
-            });
-
-            const count = Object.keys(discussions).length;
-
-            counts = {
-                favourites: 0,
-                individual: count,
-                group: 0,
-                self: 0,
-                orMore: count > AddonMessagesProvider.LIMIT_MESSAGES,
-            };
         }
+
         // Notify the new counts so all views are updated.
         CoreEvents.trigger(AddonMessagesProvider.UNREAD_CONVERSATION_COUNTS_EVENT, counts, site.id);
 
@@ -1617,11 +1593,11 @@ export class AddonMessagesProvider {
     /**
      * Get the latest unread received messages.
      *
-     * @param toDisplay True if messages will be displayed to the user, either in view or in a notification.
+     * @param notUsed Not user anymore.
      * @param forceCache True if it should return cached data. Has priority over ignoreCache.
      * @param ignoreCache True if it should ignore cached data (it will always fail in offline or server down).
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the message unread count.
+     * @returns Promise resolved with the message unread count.
      */
     async getUnreadReceivedMessages(
         notUsed: boolean = true, // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -1646,15 +1622,14 @@ export class AddonMessagesProvider {
             preSets.emergencyCache = false;
         }
 
-        return await this.getMessages(params, preSets, siteId);
+        return this.getMessages(params, preSets, siteId);
     }
 
     /**
      * Invalidate all contacts cache.
      *
-     * @param userId The user ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateAllContactsCache(siteId?: string): Promise<void> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -1667,7 +1642,6 @@ export class AddonMessagesProvider {
     /**
      * Invalidate blocked contacts cache.
      *
-     * @param userId The user ID.
      * @param siteId Site ID. If not defined, current site.
      */
     async invalidateBlockedContactsCache(siteId?: string): Promise<void> {
@@ -1682,7 +1656,7 @@ export class AddonMessagesProvider {
      * Invalidate contacts cache.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateContactsCache(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1694,7 +1668,7 @@ export class AddonMessagesProvider {
      * Invalidate user contacts cache.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateUserContacts(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1706,7 +1680,7 @@ export class AddonMessagesProvider {
      * Invalidate contact requests cache.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateContactRequestsCache(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1718,7 +1692,7 @@ export class AddonMessagesProvider {
      * Invalidate contact requests count cache.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateContactRequestsCountCache(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1732,7 +1706,7 @@ export class AddonMessagesProvider {
      * @param conversationId Conversation ID.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateConversation(conversationId: number, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1747,7 +1721,7 @@ export class AddonMessagesProvider {
      * @param otherUserId Other user ID.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateConversationBetweenUsers(otherUserId: number, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1762,7 +1736,7 @@ export class AddonMessagesProvider {
      * @param conversationId Conversation ID.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateConversationMembers(conversationId: number, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1778,7 +1752,7 @@ export class AddonMessagesProvider {
      * @param conversationId Conversation ID.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateConversationMessages(conversationId: number, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1793,7 +1767,7 @@ export class AddonMessagesProvider {
      *
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateConversations(siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1807,7 +1781,7 @@ export class AddonMessagesProvider {
      * Invalidate conversation counts cache.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateConversationCounts(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1820,7 +1794,7 @@ export class AddonMessagesProvider {
      *
      * @param userId The user ID with whom the current user is having the discussion.
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateDiscussionCache(userId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1834,7 +1808,7 @@ export class AddonMessagesProvider {
      * Note that {@link this.getDiscussions} uses the contacts, so we need to invalidate contacts too.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateDiscussionsCache(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1852,7 +1826,7 @@ export class AddonMessagesProvider {
      * @param otherUserId The other user ID.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateMemberInfo(otherUserId: number, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1866,7 +1840,7 @@ export class AddonMessagesProvider {
      * Invalidate get message preferences.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when data is invalidated.
+     * @returns Promise resolved when data is invalidated.
      */
     async invalidateMessagePreferences(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1879,7 +1853,7 @@ export class AddonMessagesProvider {
      *
      * @param userId Id of the user to invalidate.
      * @param site Site object.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async invalidateAllMemberInfo(userId: number, site: CoreSite): Promise<void> {
         await CoreUtils.allPromises([
@@ -1914,7 +1888,7 @@ export class AddonMessagesProvider {
      *
      * @param siteId Site ID. If not defined, current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateSelfConversation(siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1928,7 +1902,7 @@ export class AddonMessagesProvider {
      * Invalidate unread conversation counts cache.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async invalidateUnreadConversationCounts(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1936,8 +1910,7 @@ export class AddonMessagesProvider {
             // @since 3.6
             return site.invalidateWsCacheForKey(this.getCacheKeyForUnreadConversationCounts());
 
-        } else if (this.isMessageCountEnabled()) {
-            // @since 3.2
+        } else {
             return site.invalidateWsCacheForKey(this.getCacheKeyForMessageCount(site.getUserId()));
         }
     }
@@ -1947,7 +1920,7 @@ export class AddonMessagesProvider {
      *
      * @param userId The user ID to check against.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved with boolean, rejected when we do not know.
+     * @returns Resolved with boolean, rejected when we do not know.
      */
     async isBlocked(userId: number, siteId?: string): Promise<boolean> {
         if (this.isGroupMessagingEnabled()) {
@@ -1969,7 +1942,7 @@ export class AddonMessagesProvider {
      *
      * @param userId The user ID to check against.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved with boolean, rejected when we do not know.
+     * @returns Resolved with boolean, rejected when we do not know.
      */
     async isContact(userId: number, siteId?: string): Promise<boolean> {
         if (this.isGroupMessagingEnabled()) {
@@ -1992,7 +1965,7 @@ export class AddonMessagesProvider {
     /**
      * Returns whether or not group messaging is supported.
      *
-     * @return If related WS is available on current site.
+     * @returns If related WS is available on current site.
      * @since 3.6
      */
     isGroupMessagingEnabled(): boolean {
@@ -2003,7 +1976,7 @@ export class AddonMessagesProvider {
      * Returns whether or not group messaging is supported in a certain site.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with boolean: whether related WS is available on a certain site.
+     * @returns Promise resolved with boolean: whether related WS is available on a certain site.
      * @since 3.6
      */
     async isGroupMessagingEnabledInSite(siteId?: string): Promise<boolean> {
@@ -2017,43 +1990,12 @@ export class AddonMessagesProvider {
     }
 
     /**
-     * Returns whether or not we can mark all messages as read.
-     *
-     * @return If related WS is available on current site.
-     * @since 3.2
-     */
-    isMarkAllMessagesReadEnabled(): boolean {
-        return CoreSites.wsAvailableInCurrentSite('core_message_mark_all_conversation_messages_as_read') ||
-                CoreSites.wsAvailableInCurrentSite('core_message_mark_all_messages_as_read');
-    }
-
-    /**
-     * Returns whether or not we can count unread messages.
-     *
-     * @return True if enabled, false otherwise.
-     * @since 3.2
-     */
-    isMessageCountEnabled(): boolean {
-        return CoreSites.wsAvailableInCurrentSite('core_message_get_unread_conversations_count');
-    }
-
-    /**
-     * Returns whether or not the message preferences are enabled for the current site.
-     *
-     * @return True if enabled, false otherwise.
-     * @since 3.2
-     */
-    isMessagePreferencesEnabled(): boolean {
-        return CoreSites.wsAvailableInCurrentSite('core_message_get_user_message_preferences');
-    }
-
-    /**
      * Returns whether or not messaging is enabled for a certain site.
      *
      * This could call a WS so do not abuse this method.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Resolved when enabled, otherwise rejected.
+     * @returns Resolved when enabled, otherwise rejected.
      */
     async isMessagingEnabledForSite(siteId?: string): Promise<void> {
         const enabled = await this.isPluginEnabled(siteId);
@@ -2067,7 +2009,7 @@ export class AddonMessagesProvider {
      * Returns whether or not a site supports muting or unmuting a conversation.
      *
      * @param site The site to check, undefined for current site.
-     * @return If related WS is available on current site.
+     * @returns If related WS is available on current site.
      * @since 3.7
      */
     isMuteConversationEnabled(site?: CoreSite): boolean {
@@ -2080,7 +2022,7 @@ export class AddonMessagesProvider {
      * Returns whether or not a site supports muting or unmuting a conversation.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with boolean: whether related WS is available on a certain site.
+     * @returns Promise resolved with boolean: whether related WS is available on a certain site.
      * @since 3.7
      */
     async isMuteConversationEnabledInSite(siteId?: string): Promise<boolean> {
@@ -2097,7 +2039,7 @@ export class AddonMessagesProvider {
      * Returns whether or not the plugin is enabled in a certain site.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with true if enabled, rejected or resolved with false otherwise.
+     * @returns Promise resolved with true if enabled, rejected or resolved with false otherwise.
      */
     async isPluginEnabled(siteId?: string): Promise<boolean> {
         const site = await CoreSites.getSite(siteId);
@@ -2106,19 +2048,10 @@ export class AddonMessagesProvider {
     }
 
     /**
-     * Returns whether or not we can search messages.
-     *
-     * @since 3.2
-     */
-    isSearchMessagesEnabled(): boolean {
-        return CoreSites.wsAvailableInCurrentSite('core_message_data_for_messagearea_search_messages');
-    }
-
-    /**
      * Returns whether or not self conversation is supported in a certain site.
      *
      * @param site Site. If not defined, current site.
-     * @return If related WS is available on the site.
+     * @returns If related WS is available on the site.
      * @since 3.7
      */
     isSelfConversationEnabled(site?: CoreSite): boolean {
@@ -2131,7 +2064,7 @@ export class AddonMessagesProvider {
      * Returns whether or not self conversation is supported in a certain site.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with boolean: whether related WS is available on a certain site.
+     * @returns Promise resolved with boolean: whether related WS is available on a certain site.
      * @since 3.7
      */
     async isSelfConversationEnabledInSite(siteId?: string): Promise<boolean> {
@@ -2149,7 +2082,7 @@ export class AddonMessagesProvider {
      *
      * @param messageId ID of message to mark as read
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with boolean marking success or not.
+     * @returns Promise resolved with boolean marking success or not.
      */
     async markMessageRead(messageId: number, siteId?: string): Promise<AddonMessagesMarkMessageReadResult> {
         const site = await CoreSites.getSite(siteId);
@@ -2166,7 +2099,7 @@ export class AddonMessagesProvider {
      * Mark all messages of a conversation as read.
      *
      * @param conversationId Conversation ID.
-     * @return Promise resolved if success.
+     * @returns Promise resolved if success.
      * @since 3.6
      */
     async markAllConversationMessagesRead(conversationId: number): Promise<void> {
@@ -2186,8 +2119,8 @@ export class AddonMessagesProvider {
      * Mark all messages of a discussion as read.
      *
      * @param userIdFrom User Id for the sender.
-     * @return Promise resolved with boolean marking success or not.
-     * @deprecatedonmoodle since Moodle 3.6
+     * @returns Promise resolved with boolean marking success or not.
+     * @deprecated since Moodle 3.6
      */
     async markAllMessagesRead(userIdFrom?: number): Promise<boolean> {
         const params: AddonMessagesMarkAllMessagesAsReadWSParams = {
@@ -2215,7 +2148,7 @@ export class AddonMessagesProvider {
      * @param set Whether to mute or unmute.
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async muteConversation(conversationId: number, set: boolean, siteId?: string, userId?: number): Promise<void> {
         await this.muteConversations([conversationId], set, siteId, userId);
@@ -2228,7 +2161,7 @@ export class AddonMessagesProvider {
      * @param set Whether to mute or unmute.
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async muteConversations(conversations: number[], set: boolean, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -2256,7 +2189,7 @@ export class AddonMessagesProvider {
      * Refresh the number of contact requests sent to the current user.
      *
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved with the number of contact requests.
+     * @returns Resolved with the number of contact requests.
      * @since 3.6
      */
     async refreshContactRequestsCount(siteId?: string): Promise<number> {
@@ -2271,7 +2204,7 @@ export class AddonMessagesProvider {
      * Refresh unread conversation counts and trigger event.
      *
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved with the unread favourite, individual and group conversation counts.
+     * @returns Resolved with the unread favourite, individual and group conversation counts.
      */
     async refreshUnreadConversationCounts(
         siteId?: string,
@@ -2288,7 +2221,7 @@ export class AddonMessagesProvider {
      *
      * @param userId User ID of the person to remove.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async removeContact(userId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -2325,7 +2258,7 @@ export class AddonMessagesProvider {
      * @param query The query string.
      * @param limit The number of results to return, 0 for none.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the contacts.
+     * @returns Promise resolved with the contacts.
      */
     async searchContacts(query: string, limit: number = 100, siteId?: string): Promise<AddonMessagesSearchContactsContact[]> {
         const site = await CoreSites.getSite(siteId);
@@ -2358,7 +2291,7 @@ export class AddonMessagesProvider {
      * @param limitFrom Position of the first result to get. Defaults to 0.
      * @param limitNum Number of results to get. Defaults to AddonMessagesProvider.LIMIT_SEARCH.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the results.
+     * @returns Promise resolved with the results.
      */
     async searchMessages(
         query: string,
@@ -2411,7 +2344,7 @@ export class AddonMessagesProvider {
      * @param limitFrom Position of the first found user to fetch.
      * @param limitNum Number of found users to fetch. Defaults to AddonMessagesProvider.LIMIT_SEARCH.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved with two lists of found users: contacts and non-contacts.
+     * @returns Resolved with two lists of found users: contacts and non-contacts.
      * @since 3.6
      */
     async searchUsers(
@@ -2459,10 +2392,10 @@ export class AddonMessagesProvider {
     /**
      * Send a message to someone.
      *
-     * @param userIdTo User ID to send the message to.
+     * @param toUserId User ID to send the message to.
      * @param message The message to send
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with:
+     * @returns Promise resolved with:
      *         - sent (Boolean) True if message was sent to server, false if stored in device.
      *         - message (Object) If sent=false, contains the stored message.
      */
@@ -2491,7 +2424,7 @@ export class AddonMessagesProvider {
 
         siteId = siteId || CoreSites.getCurrentSiteId();
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // App is offline, store the message.
             return storeOffline();
         }
@@ -2535,7 +2468,7 @@ export class AddonMessagesProvider {
      * @param toUserId User ID to send the message to.
      * @param message The message to send
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if success, rejected if failure.
+     * @returns Promise resolved if success, rejected if failure.
      */
     async sendMessageOnline(toUserId: number, message: string, siteId?: string): Promise<AddonMessagesSendInstantMessagesMessage> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -2571,7 +2504,7 @@ export class AddonMessagesProvider {
      *
      * @param messages Messages to send. Each message must contain touserid, text and textformat.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if success, rejected if failure. Promise resolved doesn't mean that messages
+     * @returns Promise resolved if success, rejected if failure. Promise resolved doesn't mean that messages
      *         have been sent, the resolve param can contain errors for messages not sent.
      */
     async sendMessagesOnline(
@@ -2584,7 +2517,7 @@ export class AddonMessagesProvider {
             messages,
         };
 
-        return await site.write('core_message_send_instant_messages', data);
+        return site.write('core_message_send_instant_messages', data);
     }
 
     /**
@@ -2593,7 +2526,7 @@ export class AddonMessagesProvider {
      * @param conversation Conversation.
      * @param message The message to send.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with:
+     * @returns Promise resolved with:
      *         - sent (boolean) True if message was sent to server, false if stored in device.
      *         - message (any) If sent=false, contains the stored message.
      * @since 3.6
@@ -2622,7 +2555,7 @@ export class AddonMessagesProvider {
             };
         };
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // App is offline, store the message.
             return storeOffline();
         }
@@ -2666,7 +2599,7 @@ export class AddonMessagesProvider {
      * @param conversationId Conversation ID.
      * @param message The message to send
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if success, rejected if failure.
+     * @returns Promise resolved if success, rejected if failure.
      * @since 3.6
      */
     async sendMessageToConversationOnline(
@@ -2700,7 +2633,7 @@ export class AddonMessagesProvider {
      * @param conversationId Conversation ID.
      * @param messages Messages to send. Each message must contain text and, optionally, textformat.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if success, rejected if failure.
+     * @returns Promise resolved if success, rejected if failure.
      * @since 3.6
      */
     async sendMessagesToConversationOnline(
@@ -2714,11 +2647,11 @@ export class AddonMessagesProvider {
             conversationid: conversationId,
             messages: messages.map((message) => ({
                 text: message.text,
-                textformat: typeof message.textformat != 'undefined' ? message.textformat : 1,
+                textformat: message.textformat !== undefined ? message.textformat : 1,
             })),
         };
 
-        return await site.write('core_message_send_messages_to_conversation', params);
+        return site.write('core_message_send_messages_to_conversation', params);
     }
 
     /**
@@ -2728,7 +2661,7 @@ export class AddonMessagesProvider {
      * @param set Whether to set or unset it as favourite.
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     setFavouriteConversation(conversationId: number, set: boolean, siteId?: string, userId?: number): Promise<void> {
         return this.setFavouriteConversations([conversationId], set, siteId, userId);
@@ -2741,7 +2674,7 @@ export class AddonMessagesProvider {
      * @param set Whether to set or unset them as favourites.
      * @param siteId Site ID. If not defined, use current site.
      * @param userId User ID. If not defined, current user in the site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async setFavouriteConversations(conversations: number[], set: boolean, siteId?: string, userId?: number): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -2770,7 +2703,7 @@ export class AddonMessagesProvider {
      * Helper method to sort conversations by last message time.
      *
      * @param conversations Array of conversations.
-     * @return Conversations sorted with most recent last.
+     * @returns Conversations sorted with most recent last.
      */
     sortConversations(conversations: AddonMessagesConversationFormatted[]): AddonMessagesConversationFormatted[] {
         return conversations.sort((a, b) => {
@@ -2790,7 +2723,7 @@ export class AddonMessagesProvider {
      * Helper method to sort messages by time.
      *
      * @param messages Array of messages containing the key 'timecreated'.
-     * @return Messages sorted with most recent last.
+     * @returns Messages sorted with most recent last.
      */
     sortMessages(messages: AddonMessagesConversationMessageFormatted[]): AddonMessagesConversationMessageFormatted[];
     sortMessages(
@@ -2860,7 +2793,7 @@ export class AddonMessagesProvider {
      *
      * @param userId User ID of the person to unblock.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async unblockContact(userId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -3115,16 +3048,9 @@ export type AddonMessagesMessagePreferencesNotificationProcessor = {
     locked: boolean; // Is locked by admin?.
     lockedmessage?: string; // @since 3.6. Text to display if locked.
     userconfigured: number; // Is configured?.
-    loggedin: {
-        name: string; // Name.
-        displayname: string; // Display name.
-        checked: boolean; // Is checked?.
-    };
-    loggedoff: {
-        name: string; // Name.
-        displayname: string; // Display name.
-        checked: boolean; // Is checked?.
-    };
+    enabled?: boolean; // @since 4.0. Processor enabled.
+    loggedin: AddonNotificationsPreferencesNotificationProcessorState; // @deprecated removed on 4.0.
+    loggedoff: AddonNotificationsPreferencesNotificationProcessorState; // @deprecated removed on 4.0.
 };
 
 /**
@@ -3689,6 +3615,13 @@ export type AddonMessagesGetConversationCountsWSResponse = {
 type AddonMessagesSetFavouriteConversationsWSParams = {
     userid?: number; // Id of the user, 0 for current user.
     conversations: number[];
+};
+
+/**
+ * Params of core_message_get_unread_conversations_count WS.
+ */
+type AddonMessageGetUnreadConversationsCountWSParams = {
+    useridto: number; // The user id who received the message, 0 for any user.
 };
 
 /**

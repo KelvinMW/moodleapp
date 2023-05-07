@@ -15,6 +15,7 @@
 import { APP_INITIALIZER, NgModule, Type } from '@angular/core';
 import { Routes } from '@angular/router';
 import { CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
+import { CoreCourseHelper } from '@features/course/services/course-helper';
 
 import { CoreCourseModuleDelegate } from '@features/course/services/module-delegate';
 import { CoreCourseModulePrefetchDelegate } from '@features/course/services/module-prefetch-delegate';
@@ -69,8 +70,7 @@ const routes: Routes = [
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
-            useFactory: () => () => {
+            useValue: () => {
                 CoreCourseModuleDelegate.registerHandler(AddonModQuizModuleHandler.instance);
                 CoreCourseModulePrefetchDelegate.registerHandler(AddonModQuizPrefetchHandler.instance);
                 CoreContentLinksDelegate.registerHandler(AddonModQuizGradeLinkHandler.instance);
@@ -79,6 +79,8 @@ const routes: Routes = [
                 CoreContentLinksDelegate.registerHandler(AddonModQuizReviewLinkHandler.instance);
                 CorePushNotificationsDelegate.registerClickHandler(AddonModQuizPushClickHandler.instance);
                 CoreCronDelegate.register(AddonModQuizSyncCronHandler.instance);
+
+                CoreCourseHelper.registerModuleReminderClick(AddonModQuizProvider.COMPONENT);
             },
         },
     ],

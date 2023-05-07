@@ -47,12 +47,20 @@ export class AddonModChatSessionMessagesPage implements OnInit {
      * @inheritdoc
      */
     ngOnInit(): void {
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.cmId = CoreNavigator.getRouteNumberParam('cmId')!;
-        this.sessionStart = CoreNavigator.getRouteNumberParam('sessionStart')!;
-        this.sessionEnd = CoreNavigator.getRouteNumberParam('sessionEnd')!;
-        this.chatId = CoreNavigator.getRouteNumberParam('chatId')!;
-        this.groupId = CoreNavigator.getRouteNumberParam('groupId') || 0;
+        try {
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.cmId = CoreNavigator.getRequiredRouteNumberParam('cmId');
+            this.sessionStart = CoreNavigator.getRequiredRouteNumberParam('sessionStart');
+            this.sessionEnd = CoreNavigator.getRequiredRouteNumberParam('sessionEnd');
+            this.chatId = CoreNavigator.getRequiredRouteNumberParam('chatId');
+            this.groupId = CoreNavigator.getRouteNumberParam('groupId') || 0;
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         this.currentUserId = CoreSites.getCurrentSiteUserId();
 
@@ -62,7 +70,7 @@ export class AddonModChatSessionMessagesPage implements OnInit {
     /**
      * Fetch session messages.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchMessages(): Promise<void> {
         try {
@@ -105,7 +113,7 @@ export class AddonModChatSessionMessagesPage implements OnInit {
      * Get the user fullname for a beep.
      *
      * @param id User Id before parsing.
-     * @return User fullname.
+     * @returns User fullname.
      */
     protected async getUserFullname(id: string): Promise<string> {
         const idNumber = parseInt(id, 10);

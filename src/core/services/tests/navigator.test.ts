@@ -17,13 +17,11 @@ import { NavController as NavControllerService } from '@ionic/angular';
 import { mock, mockSingleton } from '@/testing/utils';
 
 import { CoreNavigatorService } from '@services/navigator';
-import { CoreUtils, CoreUtilsProvider } from '@services/utils/utils';
-import { CoreUrlUtils, CoreUrlUtilsProvider } from '@services/utils/url';
-import { CoreTextUtils, CoreTextUtilsProvider } from '@services/utils/text';
 import { NavController, Router } from '@singletons';
 import { ActivatedRoute, RouterState } from '@angular/router';
 import { CoreSites } from '@services/sites';
 import { CoreMainMenu } from '@features/mainmenu/services/mainmenu';
+import { CoreMainMenuDelegate } from '@features/mainmenu/services/mainmenu-delegate';
 
 describe('CoreNavigator', () => {
 
@@ -36,16 +34,13 @@ describe('CoreNavigator', () => {
     let navControllerMock: NavControllerService;
 
     beforeEach(() => {
-        router = { url: '/' };
         currentMainMenuHandlers = ['home'];
         navigator = new CoreNavigatorService();
         navControllerMock = mockSingleton(NavController, ['navigateRoot', 'navigateForward']);
 
-        mockSingleton(Router, router);
-        mockSingleton(CoreUtils, new CoreUtilsProvider(mock()));
-        mockSingleton(CoreUrlUtils, new CoreUrlUtilsProvider());
-        mockSingleton(CoreTextUtils, new CoreTextUtilsProvider());
-        mockSingleton(CoreSites, { getCurrentSiteId: () => 42, isLoggedIn: () => true });
+        router = mockSingleton(Router, { url: '/' });
+
+        mockSingleton(CoreSites, { getCurrentSiteId: () => '42', isLoggedIn: () => true });
         mockSingleton(CoreMainMenu, { isMainMenuTab: path => Promise.resolve(currentMainMenuHandlers.includes(path)) });
     });
 
@@ -113,18 +108,18 @@ describe('CoreNavigator', () => {
         expect(navControllerMock.navigateForward).toHaveBeenCalledWith(['/main/users/user/42'], {});
     });
 
-    it('navigates to site paths using the default tab', async () => {
+    it('navigates to site paths using the main page', async () => {
         const success = await navigator.navigateToSitePath('/user/42');
 
         expect(success).toBe(true);
-        expect(navControllerMock.navigateForward).toHaveBeenCalledWith(['/main/home'], {
+        expect(navControllerMock.navigateForward).toHaveBeenCalledWith(['/main'], {
             queryParams: {
-                redirectPath: '/main/home/user/42',
+                redirectPath: 'user/42',
             },
         });
     });
 
-    it('navigates to site paths ussing different path formats', async () => {
+    it('navigates to site paths using different path formats', async () => {
         currentMainMenuHandlers.push('users');
 
         const assertNavigation = async (currentPath, sitePath, expectedPath) => {
@@ -142,11 +137,39 @@ describe('CoreNavigator', () => {
         await assertNavigation('/main/home', '/users/user/42', '/main/users/user/42');
     });
 
-    it('navigates to site home', async () => {
+    it('navigates to site home: no handlers loaded', async () => {
         const success = await navigator.navigateToSiteHome();
 
         expect(success).toBe(true);
-        expect(navControllerMock.navigateRoot).toHaveBeenCalledWith(['/main/home'], {});
+        expect(navControllerMock.navigateRoot).toHaveBeenCalledWith(['/main'], {});
+    });
+
+    it('navigates to site home: handlers loaded', async () => {
+        mockSingleton(CoreMainMenuDelegate, {
+            areHandlersLoaded: () => true,
+            getHandlers: () => [{ title: 'Test', page: 'initialpage', icon: '' }],
+        });
+
+        const success = await navigator.navigateToSiteHome();
+
+        expect(success).toBe(true);
+        expect(navControllerMock.navigateRoot).toHaveBeenCalledWith(['/main/initialpage'], {});
+    });
+
+    it('calculates relative paths to parent paths', () => {
+        navigator = mock(navigator, {
+            getCurrentPath: () => '/foo/bar/baz/xyz',
+        });
+
+        expect(navigator.getRelativePathToParent('/foo/bar/baz/xyz')).toEqual('');
+        expect(navigator.getRelativePathToParent('/foo/bar/baz')).toEqual('../');
+        expect(navigator.getRelativePathToParent('/foo/bar')).toEqual('../../');
+        expect(navigator.getRelativePathToParent('/bar')).toEqual('../../');
+        expect(navigator.getRelativePathToParent('/foo')).toEqual('../../../');
+        expect(navigator.getRelativePathToParent('/foo/')).toEqual('../../../');
+        expect(navigator.getRelativePathToParent('foo')).toEqual('../../../');
+        expect(navigator.getRelativePathToParent('/invalid')).toEqual('');
+        expect(navigator.getRelativePathToParent('/fo')).toEqual('');
     });
 
     it.todo('navigates to a different site');

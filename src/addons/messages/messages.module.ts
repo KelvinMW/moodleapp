@@ -32,10 +32,11 @@ import { CorePushNotificationsDelegate } from '@features/pushnotifications/servi
 import { AddonMessagesPushClickHandler } from './services/handlers/push-click';
 import { CoreUserDelegate } from '@features/user/services/user-delegate';
 import { AddonMessagesSendMessageUserHandler } from './services/handlers/user-send-message';
-import { Network, NgZone } from '@singletons';
+import { NgZone } from '@singletons';
+import { CoreNetwork } from '@services/network';
 import { AddonMessagesSync, AddonMessagesSyncProvider } from './services/messages-sync';
 import { AddonMessagesSyncCronHandler } from './services/handlers/sync-cron';
-import { CoreSitePreferencesRoutingModule } from '@features/settings/pages/site/site-routing';
+import { CoreSitePreferencesRoutingModule } from '@features/settings/settings-site-routing.module';
 import { AddonMessagesProvider } from './services/messages';
 import { AddonMessagesOfflineProvider } from './services/messages-offline';
 
@@ -54,7 +55,7 @@ const mainMenuChildrenRoutes: Routes = [
 const preferencesRoutes: Routes = [
     {
         path: AddonMessagesSettingsHandlerService.PAGE_NAME,
-        loadChildren: () => import('./pages/settings/settings.module').then(m => m.AddonMessagesSettingsPageModule),
+        loadChildren: () => import('./messages-settings-lazy.module').then(m => m.AddonMessagesSettingsLazyModule),
     },
 ];
 
@@ -73,8 +74,7 @@ const preferencesRoutes: Routes = [
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
-            useFactory: () => () => {
+            useValue: () => {
                 // Register handlers.
                 CoreMainMenuDelegate.registerHandler(AddonMessagesMainMenuHandler.instance);
                 CoreCronDelegate.register(AddonMessagesMainMenuHandler.instance);
@@ -87,7 +87,7 @@ const preferencesRoutes: Routes = [
                 CoreUserDelegate.registerHandler(AddonMessagesSendMessageUserHandler.instance);
 
                 // Sync some discussions when device goes online.
-                Network.onConnect().subscribe(() => {
+                CoreNetwork.onConnect().subscribe(() => {
                     // Execute the callback in the Angular zone, so change detection doesn't stop working.
                     NgZone.run(() => {
                         AddonMessagesSync.syncAllDiscussions(undefined, true);

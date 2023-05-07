@@ -17,6 +17,8 @@ import { BehaviorSubject, Observable } from 'rxjs';
 import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import { makeSingleton } from '@singletons';
+import { CoreEvents } from '@singletons/events';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Screen breakpoints.
@@ -49,6 +51,14 @@ export enum CoreScreenLayout {
 }
 
 /**
+ * Screen orientation.
+ */
+export enum CoreScreenOrientation {
+    LANDSCAPE = 'landscape',
+    PORTRAIT = 'portrait',
+}
+
+/**
  * Manage application screen.
  */
 @Injectable({ providedIn: 'root' })
@@ -64,7 +74,7 @@ export class CoreScreenService {
         }), {} as Record<Breakpoint, boolean>));
 
         this._layoutObservable = this.breakpointsObservable.pipe(
-            map(this.calculateLayout.bind(this)),
+            map(breakpoints => this.calculateLayout(breakpoints)),
             distinctUntilChanged<CoreScreenLayout>(),
         );
     }
@@ -91,6 +101,31 @@ export class CoreScreenService {
 
     get isTablet(): boolean {
         return this.layout === CoreScreenLayout.TABLET;
+    }
+
+    get orientation(): CoreScreenOrientation {
+        return screen.orientation.type.startsWith(CoreScreenOrientation.LANDSCAPE)
+            ? CoreScreenOrientation.LANDSCAPE
+            : CoreScreenOrientation.PORTRAIT;
+    }
+
+    get isPortrait(): boolean {
+        return this.orientation === CoreScreenOrientation.PORTRAIT;
+    }
+
+    get isLandscape(): boolean {
+        return this.orientation === CoreScreenOrientation.LANDSCAPE;
+    }
+
+    /**
+     * Watch orientation changes.
+     */
+    async watchOrientation(): Promise<void> {
+        await CorePlatform.ready();
+
+        screen.orientation.addEventListener('change', () => {
+            CoreEvents.trigger(CoreEvents.ORIENTATION_CHANGE, { orientation: this.orientation });
+        });
     }
 
     /**
@@ -128,7 +163,7 @@ export class CoreScreenService {
      * Calculate the layout given the current breakpoints.
      *
      * @param breakpoints Breakpoints visibility.
-     * @return Active layout.
+     * @returns Active layout.
      */
     protected calculateLayout(breakpoints: Record<Breakpoint, boolean>): CoreScreenLayout {
         if (breakpoints[Breakpoint.MEDIUM]) {

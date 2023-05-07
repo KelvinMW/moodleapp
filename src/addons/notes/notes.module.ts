@@ -27,7 +27,7 @@ import { NOTES_OFFLINE_SITE_SCHEMA } from './services/database/notes';
 import { AddonNotesComponentsModule } from './components/components.module';
 import { Routes } from '@angular/router';
 import { CoreMainMenuTabRoutingModule } from '@features/mainmenu/mainmenu-tab-routing.module';
-import { CoreCourseIndexRoutingModule } from '@features/course/pages/index/index-routing.module';
+import { CoreCourseIndexRoutingModule } from '@features/course/course-routing.module';
 
 // List of providers (without handlers).
 export const ADDON_NOTES_SERVICES: Type<unknown>[] = [
@@ -58,8 +58,7 @@ const routes: Routes = [
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
-            useFactory: () => async () => {
+            useValue: () => {
                 CoreUserDelegate.registerHandler(AddonNotesUserHandler.instance);
                 CoreCourseOptionsDelegate.registerHandler(AddonNotesCourseOptionHandler.instance);
                 CoreCronDelegate.register(AddonNotesSyncCronHandler.instance);

@@ -54,7 +54,7 @@ export class AddonModQuizHelperProvider {
      * @param title The title to display in the modal and in the submit button.
      * @param siteId Site ID. If not defined, current site.
      * @param retrying Whether we're retrying after a failure.
-     * @return Promise resolved when the preflight data is validated. The resolve param is the attempt.
+     * @returns Promise resolved when the preflight data is validated. The resolve param is the attempt.
      */
     async getAndCheckPreflightData(
         quiz: AddonModQuizQuizWSData,
@@ -133,7 +133,7 @@ export class AddonModQuizHelperProvider {
      * @param prefetch Whether the user is prefetching the quiz.
      * @param title The title to display in the modal and in the submit button.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the preflight data. Rejected if user cancels.
+     * @returns Promise resolved with the preflight data. Rejected if user cancels.
      */
     async getPreflightData(
         quiz: AddonModQuizQuizWSData,
@@ -184,7 +184,7 @@ export class AddonModQuizHelperProvider {
      * Example result: "Marked out of 1.00".
      *
      * @param html Question's HTML.
-     * @return Question's mark.
+     * @returns Question's mark.
      */
     getQuestionMarkFromHtml(html: string): string | undefined {
         const element = CoreDomUtils.convertToElement(html);
@@ -197,7 +197,7 @@ export class AddonModQuizHelperProvider {
      *
      * @param attemptId Attempt ID.
      * @param options Other options.
-     * @return Promise resolved with the quiz ID.
+     * @returns Promise resolved with the quiz ID.
      */
     async getQuizIdByAttemptId(attemptId: number, options: { cmId?: number; siteId?: string } = {}): Promise<number> {
         // Use getAttemptReview to retrieve the quiz ID.
@@ -215,12 +215,11 @@ export class AddonModQuizHelperProvider {
      *
      * @param attemptId Attempt ID.
      * @param page Page to load, -1 to all questions in same page.
-     * @param courseId Course ID.
      * @param quizId Quiz ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
-    async handleReviewLink(attemptId: number, page?: number, courseId?: number, quizId?: number, siteId?: string): Promise<void> {
+    async handleReviewLink(attemptId: number, page?: number, quizId?: number, siteId?: string): Promise<void> {
         siteId = siteId || CoreSites.getCurrentSiteId();
 
         const modal = await CoreDomUtils.showModalLoading();
@@ -230,13 +229,15 @@ export class AddonModQuizHelperProvider {
                 quizId = await this.getQuizIdByAttemptId(attemptId, { siteId });
             }
 
-            const module = await CoreCourse.getModuleBasicInfoByInstance(quizId, 'quiz', siteId);
-
-            courseId = courseId || module.course;
+            const module = await CoreCourse.getModuleBasicInfoByInstance(
+                quizId,
+                'quiz',
+                { siteId, readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE },
+            );
 
             // Go to the review page.
             await CoreNavigator.navigateToSitePath(
-                `${AddonModQuizModuleHandlerService.PAGE_NAME}/${courseId}/${module.id}/review/${attemptId}`,
+                `${AddonModQuizModuleHandlerService.PAGE_NAME}/${module.course}/${module.id}/review/${attemptId}`,
                 {
                     params: {
                         page: page == undefined || isNaN(page) ? -1 : page,
@@ -260,6 +261,7 @@ export class AddonModQuizHelperProvider {
      * @param bestGrade Quiz's best grade (formatted). Required if highlight=true.
      * @param isLastAttempt Whether the attempt is the last one.
      * @param siteId Site ID.
+     * @returns Quiz attemptw with calculated data.
      */
     async setAttemptCalculatedData(
         quiz: AddonModQuizQuizData,
@@ -306,6 +308,7 @@ export class AddonModQuizHelperProvider {
      *
      * @param quiz Quiz.
      * @param options Review options.
+     * @returns Quiz data with some calculated more.
      */
     setQuizCalculatedData(quiz: AddonModQuizQuizWSData, options: AddonModQuizCombinedReviewOptions): AddonModQuizQuizData {
         const formattedQuiz = <AddonModQuizQuizData> quiz;
@@ -330,11 +333,9 @@ export class AddonModQuizHelperProvider {
      * @param preflightData Object where to store the preflight data.
      * @param attempt Attempt to continue. Don't pass any value if the user needs to start a new attempt.
      * @param offline Whether the attempt is offline.
-     * @param sent Whether preflight data has been entered by the user.
      * @param prefetch Whether user is prefetching.
-     * @param title The title to display in the modal and in the submit button.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the preflight data is validated.
+     * @returns Promise resolved when the preflight data is validated.
      */
     async validatePreflightData(
         quiz: AddonModQuizQuizWSData,
@@ -357,7 +358,7 @@ export class AddonModQuizHelperProvider {
             if (attempt) {
                 if (attempt.state != AddonModQuizProvider.ATTEMPT_OVERDUE && !attempt.finishedOffline) {
                     // We're continuing an attempt. Call getAttemptData to validate the preflight data.
-                    await AddonModQuiz.getAttemptData(attempt.id, attempt.currentpage!, preflightData, modOptions);
+                    await AddonModQuiz.getAttemptData(attempt.id, attempt.currentpage ?? 0, preflightData, modOptions);
 
                     if (offline) {
                         // Get current page stored in local.

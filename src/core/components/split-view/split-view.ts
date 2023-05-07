@@ -57,6 +57,10 @@ export class CoreSplitViewComponent implements AfterViewInit, OnDestroy {
         return this.outletRouteSubject.asObservable();
     }
 
+    get nativeElement(): HTMLElement {
+        return this.element.nativeElement;
+    }
+
     /**
      * @inheritdoc
      */
@@ -66,14 +70,8 @@ export class CoreSplitViewComponent implements AfterViewInit, OnDestroy {
         this.disableScrollOnParent();
 
         this.subscriptions = [
-            this.contentOutlet.activateEvents.subscribe(() => {
-                this.updateClasses();
-                this.outletRouteSubject.next(this.contentOutlet.activatedRoute.snapshot);
-            }),
-            this.contentOutlet.deactivateEvents.subscribe(() => {
-                this.updateClasses();
-                this.outletRouteSubject.next(null);
-            }),
+            this.contentOutlet.activateEvents.subscribe(() => this.updateOutletRoute()),
+            this.contentOutlet.deactivateEvents.subscribe(() => this.updateOutletRoute()),
             CoreScreen.layoutObservable.subscribe(() => this.updateClasses()),
         ];
 
@@ -87,6 +85,17 @@ export class CoreSplitViewComponent implements AfterViewInit, OnDestroy {
         this.subscriptions?.forEach(subscription => subscription.unsubscribe());
 
         this.enableScrollOnParent();
+    }
+
+    /**
+     * Update outlet status.
+     */
+    private updateOutletRoute(): void {
+        const outletRoute = this.contentOutlet.isActivated ? this.contentOutlet.activatedRoute.snapshot : null;
+
+        this.updateClasses();
+
+        this.outletRouteSubject.next(outletRoute);
     }
 
     /**
@@ -110,7 +119,7 @@ export class CoreSplitViewComponent implements AfterViewInit, OnDestroy {
      * Get the current mode. Depending on the layout, outlet status, and whether this split view
      * is nested or not, this method will indicate which parts of the split view should be visible.
      *
-     * @return Split view mode.
+     * @returns Split view mode.
      */
     private getCurrentMode(): CoreSplitViewMode {
         if (this.mode) {
@@ -136,14 +145,12 @@ export class CoreSplitViewComponent implements AfterViewInit, OnDestroy {
      * Another manual solution is to add scroll-y=false on the ion-contents outside the split view.
      */
     protected disableScrollOnParent(): void {
-        let outerContent = this.element.nativeElement.parentElement?.closest('ion-content');
-        while (outerContent) {
+        const outerContent = this.element.nativeElement.parentElement?.closest('ion-content');
+        if (outerContent) {
             if (outerContent?.getAttribute('scroll-y') != 'false' && !outerContent?.classList.contains(disabledScrollClass)) {
                 outerContent.classList.add(disabledScrollClass);
                 this.disabledScrollOuterContents.push(outerContent);
             }
-
-            outerContent = outerContent.parentElement?.closest('ion-content');
         }
     }
 

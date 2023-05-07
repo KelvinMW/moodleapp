@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
+import { CoreDom } from '@singletons/dom';
+import { CoreEventObserver } from '@singletons/events';
 import { CoreLogger } from '@singletons/logger';
 import { AddonModQuizDdImageOrTextQuestionData } from '../component/ddimageortext';
 
@@ -28,7 +29,7 @@ export class AddonQtypeDdImageOrTextQuestion {
     protected afterImageLoadDone = false;
     protected proportion = 1;
     protected selected?: HTMLElement | null; // Selected element (being "dragged").
-    protected resizeFunction?: (ev?: Event) => void;
+    protected resizeListener?: CoreEventObserver;
 
     /**
      * Create the this.
@@ -69,7 +70,7 @@ export class AddonQtypeDdImageOrTextQuestion {
      * Convert the X and Y position of the BG IMG to a position relative to the window.
      *
      * @param bgImgXY X and Y of the BG IMG relative position.
-     * @return Position relative to the window.
+     * @returns Position relative to the window.
      */
     convertToWindowXY(bgImgXY: number[]): number[] {
         const bgImg = this.doc.bgImg();
@@ -77,13 +78,18 @@ export class AddonQtypeDdImageOrTextQuestion {
             return bgImgXY;
         }
 
-        const position = CoreDomUtils.getElementXY(bgImg, undefined, 'ddarea');
+        const ddArea = this.container.querySelector<HTMLElement>('.ddarea');
+        if (!ddArea) {
+            return bgImgXY;
+        }
+
+        const position = CoreDom.getRelativeElementPosition(bgImg, ddArea);
 
         // Render the position related to the current image dimensions.
         bgImgXY[0] *= this.proportion;
         bgImgXY[1] *= this.proportion;
 
-        return [Number(bgImgXY[0]) + position[0] + 1, Number(bgImgXY[1]) + position[1] + 1];
+        return [bgImgXY[0] + position.x + 1, bgImgXY[1] + position.y + 1];
     }
 
     /**
@@ -174,9 +180,7 @@ export class AddonQtypeDdImageOrTextQuestion {
     destroy(): void {
         this.stopPolling();
 
-        if (this.resizeFunction) {
-            window.removeEventListener('resize', this.resizeFunction);
-        }
+        this.resizeListener?.off();
     }
 
     /**
@@ -235,7 +239,7 @@ export class AddonQtypeDdImageOrTextQuestion {
      *
      * @param choice Choice number.
      * @param drop Drop zone.
-     * @return Draggable elements.
+     * @returns Draggable elements.
      */
     getChoicesForDrop(choice: number, drop: HTMLElement): HTMLElement[] {
         if (!this.doc.topNode) {
@@ -252,7 +256,7 @@ export class AddonQtypeDdImageOrTextQuestion {
      *
      * @param choice Choice number.
      * @param drop Drop zone.
-     * @return Unplaced draggable element.
+     * @returns Unplaced draggable element.
      */
     getUnplacedChoiceForDrop(choice: number, drop: HTMLElement): HTMLElement | null {
         const dragItems = this.getChoicesForDrop(choice, drop);
@@ -312,8 +316,6 @@ export class AddonQtypeDdImageOrTextQuestion {
 
     /**
      * Initialize the question.
-     *
-     * @param question Question.
      */
     initializer(): void {
         this.doc = new AddonQtypeDdImageOrTextQuestionDocStructure(this.container, this.question.slot);
@@ -360,8 +362,9 @@ export class AddonQtypeDdImageOrTextQuestion {
             this.pollForImageLoad();
         });
 
-        this.resizeFunction = this.windowResized.bind(this);
-        window.addEventListener('resize', this.resizeFunction!);
+        this.resizeListener = CoreDom.onWindowResize(() => {
+            this.repositionDragsForQuestion();
+        });
     }
 
     /**
@@ -409,10 +412,15 @@ export class AddonQtypeDdImageOrTextQuestion {
         }
 
         // Now position the draggable and set it to the input.
-        const position = CoreDomUtils.getElementXY(drop, undefined, 'ddarea');
+        const ddArea = this.container.querySelector<HTMLElement>('.ddarea');
+        if (!ddArea) {
+            return;
+        }
+
+        const position = CoreDom.getRelativeElementPosition(drop, ddArea);
         const choice = drag.getAttribute('choice');
-        drag.style.left = position[0] - 1 + 'px';
-        drag.style.top = position[1] - 1 + 'px';
+        drag.style.left = position.x + 'px';
+        drag.style.top = position.y + 'px';
         drag.classList.add('placed');
 
         if (choice) {
@@ -458,13 +466,14 @@ export class AddonQtypeDdImageOrTextQuestion {
 
         // Move the element to its original position.
         const dragItemHome = this.doc.dragItemHome(Number(drag.getAttribute('dragitemno')));
-        if (!dragItemHome) {
+        const ddArea = this.container.querySelector<HTMLElement>('.ddarea');
+        if (!dragItemHome || !ddArea) {
             return;
         }
 
-        const position = CoreDomUtils.getElementXY(dragItemHome, undefined, 'ddarea');
-        drag.style.left = position[0] + 'px';
-        drag.style.top = position[1] + 'px';
+        const position = CoreDom.getRelativeElementPosition(dragItemHome, ddArea);
+        drag.style.left = position.x + 'px';
+        drag.style.top = position.y + 'px';
         drag.classList.remove('placed');
 
         drag.setAttribute('inputid', '');
@@ -679,15 +688,6 @@ export class AddonQtypeDdImageOrTextQuestion {
         }
     }
 
-    /**
-     * Window resized.
-     */
-    async windowResized(): Promise<void> {
-        await CoreDomUtils.waitForResizeDone();
-
-        this.repositionDragsForQuestion();
-    }
-
 }
 
 /**
@@ -708,9 +708,15 @@ export class AddonQtypeDdImageOrTextQuestionDocStructure {
         this.topNode = this.container.querySelector<HTMLElement>('.addon-qtype-ddimageortext-container');
         this.dragItemsArea = this.topNode?.querySelector<HTMLElement>('div.draghomes') || null;
 
+        if (!this.topNode) {
+            this.logger.error('ddimageortext container not found');
+
+            return;
+        }
+
         if (this.dragItemsArea) {
             // On 3.9+ dragitems were removed.
-            const dragItems = this.topNode!.querySelector('div.dragitems');
+            const dragItems = this.topNode.querySelector('div.dragitems');
 
             if (dragItems) {
                 // Remove empty div.dragitems.
@@ -718,10 +724,10 @@ export class AddonQtypeDdImageOrTextQuestionDocStructure {
             }
 
             // 3.6+ site, transform HTML so it has the same structure as in Moodle 3.5.
-            const ddArea = this.topNode!.querySelector('div.ddarea');
+            const ddArea = this.topNode.querySelector('div.ddarea');
             if (ddArea) {
                 // Move div.dropzones to div.ddarea.
-                const dropZones = this.topNode!.querySelector('div.dropzones');
+                const dropZones = this.topNode.querySelector('div.dropzones');
                 if (dropZones) {
                     ddArea.appendChild(dropZones);
                 }
@@ -738,7 +744,7 @@ export class AddonQtypeDdImageOrTextQuestionDocStructure {
                 draghome.classList.add(`dragitemhomes${index}`);
             });
         } else {
-            this.dragItemsArea = this.topNode!.querySelector<HTMLElement>('div.dragitems');
+            this.dragItemsArea = this.topNode.querySelector<HTMLElement>('div.dragitems');
         }
     }
 
@@ -797,14 +803,15 @@ export class AddonQtypeDdImageOrTextQuestionDocStructure {
     getClassnameNumericSuffix(node: HTMLElement, prefix: string): number | undefined {
         if (node.classList && node.classList.length) {
             const patt1 = new RegExp(`^${prefix}([0-9])+$`);
-            const patt2 = new RegExp('([0-9])+$');
 
-            for (let index = 0; index < node.classList.length; index++) {
-                if (patt1.test(node.classList[index])) {
-                    const match = patt2.exec(node.classList[index]);
+            const classFound = Array.from(node.classList)
+                .find((className) => patt1.test(className));
 
-                    return Number(match![0]);
-                }
+            if (classFound) {
+                const patt2 = new RegExp('([0-9])+$');
+                const match = patt2.exec(classFound);
+
+                return Number(match?.[0]);
             }
         }
 
@@ -854,4 +861,4 @@ export class AddonQtypeDdImageOrTextQuestionDocStructure {
         return divDrag;
     }
 
-};
+}

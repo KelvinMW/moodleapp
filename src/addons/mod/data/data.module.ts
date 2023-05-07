@@ -39,6 +39,7 @@ import { AddonModDataSyncCronHandler } from './services/handlers/sync-cron';
 import { AddonModDataTagAreaHandler } from './services/handlers/tag-area';
 import { AddonModDataFieldModule } from './fields/field.module';
 import { AddonModDataComponentsModule } from './components/components.module';
+import { CoreCourseHelper } from '@features/course/services/course-helper';
 
 // List of providers (without handlers).
 export const ADDON_MOD_DATA_SERVICES: Type<unknown>[] = [
@@ -71,8 +72,7 @@ const routes: Routes = [
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
-            useFactory: () => () => {
+            useValue: () => {
                 CoreCourseModuleDelegate.registerHandler(AddonModDataModuleHandler.instance);
                 CoreCourseModulePrefetchDelegate.registerHandler(AddonModDataPrefetchHandler.instance);
                 CoreCronDelegate.register(AddonModDataSyncCronHandler.instance);
@@ -83,6 +83,8 @@ const routes: Routes = [
                 CoreContentLinksDelegate.registerHandler(AddonModDataShowLinkHandler.instance);
                 CoreContentLinksDelegate.registerHandler(AddonModDataEditLinkHandler.instance);
                 CoreTagAreaDelegate.registerHandler(AddonModDataTagAreaHandler.instance);
+
+                CoreCourseHelper.registerModuleReminderClick(AddonModDataProvider.COMPONENT);
             },
         },
     ],

@@ -15,18 +15,18 @@
 import { CoreConstants } from '@/core/constants';
 import { Injectable } from '@angular/core';
 import { CoreError } from '@classes/errors/error';
-import { CoreCourse, CoreCourseAnyModuleData, CoreCourseWSModule } from '@features/course/services/course';
-import { CoreCourseHelper } from '@features/course/services/course-helper';
-import { CoreApp } from '@services/app';
+import { CoreCourse, CoreCourseAnyModuleData } from '@features/course/services/course';
+import { CoreCourseHelper, CoreCourseModuleData } from '@features/course/services/course-helper';
+import { CoreNetwork } from '@services/network';
 import { CoreFile } from '@services/file';
 import { CoreFileHelper } from '@services/file-helper';
 import { CoreFilepool } from '@services/filepool';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
-import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtilsOpenFileOptions } from '@services/utils/utils';
-import { makeSingleton } from '@singletons';
+import { makeSingleton, Translate } from '@singletons';
+import { CorePath } from '@singletons/path';
 import { AddonModResource, AddonModResourceProvider } from './resource';
 
 /**
@@ -39,29 +39,30 @@ export class AddonModResourceHelperProvider {
      * Get the HTML to display an embedded resource.
      *
      * @param module The module object.
-     * @param courseId The course ID.
-     * @return Promise resolved with the HTML.
+     * @returns Promise resolved with the HTML.
      */
-    async getEmbeddedHtml(module: CoreCourseWSModule, courseId: number): Promise<string> {
+    async getEmbeddedHtml(module: CoreCourseModuleData): Promise<string> {
+        const contents = await CoreCourse.getModuleContents(module);
+
         const result = await CoreCourseHelper.downloadModuleWithMainFileIfNeeded(
             module,
-            courseId,
+            module.course,
             AddonModResourceProvider.COMPONENT,
             module.id,
-            module.contents,
+            contents,
         );
 
-        return CoreMimetypeUtils.getEmbeddedHtml(module.contents[0], result.path);
+        return CoreMimetypeUtils.getEmbeddedHtml(contents[0], result.path);
     }
 
     /**
      * Download all the files needed and returns the src of the iframe.
      *
      * @param module The module object.
-     * @return Promise resolved with the iframe src.
+     * @returns Promise resolved with the iframe src.
      */
-    async getIframeSrc(module: CoreCourseWSModule): Promise<string> {
-        if (!module.contents.length) {
+    async getIframeSrc(module: CoreCourseModuleData): Promise<string> {
+        if (!module.contents?.length || module.url === undefined) {
             throw new CoreError('No contents available in module');
         }
 
@@ -69,19 +70,19 @@ export class AddonModResourceHelperProvider {
         let mainFilePath = mainFile.filename;
 
         if (mainFile.filepath !== '/') {
-            mainFilePath = mainFile.filepath.substr(1) + mainFilePath;
+            mainFilePath = mainFile.filepath.substring(1) + mainFilePath;
         }
 
         try {
-            const dirPath = await CoreFilepool.getPackageDirUrlByUrl(CoreSites.getCurrentSiteId(), module.url!);
+            const dirPath = await CoreFilepool.getPackageDirUrlByUrl(CoreSites.getCurrentSiteId(), module.url);
 
             // This URL is going to be injected in an iframe, we need trustAsResourceUrl to make it work in a browser.
-            return CoreTextUtils.concatenatePaths(dirPath, mainFilePath);
+            return CorePath.concatenatePaths(dirPath, mainFilePath);
         } catch (e) {
             // Error getting directory, there was an error downloading or we're in browser. Return online URL.
-            if (CoreApp.isOnline() && mainFile.fileurl) {
+            if (CoreNetwork.isOnline() && mainFile.fileurl) {
                 // This URL is going to be injected in an iframe, we need this to make it work.
-                return CoreSites.getCurrentSite()!.checkAndFixPluginfileURL(mainFile.fileurl);
+                return CoreSites.getRequiredCurrentSite().checkAndFixPluginfileURL(mainFile.fileurl);
             }
 
             throw e;
@@ -93,20 +94,24 @@ export class AddonModResourceHelperProvider {
      *
      * @param module The module object.
      * @param display The display mode (if available).
-     * @return Whether the resource should be displayed embeded.
+     * @returns Whether the resource should be displayed embeded.
      */
-    isDisplayedEmbedded(module: CoreCourseWSModule, display: number): boolean {
+    isDisplayedEmbedded(module: CoreCourseModuleData, display: number): boolean {
         const currentSite = CoreSites.getCurrentSite();
 
-        if ((!module.contents.length && !module.contentsinfo) ||
-            !CoreFile.isAvailable() ||
-            (currentSite && !currentSite.isVersionGreaterEqualThan('3.7') && this.isNextcloudFile(module))) {
+        if (!CoreFile.isAvailable() ||
+                (currentSite && !currentSite.isVersionGreaterEqualThan('3.7') && this.isNextcloudFile(module))) {
             return false;
         }
 
-        const ext = module.contentsinfo
-            ? CoreMimetypeUtils.getExtension(module.contentsinfo.mimetypes[0])
-            : CoreMimetypeUtils.getFileExtension(module.contents[0].filename);
+        let ext: string | undefined;
+        if (module.contentsinfo) {
+            ext = CoreMimetypeUtils.getExtension(module.contentsinfo.mimetypes[0]);
+        } else if (module.contents?.length) {
+            ext = CoreMimetypeUtils.getFileExtension(module.contents[0].filename);
+        } else {
+            return false;
+        }
 
         return (display == CoreConstants.RESOURCELIB_DISPLAY_EMBED || display == CoreConstants.RESOURCELIB_DISPLAY_AUTO) &&
             CoreMimetypeUtils.canBeEmbedded(ext);
@@ -116,16 +121,16 @@ export class AddonModResourceHelperProvider {
      * Whether the resource has to be displayed in an iframe.
      *
      * @param module The module object.
-     * @return Whether the resource should be displayed in an iframe.
+     * @returns Whether the resource should be displayed in an iframe.
      */
-    isDisplayedInIframe(module: CoreCourseAnyModuleData): boolean {
+    isDisplayedInIframe(module: CoreCourseModuleData): boolean {
         if (!CoreFile.isAvailable()) {
             return false;
         }
 
         let mimetype: string | undefined;
 
-        if ('contentsinfo' in module && module.contentsinfo) {
+        if (module.contentsinfo) {
             mimetype = module.contentsinfo.mimetypes[0];
         } else if (module.contents) {
             const ext = CoreMimetypeUtils.getFileExtension(module.contents[0].filename);
@@ -142,12 +147,17 @@ export class AddonModResourceHelperProvider {
      *
      * @param module Module instance.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with boolean: whether main file is downloadable.
+     * @returns Promise resolved with boolean: whether main file is downloadable.
      */
-    isMainFileDownloadable(module: CoreCourseWSModule, siteId?: string): Promise<boolean> {
+    async isMainFileDownloadable(module: CoreCourseModuleData, siteId?: string): Promise<boolean> {
+        const contents = await CoreCourse.getModuleContents(module);
+        if (!contents.length) {
+            throw new CoreError(Translate.instant('core.filenotfound'));
+        }
+
         siteId = siteId || CoreSites.getCurrentSiteId();
 
-        const mainFile = module.contents[0];
+        const mainFile = contents[0];
         const timemodified = CoreFileHelper.getFileTimemodified(mainFile);
 
         return CoreFilepool.isFileDownloadable(siteId, mainFile.fileurl, timemodified);
@@ -157,7 +167,7 @@ export class AddonModResourceHelperProvider {
      * Check if the resource is a Nextcloud file.
      *
      * @param module Module to check.
-     * @return Whether it's a Nextcloud file.
+     * @returns Whether it's a Nextcloud file.
      */
     isNextcloudFile(module: CoreCourseAnyModuleData): boolean {
         if ('contentsinfo' in module && module.contentsinfo) {
@@ -173,9 +183,9 @@ export class AddonModResourceHelperProvider {
      * @param module Module where to get the contents.
      * @param courseId Course Id, used for completion purposes.
      * @param options Options to open the file.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
-    async openModuleFile(module: CoreCourseWSModule, courseId: number, options: CoreUtilsOpenFileOptions = {}): Promise<void> {
+    async openModuleFile(module: CoreCourseModuleData, courseId: number, options: CoreUtilsOpenFileOptions = {}): Promise<void> {
         const modal = await CoreDomUtils.showModalLoading();
 
         try {
@@ -191,7 +201,7 @@ export class AddonModResourceHelperProvider {
             );
 
             try {
-                await AddonModResource.logView(module.instance!, module.name);
+                await AddonModResource.logView(module.instance, module.name);
                 CoreCourse.checkModuleCompletion(courseId, module.completiondata);
             } catch {
                 // Ignore errors.

@@ -2,7 +2,7 @@ name: Mirror
 
 on:
   push:
-    branches: [ master, integration ]
+    branches: [ main, v*.x ]
 
 jobs:
   mirror:

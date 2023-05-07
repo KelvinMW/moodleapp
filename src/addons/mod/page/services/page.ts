@@ -16,7 +16,7 @@ import { Injectable } from '@angular/core';
 import { CoreSitesCommonWSOptions, CoreSites } from '@services/sites';
 import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
 import { CoreWSExternalWarning, CoreWSExternalFile } from '@services/ws';
-import { makeSingleton } from '@singletons';
+import { makeSingleton, Translate } from '@singletons';
 import { CoreFilepool } from '@services/filepool';
 import { CoreCourse } from '@features/course/services/course';
 import { CoreUtils } from '@services/utils/utils';
@@ -39,7 +39,7 @@ export class AddonModPageProvider {
      * @param courseId Course ID.
      * @param cmId Course module ID.
      * @param options Other options.
-     * @return Promise resolved when the page is retrieved.
+     * @returns Promise resolved when the page is retrieved.
      */
     getPageData(courseId: number, cmId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModPagePage> {
         return this.getPageByKey(courseId, 'coursemodule', cmId, options);
@@ -52,7 +52,7 @@ export class AddonModPageProvider {
      * @param key Name of the property to check.
      * @param value Value to search.
      * @param options Other options.
-     * @return Promise resolved when the page is retrieved.
+     * @returns Promise resolved when the page is retrieved.
      */
     protected async getPageByKey(
         courseId: number,
@@ -79,14 +79,14 @@ export class AddonModPageProvider {
             return currentPage;
         }
 
-        throw new CoreError('Page not found');
+        throw new CoreError(Translate.instant('core.course.modulenotfound'));
     }
 
     /**
      * Get cache key for page data WS calls.
      *
      * @param courseId Course ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getPageCacheKey(courseId: number): string {
         return ROOT_CACHE_KEY + 'page:' + courseId;
@@ -98,6 +98,7 @@ export class AddonModPageProvider {
      * @param moduleId The module ID.
      * @param courseId Course ID of the module.
      * @param siteId Site ID. If not defined, current site.
+     * @returns Promise resolved when done.
      */
     invalidateContent(moduleId: number, courseId: number, siteId?: string): Promise<void> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -116,7 +117,7 @@ export class AddonModPageProvider {
      *
      * @param courseId Course ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidatePageData(courseId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -125,20 +126,10 @@ export class AddonModPageProvider {
     }
 
     /**
-     * Returns whether or not getPage WS available or not.
-     *
-     * @return If WS is available.
-     * @since 3.3
-     */
-    isGetPageWSAvailable(): boolean {
-        return CoreSites.wsAvailableInCurrentSite('mod_page_get_pages_by_courses');
-    }
-
-    /**
      * Return whether or not the plugin is enabled.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with true if plugin is enabled, rejected or resolved with false otherwise.
+     * @returns Promise resolved with true if plugin is enabled, rejected or resolved with false otherwise.
      */
     async isPluginEnabled(siteId?: string): Promise<boolean> {
         const site = await CoreSites.getSite(siteId);
@@ -152,7 +143,7 @@ export class AddonModPageProvider {
      * @param pageid Module ID.
      * @param name Name of the page.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the WS call is successful.
+     * @returns Promise resolved when the WS call is successful.
      */
     logView(pageid: number, name?: string, siteId?: string): Promise<void> {
         const params: AddonModPageViewPageWSParams = {

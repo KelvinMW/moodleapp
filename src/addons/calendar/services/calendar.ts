@@ -15,7 +15,7 @@
 import { Injectable } from '@angular/core';
 import { CoreSites } from '@services/sites';
 import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreUrlUtils } from '@services/utils/url';
@@ -23,27 +23,38 @@ import { CoreUtils } from '@services/utils/utils';
 import { CoreGroups } from '@services/groups';
 import { CoreLocalNotifications } from '@services/local-notifications';
 import { CoreConfig } from '@services/config';
-import { ILocalNotification } from '@ionic-native/local-notifications';
 import { AddonCalendarOffline } from './calendar-offline';
 import { CoreUser } from '@features/user/services/user';
 import { CoreWSExternalWarning, CoreWSDate } from '@services/ws';
-import moment from 'moment';
-import { AddonCalendarEventDBRecord, AddonCalendarReminderDBRecord, EVENTS_TABLE, REMINDERS_TABLE } from './database/calendar';
+import moment from 'moment-timezone';
+import { AddonCalendarEventDBRecord, EVENTS_TABLE } from './database/calendar';
 import { CoreCourses } from '@features/courses/services/courses';
 import { ContextLevel, CoreConstants } from '@/core/constants';
 import { CoreWSError } from '@classes/errors/wserror';
-import { ApplicationInit, makeSingleton, Translate, Platform } from '@singletons';
+import { ApplicationInit, makeSingleton, Translate } from '@singletons';
 import { AddonCalendarOfflineEventDBRecord } from './database/calendar-offline';
 import { AddonCalendarMainMenuHandlerService } from './handlers/mainmenu';
 import { SafeUrl } from '@angular/platform-browser';
 import { CoreNavigator } from '@services/navigator';
 import { AddonCalendarFilter } from './calendar-helper';
 import { AddonCalendarSyncEvents, AddonCalendarSyncProvider } from './calendar-sync';
+import { CorePath } from '@singletons/path';
+import { CorePlatform } from '@services/platform';
+import {
+    CoreReminderData,
+    CoreReminders,
+    CoreRemindersPushNotificationData,
+    CoreRemindersService,
+    CoreRemindersUnits,
+    CoreReminderValueAndUnit,
+} from '@features/reminders/services/reminders';
+import { CoreReminderDBRecord } from '@features/reminders/services/database/reminders';
+import { CoreEvents } from '@singletons/events';
 
 const ROOT_CACHE_KEY = 'mmaCalendar:';
 
 /**
- * Context levels enumeration.
+ * Main calendar Event types enumeration.
  */
 export enum AddonCalendarEventType {
     SITE = 'site',
@@ -51,6 +62,18 @@ export enum AddonCalendarEventType {
     COURSE = 'course',
     GROUP = 'group',
     USER = 'user',
+}
+
+/**
+ * Units to set a reminder.
+ *
+ * @deprecated since 4.1 Use CoreReminderUnits instead.
+ */
+export enum AddonCalendarReminderUnits {
+    MINUTE = CoreConstants.SECONDS_MINUTE,
+    HOUR = CoreConstants.SECONDS_HOUR,
+    DAY = CoreConstants.SECONDS_DAY,
+    WEEK = CoreConstants.SECONDS_WEEK,
 }
 
 declare module '@singletons/events' {
@@ -80,9 +103,7 @@ export class AddonCalendarProvider {
 
     static readonly DAYS_INTERVAL = 30;
     static readonly COMPONENT = 'AddonCalendarEvents';
-    static readonly DEFAULT_NOTIFICATION_TIME_CHANGED = 'AddonCalendarDefaultNotificationTimeChangedEvent';
-    static readonly DEFAULT_NOTIFICATION_TIME_SETTING = 'mmaCalendarDefaultNotifTime';
-    static readonly DEFAULT_NOTIFICATION_TIME = 60;
+
     static readonly STARTING_WEEK_DAY = 'addon_calendar_starting_week_day';
     static readonly NEW_EVENT_EVENT = 'addon_calendar_new_event';
     static readonly NEW_EVENT_DISCARDED_EVENT = 'addon_calendar_new_event_discarded';
@@ -126,40 +147,10 @@ export class AddonCalendarProvider {
     ];
 
     /**
-     * Check if a certain site allows deleting events.
-     *
-     * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved with true if can delete.
-     * @since 3.3
-     */
-    async canDeleteEvents(siteId?: string): Promise<boolean> {
-        try {
-            const site = await CoreSites.getSite(siteId);
-
-            return this.canDeleteEventsInSite(site);
-        } catch {
-            return false;
-        }
-    }
-
-    /**
-     * Check if a certain site allows deleting events.
-     *
-     * @param site Site. If not defined, use current site.
-     * @return Whether events can be deleted.
-     * @since 3.3
-     */
-    canDeleteEventsInSite(site?: CoreSite): boolean {
-        site = site || CoreSites.getCurrentSite();
-
-        return !!site?.wsAvailable('core_calendar_delete_calendar_events');
-    }
-
-    /**
      * Check if a certain site allows creating and editing events.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved with true if can create/edit.
+     * @returns Promise resolved with true if can create/edit.
      * @since 3.7.1
      */
     async canEditEvents(siteId?: string): Promise<boolean> {
@@ -176,7 +167,7 @@ export class AddonCalendarProvider {
      * Check if a certain site allows creating and editing events.
      *
      * @param site Site. If not defined, use current site.
-     * @return Whether events can be created and edited.
+     * @returns Whether events can be created and edited.
      * @since 3.7.1
      */
     canEditEventsInSite(site?: CoreSite): boolean {
@@ -187,64 +178,14 @@ export class AddonCalendarProvider {
     }
 
     /**
-     * Check if a certain site allows viewing events in monthly view.
+     * Given a number of seconds, convert it to a unit&value format compatible with reminders.
      *
-     * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved with true if monthly view is supported.
-     * @since 3.4
+     * @param seconds Number of seconds.
+     * @returns Value and unit.
+     * @deprecated since 4.1 Use CoreRemindersService.convertSecondsToValueAndUnit instead.
      */
-    async canViewMonth(siteId?: string): Promise<boolean> {
-        try {
-            const site = await CoreSites.getSite(siteId);
-
-            return this.canViewMonthInSite(site);
-        } catch {
-            return false;
-        }
-    }
-
-    /**
-     * Check if a certain site allows viewing events in monthly view.
-     *
-     * @param site Site. If not defined, use current site.
-     * @return Whether monthly view is supported.
-     * @since 3.4
-     */
-    canViewMonthInSite(site?: CoreSite): boolean {
-        site = site || CoreSites.getCurrentSite();
-
-        return !!site?.wsAvailable('core_calendar_get_calendar_monthly_view');
-    }
-
-    /**
-     * Gets the site main calendar page path.
-     *
-     * @param site Site. If not defined, use current site.
-     * @return Main calendar page path of the site.
-     */
-    getMainCalendarPagePath(site?: CoreSite): string {
-        return AddonCalendarMainMenuHandlerService.PAGE_NAME + (this.canViewMonthInSite(site) ? '' : '/list');
-    }
-
-    /**
-     * Removes expired events from local DB.
-     *
-     * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Promise resolved when done.
-     */
-    async cleanExpiredEvents(siteId?: string): Promise<void> {
-        const site = await CoreSites.getSite(siteId);
-        if (this.canViewMonthInSite(site)) {
-            // Site supports monthly view, don't clean expired events because user can see past events.
-            return;
-        }
-        const events = await site.getDb().getRecordsSelect<AddonCalendarEventDBRecord>(
-            EVENTS_TABLE,
-            'timestart + timeduration < ?',
-            [CoreTimeUtils.timestamp()],
-        );
-
-        await Promise.all(events.map((event) => this.deleteLocalEvent(event.id!, siteId)));
+    static convertSecondsToValueAndUnit(seconds: number): CoreReminderValueAndUnit {
+        return CoreRemindersService.convertSecondsToValueAndUnit(seconds);
     }
 
     /**
@@ -255,7 +196,7 @@ export class AddonCalendarProvider {
      * @param deleteAll If it's a repeated event. whether to delete all events of the series.
      * @param forceOffline True to always save it in offline.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async deleteEvent(
         eventId: number,
@@ -271,7 +212,7 @@ export class AddonCalendarProvider {
         const storeOffline = (): Promise<boolean> =>
             AddonCalendarOffline.markDeleted(eventId, name, deleteAll, siteId).then(() => false);
 
-        if (forceOffline || !CoreApp.isOnline()) {
+        if (forceOffline || !CoreNetwork.isOnline()) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -299,7 +240,7 @@ export class AddonCalendarProvider {
      * @param eventId Event ID to delete.
      * @param deleteAll If it's a repeated event. whether to delete all events of the series.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async deleteEventOnline(eventId: number, deleteAll = false, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -323,7 +264,7 @@ export class AddonCalendarProvider {
      *
      * @param eventId Event ID.
      * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async deleteLocalEvent(eventId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -335,57 +276,62 @@ export class AddonCalendarProvider {
             EVENTS_TABLE,
             { id: eventId },
         ));
-        promises.push(site.getDb().getRecords<AddonCalendarReminderDBRecord>(
-            REMINDERS_TABLE,
-            { eventid: eventId },
-        ).then((reminders) =>
-            Promise.all(reminders.map((reminder) => this.deleteEventReminder(reminder.id!, siteId)))));
+        promises.push(CoreReminders.removeReminders({
+            instanceId: eventId,
+            component: AddonCalendarProvider.COMPONENT,
+        } , siteId));
 
-        try {
-            await Promise.all(promises);
-        } catch {
-            // Ignore errors.
-        }
+        await CoreUtils.ignoreErrors(Promise.all(promises));
     }
 
     /**
      * Initialize the service.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async initialize(): Promise<void> {
-
-        CoreLocalNotifications.registerClick<AddonCalendarPushNotificationData>(
+        CoreLocalNotifications.registerClick<CoreRemindersPushNotificationData>(
             AddonCalendarProvider.COMPONENT,
             async (notification) => {
-                if (notification.eventId) {
-                    await ApplicationInit.donePromise;
+                await ApplicationInit.donePromise;
 
-                    const disabled = await this.isDisabled(notification.siteId);
-                    if (disabled) {
-                        // The calendar is disabled in the site, don't open it.
-                        return;
-                    }
-
-                    // Check which page we should load.
-                    const site = await CoreSites.getSite(notification.siteId);
-                    const pageName = this.getMainCalendarPagePath(site);
-
-                    CoreNavigator.navigateToSitePath(
-                        pageName,
-                        {
-                            siteId: notification.siteId,
-                            preferCurrentTab: false,
-                            nextNavigation: {
-                                path: `calendar/event/${notification.eventId}`,
-                                isSitePath: true,
-                            },
-                        },
-                    );
-                }
+                this.notificationClicked(notification);
             },
         );
 
+        CoreEvents.on(CoreEvents.SITE_ADDED, (data) => {
+            if (!data.siteId) {
+                return;
+            }
+
+            this.updateSiteEventReminders(data.siteId);
+        });
+    }
+
+    /**
+     * Notification has been clicked.
+     *
+     * @param notification Calendar notification.
+     * @returns Promise resolved when done.
+     */
+    async notificationClicked(notification: CoreRemindersPushNotificationData): Promise<void> {
+        const disabled = await this.isDisabled(notification.siteId);
+        if (disabled) {
+            // The calendar is disabled in the site, don't open it.
+            return;
+        }
+
+        CoreNavigator.navigateToSitePath(
+            AddonCalendarMainMenuHandlerService.PAGE_NAME,
+            {
+                siteId: notification.siteId,
+                preferCurrentTab: false,
+                nextNavigation: {
+                    path: `calendar/event/${notification.instanceId}`,
+                    isSitePath: true,
+                },
+            },
+        );
     }
 
     /**
@@ -397,30 +343,35 @@ export class AddonCalendarProvider {
      * @param seenDay Timestamp of day currently seen. If set, the function will not add links to this day.
      * @param showTime Determine the show time GMT timestamp.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the formatted event time.
+     * @returns Promise resolved with the formatted event time.
      */
     async formatEventTime(
         event: AddonCalendarEventToDisplay,
-        format: string,
+        format?: string,
         useCommonWords = true,
         seenDay?: number,
         showTime = 0,
         siteId?: string,
     ): Promise<string> {
 
+        const getTimeHtml = (time: string, a11yLangKey: string): string =>
+            `<span aria-label="${Translate.instant(a11yLangKey, { $a: CoreTextUtils.cleanTags(time) })}">${time}</span>`;
+        const getStartTimeHtml = (time: string): string => getTimeHtml(time, 'core.startingtime');
+        const getEndTimeHtml = (time: string): string => getTimeHtml(time, 'core.endingtime');
+
         const start = event.timestart * 1000;
         const end = (event.timestart + event.timeduration) * 1000;
         let time: string;
 
-        if (!event.timeduration) {
+        if (event.timeduration) {
 
             if (moment(start).isSame(end, 'day')) {
                 // Event starts and ends the same day.
                 if (event.timeduration == CoreConstants.SECONDS_DAY) {
                     time = Translate.instant('addon.calendar.allday');
                 } else {
-                    time = CoreTimeUtils.userDate(start, format) + ' <strong>&raquo;</strong> ' +
-                            CoreTimeUtils.userDate(end, format);
+                    time = getStartTimeHtml(CoreTimeUtils.userDate(start, format)) + ' <strong>&raquo;</strong> ' +
+                            getEndTimeHtml(CoreTimeUtils.userDate(end, format));
                 }
 
             } else {
@@ -451,11 +402,12 @@ export class AddonCalendarProvider {
 
                 await Promise.all(promises);
 
-                return dayStart + timeStart + ' <strong>&raquo;</strong> ' + dayEnd + timeEnd;
+                return getStartTimeHtml(dayStart + timeStart) + ' <strong>&raquo;</strong> ' +
+                    getEndTimeHtml(dayEnd + timeEnd);
             }
         } else {
             // There is no time duration.
-            time = CoreTimeUtils.userDate(start, format);
+            time = getStartTimeHtml(CoreTimeUtils.userDate(start, format));
         }
 
         if (showTime) {
@@ -479,7 +431,7 @@ export class AddonCalendarProvider {
      *
      * @param courseId Course ID. If not defined, site calendar.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with object with access information.
+     * @returns Promise resolved with object with access information.
      * @since 3.7
      */
     async getAccessInformation(courseId?: number, siteId?: string): Promise<AddonCalendarGetCalendarAccessInformationWSResponse> {
@@ -499,7 +451,7 @@ export class AddonCalendarProvider {
      * Get cache key for calendar access information WS calls.
      *
      * @param courseId Course ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAccessInformationCacheKey(courseId?: number): string {
         return ROOT_CACHE_KEY + 'accessInformation:' + (courseId || 0);
@@ -509,12 +461,12 @@ export class AddonCalendarProvider {
      * Get all calendar events from local Db.
      *
      * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Promise resolved with all the events.
+     * @returns Promise resolved with all the events.
      */
     async getAllEventsFromLocalDb(siteId?: string): Promise<AddonCalendarEventDBRecord[]> {
         const site = await CoreSites.getSite(siteId);
 
-        return await site.getDb().getAllRecords(EVENTS_TABLE);
+        return site.getDb().getAllRecords(EVENTS_TABLE);
     }
 
     /**
@@ -522,7 +474,7 @@ export class AddonCalendarProvider {
      *
      * @param courseId Course ID. If not defined, site calendar.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with an object indicating the types.
+     * @returns Promise resolved with an object indicating the types.
      * @since 3.7
      */
     async getAllowedEventTypes(courseId?: number, siteId?: string): Promise<{[name: string]: boolean}> {
@@ -538,9 +490,9 @@ export class AddonCalendarProvider {
             await site.read('core_calendar_get_allowed_event_types', params, preSets);
 
         // Convert the array to an object.
-        const result = {};
+        const result: {[name: string]: boolean} = {};
         if (response.allowedeventtypes) {
-            response.allowedeventtypes.map((type) => {
+            response.allowedeventtypes.forEach((type) => {
                 result[type] = true;
             });
         }
@@ -552,7 +504,7 @@ export class AddonCalendarProvider {
      * Get cache key for calendar allowed event types WS calls.
      *
      * @param courseId Course ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getAllowedEventTypesCacheKey(courseId?: number): string {
         return ROOT_CACHE_KEY + 'allowedEventTypes:' + (courseId || 0);
@@ -562,7 +514,7 @@ export class AddonCalendarProvider {
      * Get the "look ahead" for a certain user.
      *
      * @param siteId ID of the site. If not defined, use current site.
-     * @return Promise resolved with the look ahead (number of days).
+     * @returns Promise resolved with the look ahead (number of days).
      */
     async getCalendarLookAhead(siteId?: string): Promise<number> {
         const site = await CoreSites.getSite(siteId);
@@ -573,7 +525,7 @@ export class AddonCalendarProvider {
             // Ignore errors.
         }
 
-        if (typeof value == 'undefined' || value === null) {
+        if (value === undefined || value === null) {
             value = site.getStoredConfig('calendar_lookahead');
         }
 
@@ -584,7 +536,7 @@ export class AddonCalendarProvider {
      * Get the time format to use in calendar.
      *
      * @param siteId ID of the site. If not defined, use current site.
-     * @return Promise resolved with the format.
+     * @returns Promise resolved with the format.
      */
     async getCalendarTimeFormat(siteId?: string): Promise<string> {
         const site = await CoreSites.getSite(siteId);
@@ -614,7 +566,7 @@ export class AddonCalendarProvider {
      *
      * @param time Timestamp to get the day from.
      * @param useCommonWords Whether to use common words like "Today", "Yesterday", etc.
-     * @return The formatted date/time.
+     * @returns The formatted date/time.
      */
     getDayRepresentation(time: number, useCommonWords: boolean = true): string {
 
@@ -643,14 +595,11 @@ export class AddonCalendarProvider {
      * Get the configured default notification time.
      *
      * @param siteId ID of the site. If not defined, use current site.
-     * @return Promise resolved with the default time.
+     * @returns Promise resolved with the default time (in seconds).
+     * @deprecated since 4.1 Use CoreReminders.getDefaultNotificationTime instead.
      */
     async getDefaultNotificationTime(siteId?: string): Promise<number> {
-        siteId = siteId || CoreSites.getCurrentSiteId();
-
-        const key = AddonCalendarProvider.DEFAULT_NOTIFICATION_TIME_SETTING + '#' + siteId;
-
-        return CoreConfig.get(key, AddonCalendarProvider.DEFAULT_NOTIFICATION_TIME);
+        return CoreReminders.getDefaultNotificationTime(siteId);
     }
 
     /**
@@ -658,7 +607,7 @@ export class AddonCalendarProvider {
      *
      * @param id Event ID.
      * @param siteId ID of the site. If not defined, use current site.
-     * @return Promise resolved when the event data is retrieved.
+     * @returns Promise resolved when the event data is retrieved.
      */
     async getEvent(id: number, siteId?: string): Promise<AddonCalendarGetEventsEvent | AddonCalendarEventBase> {
         const site = await CoreSites.getSite(siteId);
@@ -694,8 +643,7 @@ export class AddonCalendarProvider {
      *
      * @param id Event ID.
      * @param siteId ID of the site. If not defined, use current site.
-     * @return Promise resolved when the event data is retrieved.
-     * @since 3.4
+     * @returns Promise resolved when the event data is retrieved.
      */
     async getEventById(id: number, siteId?: string): Promise<AddonCalendarEvent> {
         const site = await CoreSites.getSite(siteId);
@@ -709,6 +657,8 @@ export class AddonCalendarProvider {
         try {
             const response: AddonCalendarGetCalendarEventByIdWSResponse =
                 await site.read('core_calendar_get_calendar_event_by_id', params, preSets);
+
+            this.updateLocalEvents([response.event], { siteId });
 
             return response.event;
         } catch (error) {
@@ -724,7 +674,7 @@ export class AddonCalendarProvider {
      * Get cache key for a single event WS call.
      *
      * @param id Event ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getEventCacheKey(id: number): string {
         return ROOT_CACHE_KEY + 'events:' + id;
@@ -735,16 +685,12 @@ export class AddonCalendarProvider {
      *
      * @param id Event ID.
      * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Promise resolved when the event data is retrieved.
+     * @returns Promise resolved when the event data is retrieved.
      */
     async getEventFromLocalDb(id: number, siteId?: string): Promise<AddonCalendarGetEventsEvent | AddonCalendarEvent> {
         const site = await CoreSites.getSite(siteId);
         const record: AddonCalendarGetEventsEvent | AddonCalendarEvent | AddonCalendarEventDBRecord =
             await site.getDb().getRecord(EVENTS_TABLE, { id: id });
-
-        if (!this.isGetEventByIdAvailableInSite(site)) {
-            return record as AddonCalendarGetEventsEvent;
-        }
 
         const eventConverted = record as AddonCalendarEvent;
         const originalEvent = record as AddonCalendarGetEventsEvent;
@@ -756,18 +702,18 @@ export class AddonCalendarProvider {
         eventConverted.iscategoryevent = originalEvent.eventtype == AddonCalendarEventType.CATEGORY;
         eventConverted.normalisedeventtype = this.getEventType(recordAsRecord);
         try {
-            eventConverted.category = CoreTextUtils.parseJSON(recordAsRecord.category!);
+            eventConverted.category = CoreTextUtils.parseJSON(recordAsRecord.category || '');
         } catch {
             // Ignore errors.
         }
 
         try {
-            eventConverted.course = CoreTextUtils.parseJSON(recordAsRecord.course!);
+            eventConverted.course = CoreTextUtils.parseJSON(recordAsRecord.course || '');
         } catch {
             // Ignore errors.
         }
         try {
-            eventConverted.subscription = CoreTextUtils.parseJSON(recordAsRecord.subscription!);
+            eventConverted.subscription = CoreTextUtils.parseJSON(recordAsRecord.subscription || '');
         } catch {
             // Ignore errors.
         }
@@ -778,24 +724,44 @@ export class AddonCalendarProvider {
     /**
      * Adds an event reminder and schedule a new notification.
      *
-     * @param event Event to update its notification time.
-     * @param time New notification setting timestamp.
+     * @param event Event to set the reminder.
+     * @param timebefore Amount of seconds of the reminder. Undefined for default reminder.
      * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Promise resolved when the notification is updated.
+     * @returns Promise resolved when the notification is updated.
      */
     async addEventReminder(
-        event: { id: number; timestart: number; timeduration: number; name: string},
-        time: number,
+        event: AddonCalendarEvent | AddonCalendarEventDBRecord | AddonCalendarEventToDisplay | AddonCalendarOfflineEventDBRecord,
+        timebefore?: number,
         siteId?: string,
     ): Promise<void> {
-        const site = await CoreSites.getSite(siteId);
-        const reminder: AddonCalendarReminderDBRecord = {
-            eventid: event.id,
-            time: time,
-        };
-        const reminderId = await site.getDb().insertRecord(REMINDERS_TABLE, reminder);
 
-        await this.scheduleEventNotification(event, reminderId, time, site.getId());
+        timebefore = timebefore ?? CoreRemindersService.DEFAULT_REMINDER_TIMEBEFORE;
+
+        const previousReminders = await CoreReminders.getReminders({
+            instanceId: event.id,
+            component: AddonCalendarProvider.COMPONENT,
+        }, siteId);
+
+        if (previousReminders.some((reminder) => reminder.timebefore === timebefore)) {
+            // Already exists.
+            return;
+        }
+
+        const url = 'url' in event
+            ? event.url || ''
+            : '';
+
+        const reminder: CoreReminderData = {
+            component: AddonCalendarProvider.COMPONENT,
+            instanceId: event.id,
+            type: event.eventtype,
+            time: event.timestart,
+            timebefore,
+            title: event.name,
+            url,
+        };
+
+        await CoreReminders.addReminder(reminder, siteId);
     }
 
     /**
@@ -803,9 +769,9 @@ export class AddonCalendarProvider {
      * Activity events are normalised to be course events.
      *
      * @param event The event to get its type.
-     * @return Event type.
+     * @returns Event type.
      */
-    getEventType(event: { modulename?: string; eventtype: AddonCalendarEventType}): string {
+    getEventType(event: { modulename?: string; eventtype: AddonCalendarEventType | string }): string {
         if (event.modulename) {
             return 'course';
         }
@@ -818,16 +784,11 @@ export class AddonCalendarProvider {
      *
      * @param id Reminder ID.
      * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Promise resolved when the notification is updated.
+     * @returns Promise resolved when the notification is updated.
+     * @deprecated since 4.1. Use CoreReminders.removeReminder instead.
      */
     async deleteEventReminder(id: number, siteId?: string): Promise<void> {
-        const site = await CoreSites.getSite(siteId);
-
-        if (CoreLocalNotifications.isAvailable()) {
-            CoreLocalNotifications.cancel(id, AddonCalendarProvider.COMPONENT, site.getId());
-        }
-
-        await site.getDb().deleteRecords(REMINDERS_TABLE, { id: id });
+        await CoreReminders.removeReminder(id, siteId);
     }
 
     /**
@@ -840,7 +801,7 @@ export class AddonCalendarProvider {
      * @param categoryId Category to get.
      * @param ignoreCache True if it should ignore cached data (it will always fail in offline or server down).
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      */
     async getDayEvents(
         year: number,
@@ -873,7 +834,7 @@ export class AddonCalendarProvider {
             preSets.emergencyCache = false;
         }
         const response: AddonCalendarCalendarDay = await site.read('core_calendar_get_calendar_day_view', params, preSets);
-        this.storeEventsInLocalDB(response.events, siteId);
+        this.updateLocalEvents(response.events, { siteId });
 
         return response;
     }
@@ -881,7 +842,7 @@ export class AddonCalendarProvider {
     /**
      * Get prefix cache key for day events WS calls.
      *
-     * @return Prefix Cache key.
+     * @returns Prefix Cache key.
      */
     protected getDayEventsPrefixCacheKey(): string {
         return ROOT_CACHE_KEY + 'day:';
@@ -893,7 +854,7 @@ export class AddonCalendarProvider {
      * @param year Year to get.
      * @param month Month to get.
      * @param day Day to get.
-     * @return Prefix Cache key.
+     * @returns Prefix Cache key.
      */
     protected getDayEventsDayPrefixCacheKey(year: number, month: number, day: number): string {
         return this.getDayEventsPrefixCacheKey() + year + ':' + month + ':' + day + ':';
@@ -907,7 +868,7 @@ export class AddonCalendarProvider {
      * @param day Day to get.
      * @param courseId Course to get.
      * @param categoryId Category to get.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getDayEventsCacheKey(year: number, month: number, day: number, courseId?: number, categoryId?: number): string {
         return this.getDayEventsDayPrefixCacheKey(year, month, day) + (courseId ? courseId : '') + ':' +
@@ -917,14 +878,16 @@ export class AddonCalendarProvider {
     /**
      * Get a calendar reminders from local Db.
      *
-     * @param id Event ID.
+     * @param eventId Event ID.
      * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Promise resolved when the event data is retrieved.
+     * @returns Promise resolved when the event data is retrieved.
+     * @deprecated since 4.1. Use CoreReminders.getReminders instead.
      */
-    async getEventReminders(id: number, siteId?: string): Promise<AddonCalendarReminderDBRecord[]> {
-        const site = await CoreSites.getSite(siteId);
-
-        return await site.getDb().getRecords(REMINDERS_TABLE, { eventid: id }, 'time ASC');
+    async getEventReminders(eventId: number, siteId?: string): Promise<CoreReminderDBRecord[]> {
+        return CoreReminders.getReminders({
+            instanceId: eventId,
+            component: AddonCalendarProvider.COMPONENT,
+        }, siteId);
     }
 
     /**
@@ -938,7 +901,7 @@ export class AddonCalendarProvider {
      * @param daysToStart Number of days from now to start getting events.
      * @param daysInterval Number of days between timestart and timeend.
      * @param siteId Site to get the events from. If not defined, use current site.
-     * @return Promise to be resolved when the events are retrieved.
+     * @returns Promise to be resolved when the events are retrieved.
      */
     async getEventsList(
         initialTime?: number,
@@ -955,6 +918,10 @@ export class AddonCalendarProvider {
         const start = initialTime + (CoreConstants.SECONDS_DAY * daysToStart);
         const end = start + (CoreConstants.SECONDS_DAY * daysInterval) - 1;
 
+        const events = {
+            courseids: <number[]> [],
+            groupids: <number[]> [],
+        };
         const params: AddonCalendarGetCalendarEventsWSParams = {
             options: {
                 userevents: true,
@@ -962,23 +929,20 @@ export class AddonCalendarProvider {
                 timestart: start,
                 timeend: end,
             },
-            events: {
-                courseids: [],
-                groupids: [],
-            },
+            events: events,
         };
 
         const promises: Promise<void>[] = [];
 
         promises.push(CoreCourses.getUserCourses(false, siteId).then((courses) => {
-            params.events!.courseids = courses.map((course) => course.id);
-            params.events!.courseids.push(site.getSiteHomeId()); // Add front page.
+            events.courseids = courses.map((course) => course.id);
+            events.courseids.push(site.getSiteHomeId()); // Add front page.
 
             return;
         }));
 
         promises.push(CoreGroups.getAllUserGroups(siteId).then((groups) => {
-            params.events!.groupids = groups.map((group) => group.id);
+            events.groupids = groups.map((group) => group.id);
 
             return;
         }));
@@ -992,12 +956,10 @@ export class AddonCalendarProvider {
             uniqueCacheKey: true,
             updateFrequency: CoreSite.FREQUENCY_SOMETIMES,
         };
-        const response: AddonCalendarGetCalendarEventsWSResponse =
-            await site.read('core_calendar_get_calendar_events', params, preSets);
-        if (!this.canViewMonthInSite(site)) {
-            // Store events only in 3.1-3.3. In 3.4+ we'll use the new WS that return more info.
-            this.storeEventsInLocalDB(response.events, siteId);
-        }
+        const response =
+            await site.read<AddonCalendarGetCalendarEventsWSResponse>('core_calendar_get_calendar_events', params, preSets);
+
+        this.updateLocalEvents(response.events, { siteId });
 
         return response.events;
     }
@@ -1005,7 +967,7 @@ export class AddonCalendarProvider {
     /**
      * Get prefix cache key for events list WS calls.
      *
-     * @return Prefix Cache key.
+     * @returns Prefix Cache key.
      */
     protected getEventsListPrefixCacheKey(): string {
         return ROOT_CACHE_KEY + 'events:';
@@ -1016,7 +978,7 @@ export class AddonCalendarProvider {
      *
      * @param daysToStart Number of days from now to start getting events.
      * @param daysInterval Number of days between timestart and timeend.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getEventsListCacheKey(daysToStart: number, daysInterval: number): string {
         return this.getEventsListPrefixCacheKey() + daysToStart + ':' + daysInterval;
@@ -1027,12 +989,12 @@ export class AddonCalendarProvider {
      *
      * @param repeatId Repeat Id of the event.
      * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Promise resolved with all the events.
+     * @returns Promise resolved with all the events.
      */
     async getLocalEventsByRepeatIdFromLocalDb(repeatId: number, siteId?: string): Promise<AddonCalendarEventDBRecord[]> {
         const site = await CoreSites.getSite(siteId);
 
-        return await site.getDb().getRecords(EVENTS_TABLE, { repeatid: repeatId });
+        return site.getDb().getRecords(EVENTS_TABLE, { repeatid: repeatId });
     }
 
     /**
@@ -1044,7 +1006,7 @@ export class AddonCalendarProvider {
      * @param categoryId Category to get.
      * @param ignoreCache True if it should ignore cached data (it will always fail in offline or server down).
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      */
     async getMonthlyEvents(
         year: number,
@@ -1059,12 +1021,8 @@ export class AddonCalendarProvider {
         const params: AddonCalendarGetCalendarMonthlyViewWSParams = {
             year: year,
             month: month,
+            mini: true, // Set mini to 1 to prevent returning the course selector HTML.
         };
-        // This parameter requires Moodle 3.5.
-        if (site.isVersionGreaterEqualThan('3.5')) {
-            // Set mini to 1 to prevent returning the course selector HTML.
-            params.mini = true;
-        }
         if (courseId) {
             params.courseid = courseId;
         }
@@ -1084,12 +1042,12 @@ export class AddonCalendarProvider {
         const response = await site.read<AddonCalendarMonth>('core_calendar_get_calendar_monthly_view', params, preSets);
         response.weeks.forEach((week) => {
             week.days.forEach((day) => {
-                this.storeEventsInLocalDB(day.events as AddonCalendarCalendarEvent[], siteId);
+                this.updateLocalEvents(day.events, { siteId });
             });
         });
 
         // Store starting week day preference, we need it in offline to show months that are not in cache.
-        if (CoreApp.isOnline()) {
+        if (CoreNetwork.isOnline()) {
             CoreConfig.set(AddonCalendarProvider.STARTING_WEEK_DAY, response.daynames[0].dayno);
         }
 
@@ -1099,7 +1057,7 @@ export class AddonCalendarProvider {
     /**
      * Get prefix cache key for monthly events WS calls.
      *
-     * @return Prefix Cache key.
+     * @returns Prefix Cache key.
      */
     protected getMonthlyEventsPrefixCacheKey(): string {
         return ROOT_CACHE_KEY + 'monthly:';
@@ -1110,7 +1068,7 @@ export class AddonCalendarProvider {
      *
      * @param year Year to get.
      * @param month Month to get.
-     * @return Prefix Cache key.
+     * @returns Prefix Cache key.
      */
     protected getMonthlyEventsMonthPrefixCacheKey(year: number, month: number): string {
         return this.getMonthlyEventsPrefixCacheKey() + year + ':' + month + ':';
@@ -1123,11 +1081,24 @@ export class AddonCalendarProvider {
      * @param month Month to get.
      * @param courseId Course to get.
      * @param categoryId Category to get.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getMonthlyEventsCacheKey(year: number, month: number, courseId?: number, categoryId?: number): string {
         return this.getMonthlyEventsMonthPrefixCacheKey(year, month) + (courseId ? courseId : '') + ':' +
                 (categoryId ? categoryId : '');
+    }
+
+    /**
+     * Given a value and a unit, return the translated label.
+     *
+     * @param value Value.
+     * @param unit Unit.
+     * @param addDefaultLabel Whether to add the "Default" text.
+     * @returns Translated label.
+     * @deprecated since 4.1 Use CoreReminders.getUnitValueLabel instead.
+     */
+    getUnitValueLabel(value: number, unit: CoreRemindersUnits, addDefaultLabel = false): string {
+        return CoreReminders.getUnitValueLabel(value, unit, addDefaultLabel);
     }
 
     /**
@@ -1137,7 +1108,7 @@ export class AddonCalendarProvider {
      * @param categoryId Category to get.
      * @param ignoreCache True if it should ignore cached data (it will always fail in offline or server down).
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      */
     async getUpcomingEvents(
         courseId?: number,
@@ -1168,7 +1139,7 @@ export class AddonCalendarProvider {
         }
 
         const response = await site.read<AddonCalendarUpcoming>('core_calendar_get_calendar_upcoming_view', params, preSets);
-        this.storeEventsInLocalDB(response.events, siteId);
+        this.updateLocalEvents(response.events, { siteId });
 
         return response;
     }
@@ -1176,7 +1147,7 @@ export class AddonCalendarProvider {
     /**
      * Get prefix cache key for upcoming events WS calls.
      *
-     * @return Prefix Cache key.
+     * @returns Prefix Cache key.
      */
     protected getUpcomingEventsPrefixCacheKey(): string {
         return ROOT_CACHE_KEY + 'upcoming:';
@@ -1187,7 +1158,7 @@ export class AddonCalendarProvider {
      *
      * @param courseId Course to get.
      * @param categoryId Category to get.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getUpcomingEventsCacheKey(courseId?: number, categoryId?: number): string {
         return this.getUpcomingEventsPrefixCacheKey() + (courseId ? courseId : '') + ':' + (categoryId ? categoryId : '');
@@ -1200,11 +1171,11 @@ export class AddonCalendarProvider {
      * @param time Time to load. If not defined, current time.
      * @param courseId Course to load. If not defined, all courses.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the URL.x
+     * @returns Promise resolved with the URL.x
      */
     async getViewUrl(view: string, time?: number, courseId?: string, siteId?: string): Promise<string> {
         const site = await CoreSites.getSite(siteId);
-        let url = CoreTextUtils.concatenatePaths(site.getURL(), 'calendar/view.php?view=' + view);
+        let url = CorePath.concatenatePaths(site.getURL(), 'calendar/view.php?view=' + view);
 
         if (time) {
             url += '&time=' + time;
@@ -1220,7 +1191,7 @@ export class AddonCalendarProvider {
      * Get the week days, already ordered according to a specified starting day.
      *
      * @param startingDay Starting day. 0=Sunday, 1=Monday, ...
-     * @return Week days.
+     * @returns Week days.
      */
     getWeekDays(startingDay?: number): AddonCalendarWeekDaysTranslationKeys[] {
         startingDay = startingDay || 0;
@@ -1233,7 +1204,7 @@ export class AddonCalendarProvider {
      *
      * @param courseId Course ID. If not defined, site calendar.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAccessInformation(courseId?: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1246,7 +1217,7 @@ export class AddonCalendarProvider {
      *
      * @param courseId Course ID. If not defined, site calendar.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAllowedEventTypes(courseId?: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1258,7 +1229,7 @@ export class AddonCalendarProvider {
      * Invalidates day events for all days.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAllDayEvents(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1272,7 +1243,7 @@ export class AddonCalendarProvider {
      * @param year Year.
      * @param month Month.
      * @param day Day.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateDayEvents(year: number, month: number, day: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1284,7 +1255,7 @@ export class AddonCalendarProvider {
      * Invalidates events list and all the single events and related info.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved when the list is invalidated.
+     * @returns Promise resolved when the list is invalidated.
      */
     async invalidateEventsList(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1303,7 +1274,7 @@ export class AddonCalendarProvider {
      *
      * @param eventId List of courses or course ids.
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved when the list is invalidated.
+     * @returns Promise resolved when the list is invalidated.
      */
     async invalidateEvent(eventId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1315,7 +1286,7 @@ export class AddonCalendarProvider {
      * Invalidates monthly events for all months.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAllMonthlyEvents(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1328,7 +1299,7 @@ export class AddonCalendarProvider {
      *
      * @param year Year.
      * @param month Month.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateMonthlyEvents(year: number, month: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1340,7 +1311,7 @@ export class AddonCalendarProvider {
      * Invalidates upcoming events for all courses and categories.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateAllUpcomingEvents(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1354,7 +1325,7 @@ export class AddonCalendarProvider {
      * @param courseId Course ID.
      * @param categoryId Category ID.
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateUpcomingEvents(courseId?: number, categoryId?: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1366,7 +1337,7 @@ export class AddonCalendarProvider {
      * Invalidates look ahead setting.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateLookAhead(siteId?: string): Promise<void> {
         await CoreUser.invalidateUserPreference('calendar_lookahead', siteId);
@@ -1376,7 +1347,7 @@ export class AddonCalendarProvider {
      * Invalidates time format setting.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     invalidateTimeFormat(siteId?: string): Promise<void> {
         return CoreUser.invalidateUserPreference('calendar_timeformat', siteId);
@@ -1386,7 +1357,7 @@ export class AddonCalendarProvider {
      * Check if Calendar is disabled in a certain site.
      *
      * @param site Site. If not defined, use current site.
-     * @return Whether it's disabled.
+     * @returns Whether it's disabled.
      */
     isCalendarDisabledInSite(site?: CoreSite): boolean {
         site = site || CoreSites.getCurrentSite();
@@ -1398,7 +1369,7 @@ export class AddonCalendarProvider {
      * Check if Calendar is disabled in a certain site.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved with true if disabled, rejected or resolved with false otherwise.
+     * @returns Promise resolved with true if disabled, rejected or resolved with false otherwise.
      */
     async isDisabled(siteId?: string): Promise<boolean> {
         const site = await CoreSites.getSite(siteId);
@@ -1407,131 +1378,55 @@ export class AddonCalendarProvider {
     }
 
     /**
-     * Check if the get event by ID WS is available.
+     * Get the next events for all the sites and schedules their notifications.
      *
-     * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved with true if available.
-     * @since 3.4
+     * @returns Promise resolved when done.
+     * @deprecated since 4.1 Use AddonCalendar.updateAllSitesEventReminders.
      */
-    async isGetEventByIdAvailable(siteId?: string): Promise<boolean> {
-        try {
-            const site = await CoreSites.getSite(siteId);
-
-            return this.isGetEventByIdAvailableInSite(site);
-        } catch {
-            return false;
-        }
+    async scheduleAllSitesEventsNotifications(): Promise<void> {
+        await AddonCalendar.updateAllSitesEventReminders();
     }
 
     /**
-     * Check if the get event by ID WS is available in a certain site.
-     *
-     * @param site Site. If not defined, use current site.
-     * @return Whether it's available.
-     * @since 3.4
+     * Get the next events for all the sites and updates their reminders.
      */
-    isGetEventByIdAvailableInSite(site?: CoreSite): boolean {
-        site = site || CoreSites.getCurrentSite();
+    async updateAllSitesEventReminders(): Promise<void> {
+        await CorePlatform.ready();
 
-        return !!site?.wsAvailable('core_calendar_get_calendar_event_by_id');
+        const siteIds = await CoreSites.getSitesIds();
+
+        await Promise.all(siteIds.map(siteId => this.updateSiteEventReminders(siteId)));
+    }
+
+    /**
+     * Get the next events for a site and updates their reminders.
+     *
+     * @param siteId Site ID.
+     */
+    async updateSiteEventReminders(siteId: string): Promise<void> {
+        // Check if calendar is disabled for the site.
+        const disabled = await this.isDisabled(siteId);
+        if (disabled) {
+            return;
+        }
+
+        // Get first events to store/update them in local database and update their reminders.
+        await this.getEventsList(undefined, undefined, undefined, siteId);
     }
 
     /**
      * Get the next events for all the sites and schedules their notifications.
-     * If an event notification time is 0, cancel its scheduled notification (if any).
-     * If local notification plugin is not enabled, resolve the promise.
      *
-     * @return Promise resolved when all the notifications have been scheduled.
+     * @returns Promise resolved when done.
+     * @deprecated since 4.1. No replacement for that function.
      */
-    async scheduleAllSitesEventsNotifications(): Promise<void> {
-        await Platform.ready();
-
-        const notificationsEnabled = CoreLocalNotifications.isAvailable();
-
-        const siteIds = await CoreSites.getSitesIds();
-
-        const promises = siteIds.map((siteId: string) => this.cleanExpiredEvents(siteId).then(async() => {
-            if (notificationsEnabled) {
-                // Check if calendar is disabled for the site.
-                const disabled = await this.isDisabled(siteId);
-                if (!disabled) {
-                    // Get first events.
-                    const events = await this.getEventsList(undefined, undefined, undefined, siteId);
-                    await this.scheduleEventsNotifications(events, siteId);
-                }
-            }
-
-            return;
-        }));
-
-        await Promise.all(promises);
-    }
-
-    /**
-     * Schedules an event notification. If time is 0, cancel scheduled notification if any.
-     * If local notification plugin is not enabled, resolve the promise.
-     *
-     * @param event Event to schedule.
-     * @param reminderId The reminder ID.
-     * @param time Notification setting time (in minutes). E.g. 10 means "notificate 10 minutes before start".
-     * @param siteId Site ID the event belongs to. If not defined, use current site.
-     * @return Promise resolved when the notification is scheduled.
-     */
-    protected async scheduleEventNotification(
-        event: { id: number; timestart: number; name: string},
-        reminderId: number,
-        time: number,
+    async scheduleEventsNotifications(
+        events: ({ id: number; timestart: number; timeduration: number; name: string})[],
         siteId?: string,
     ): Promise<void> {
-
-        if (!CoreLocalNotifications.isAvailable()) {
-            return;
-        }
-
         siteId = siteId || CoreSites.getCurrentSiteId();
 
-        if (time === 0) {
-            // Cancel if it was scheduled.
-            return CoreLocalNotifications.cancel(reminderId, AddonCalendarProvider.COMPONENT, siteId);
-        }
-
-        if (time == -1) {
-            // If time is -1, get event default time to calculate the notification time.
-            time = await this.getDefaultNotificationTime(siteId);
-
-            if (time == 0) {
-                // Default notification time is disabled, do not show.
-                return CoreLocalNotifications.cancel(reminderId, AddonCalendarProvider.COMPONENT, siteId);
-            }
-
-            time = event.timestart - (time * 60);
-        }
-
-        time = time * 1000;
-
-        if (time <= Date.now()) {
-            // This reminder is over, don't schedule. Cancel if it was scheduled.
-            return CoreLocalNotifications.cancel(reminderId, AddonCalendarProvider.COMPONENT, siteId);
-        }
-
-        const notificationData: AddonCalendarPushNotificationData = {
-            eventId: event.id,
-            reminderId: reminderId,
-            siteId: siteId,
-        };
-
-        const notification: ILocalNotification = {
-            id: reminderId,
-            title: event.name,
-            text: CoreTimeUtils.userDate(event.timestart * 1000, 'core.strftimedaydatetime', true),
-            icon: 'file://assets/img/icons/calendar.png',
-            trigger: {
-                at: new Date(time),
-            },
-            data: notificationData,
-        };
-
-        return CoreLocalNotifications.schedule(notification, AddonCalendarProvider.COMPONENT, siteId);
+        await AddonCalendar.updateEventsReminders(events, siteId);
     }
 
     /**
@@ -1540,37 +1435,38 @@ export class AddonCalendarProvider {
      * If local notification plugin is not enabled, resolve the promise.
      *
      * @param events Events to schedule.
-     * @param siteId ID of the site the events belong to. If not defined, use current site.
-     * @return Promise resolved when all the notifications have been scheduled.
+     * @param siteId ID of the site the events belong to.
+     * @returns Promise resolved when all the notifications have been scheduled.
      */
-    async scheduleEventsNotifications(
-        events: ({ id: number; timestart: number; timeduration: number; name: string})[],
-        siteId?: string,
+    protected async updateEventsReminders(
+        events: ({ id: number; timestart: number; name: string})[],
+        siteId: string,
     ): Promise<void> {
+        await Promise.all(events.map(async (event) => {
+            if (event.timestart * 1000 <= Date.now()) {
+                // The event has already started, don't schedule it.
 
-        if (!CoreLocalNotifications.isAvailable()) {
-            return;
-        }
-
-        siteId = siteId || CoreSites.getCurrentSiteId();
-
-        const promises = events.map(async (event) => {
-            const timeEnd = (event.timestart + event.timeduration) * 1000;
-
-            if (timeEnd <= new Date().getTime()) {
-                // The event has finished already, don't schedule it.
-                return this.deleteLocalEvent(event.id, siteId);
+                // @TODO Decide when to completelly remove expired events.
+                return CoreReminders.cancelReminder(event.id, AddonCalendarProvider.COMPONENT, siteId);
             }
 
-            const reminders = await this.getEventReminders(event.id, siteId);
+            const reminders = await CoreReminders.getReminders({
+                instanceId: event.id,
+                component: AddonCalendarProvider.COMPONENT,
+            }, siteId);
 
-            const p2 = reminders.map((reminder: AddonCalendarReminderDBRecord) =>
-                this.scheduleEventNotification(event, (reminder.id!), reminder.time, siteId));
+            await Promise.all(reminders.map(async (reminder) => {
+                if (reminder.time !== event.timestart || reminder.title !== event.name) {
+                    reminder.time = event.timestart;
+                    reminder.title = event.name;
 
-            await Promise.all(p2);
-        });
-
-        await Promise.all(promises);
+                    CoreReminders.updateReminder(
+                        reminder,
+                        siteId,
+                    );
+                }
+            }));
+        }));
     }
 
     /**
@@ -1578,36 +1474,26 @@ export class AddonCalendarProvider {
      *
      * @param time New default time.
      * @param siteId ID of the site. If not defined, use current site.
-     * @return Promise resolved when stored.
+     * @returns Promise resolved when stored.
+     * @deprecated since 4.1 Use CoreReminders.setDefaultNotificationTime.
      */
     async setDefaultNotificationTime(time: number, siteId?: string): Promise<void> {
-        siteId = siteId || CoreSites.getCurrentSiteId();
-
-        const key = AddonCalendarProvider.DEFAULT_NOTIFICATION_TIME_SETTING + '#' + siteId;
-
-        await CoreConfig.set(key, time);
+        await CoreReminders.setDefaultNotificationTime(time, siteId);
     }
 
     /**
      * Store an event in local DB as it is.
      *
      * @param event Event to store.
-     * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Promise resolved when stored.
+     * @param options Options.
+     * @returns Promise resolved when stored.
      */
-    async storeEventInLocalDb(event: AddonCalendarGetEventsEvent | AddonCalendarCalendarEvent, siteId?: string): Promise<void> {
-        const site = await CoreSites.getSite(siteId);
-        siteId = site.getId();
-        try {
-            await this.getEventFromLocalDb(event.id, site.id);
-        } catch {
-            // Event does not exist. Check if any reminder exists first.
-            const reminders = await this.getEventReminders(event.id, siteId);
-
-            if (reminders.length == 0) {
-                this.addEventReminder(event, -1, siteId);
-            }
-        }
+    protected async storeEventInLocalDb(
+        event: AddonCalendarGetEventsEvent | AddonCalendarCalendarEvent | AddonCalendarEvent,
+        options: AddonCalendarStoreEventsOptions = {},
+    ): Promise<void> {
+        const site = await CoreSites.getSite(options.siteId);
+        const addDefaultReminder = options.addDefaultReminder ?? true;
 
         // Don't store data that can be calculated like formattedtime, iscategoryevent, etc.
         let eventRecord: AddonCalendarEventDBRecord = {
@@ -1643,12 +1529,17 @@ export class AddonCalendarProvider {
                 viewurl: event.viewurl,
                 isactionevent: event.isactionevent ? 1 : 0,
                 url: event.url,
-                islastday: event.islastday ? 1 : 0,
-                popupname: event.popupname,
-                mindaytimestamp: event.mindaytimestamp,
-                maxdaytimestamp: event.maxdaytimestamp,
-                draggable: event.draggable ? 1 : 0,
             });
+
+            if ('islastday' in event) {
+                eventRecord = Object.assign(eventRecord, {
+                    islastday: event.islastday ? 1 : 0,
+                    popupname: event.popupname,
+                    mindaytimestamp: event.mindaytimestamp,
+                    maxdaytimestamp: event.maxdaytimestamp,
+                    draggable: event.draggable ? 1 : 0,
+                });
+            }
         } else if ('uuid' in event) {
             eventRecord = Object.assign(eventRecord, {
                 courseid: event.courseid,
@@ -1658,54 +1549,102 @@ export class AddonCalendarProvider {
             });
         }
 
+        if (addDefaultReminder) {
+            await this.addDefaultEventReminder(eventRecord, site.getId());
+        }
+
         await site.getDb().insertRecord(EVENTS_TABLE, eventRecord);
+    }
+
+    /**
+     * Adds the default event reminder.
+     *
+     * @param event Event to add the reminder to.
+     * @param siteId Site ID. If not defined, current site.
+     */
+    protected async addDefaultEventReminder(event: AddonCalendarEventDBRecord, siteId?: string): Promise<void> {
+        // Add default reminder if the event isn't stored already and doesn't have any reminder.
+        const eventExist = await CoreUtils.promiseWorks(this.getEventFromLocalDb(event.id, siteId));
+        if (eventExist) {
+            return;
+        }
+
+        const reminders = await CoreReminders.getReminders({
+            instanceId: event.id,
+            component: AddonCalendarProvider.COMPONENT,
+        }, siteId);
+
+        if (reminders.length > 0) {
+            // It already has reminders.
+            return;
+        }
+
+        // No reminders, create the default one.
+        await this.addEventReminder(event, undefined, siteId);
     }
 
     /**
      * Store events in local DB.
      *
      * @param events Events to store.
-     * @param siteId ID of the site the event belongs to. If not defined, use current site.
-     * @return Promise resolved when the events are stored.
+     * @param options Options.
+     * @returns Promise resolved when the events are stored.
      */
     protected async storeEventsInLocalDB(
-        events: (AddonCalendarGetEventsEvent | AddonCalendarCalendarEvent)[],
-        siteId?: string,
+        events: (AddonCalendarGetEventsEvent | AddonCalendarCalendarEvent | AddonCalendarEvent)[],
+        options: AddonCalendarStoreEventsOptions = {},
     ): Promise<void> {
-        const site = await CoreSites.getSite(siteId);
-        siteId = site.getId();
+        await Promise.all(events.map((event) => this.storeEventInLocalDb(event, options)));
+    }
 
-        await Promise.all(events.map((event: AddonCalendarGetEventsEvent| AddonCalendarCalendarEvent) =>
-            // If event does not exist on the DB, schedule the reminder.
-            this.storeEventInLocalDb(event, siteId)));
+    /**
+     * Update local events, storing them in DB and also updating their reminders.
+     *
+     * @param events Events to store or update.
+     * @param options Options.
+     */
+    protected async updateLocalEvents(
+        events: (AddonCalendarGetEventsEvent | AddonCalendarCalendarEvent | AddonCalendarEvent)[],
+        options: AddonCalendarStoreEventsOptions = {},
+    ): Promise<void> {
+        options.siteId = options.siteId || CoreSites.getCurrentSiteId();
+
+        await this.storeEventsInLocalDB(events, options);
+        await this.updateEventsReminders(events, options.siteId);
     }
 
     /**
      * Submit a calendar event.
      *
-     * @param eventId ID of the event. If undefined/null, create a new event.
+     * @param eventId ID of the event. Negative value to edit offline event. If undefined/null, create a new event.
      * @param formData Form data.
-     * @param timeCreated The time the event was created. Only if modifying a new offline event.
-     * @param forceOffline True to always save it in offline.
-     * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the event and a boolean indicating if data was sent to server or stored in offline.
+     * @param options Calendar submit event options.
+     * @returns Promise resolved with the event and a boolean indicating if data was sent to server or stored in offline.
      */
     async submitEvent(
         eventId: number | undefined,
         formData: AddonCalendarSubmitCreateUpdateFormDataWSParams,
-        timeCreated?: number,
-        forceOffline = false,
-        siteId?: string,
+        options: AddonCalendarSubmitEventOptions = {},
     ): Promise<{sent: boolean; event: AddonCalendarOfflineEventDBRecord | AddonCalendarEvent}> {
 
-        siteId = siteId || CoreSites.getCurrentSiteId();
+        const siteId = options.siteId || CoreSites.getCurrentSiteId();
 
         // Function to store the event to be synchronized later.
-        const storeOffline = (): Promise<{ sent: boolean; event: AddonCalendarOfflineEventDBRecord }> =>
-            AddonCalendarOffline.saveEvent(eventId, formData, timeCreated, siteId).then((event) =>
-                ({ sent: false, event }));
+        const storeOffline = async (): Promise<{ sent: boolean; event: AddonCalendarOfflineEventDBRecord }> => {
+            const event = await AddonCalendarOffline.saveEvent(eventId, formData, siteId);
 
-        if (forceOffline || !CoreApp.isOnline()) {
+            // Now save the reminders if any.
+            if (options.reminders?.length) {
+                await CoreUtils.ignoreErrors(
+                    Promise.all(options.reminders.map((reminder) =>
+                        this.addEventReminder(event, reminder.time, siteId))),
+                );
+            }
+
+            return { sent: false, event };
+        };
+
+        if (options.forceOffline || !CoreNetwork.isOnline()) {
             // App is offline, store the event.
             return storeOffline();
         }
@@ -1716,6 +1655,14 @@ export class AddonCalendarProvider {
         }
         try {
             const event = await this.submitEventOnline(eventId, formData, siteId);
+
+            // Now save the reminders if any.
+            if (options.reminders?.length) {
+                await CoreUtils.ignoreErrors(
+                    Promise.all(options.reminders.map((reminder) =>
+                        this.addEventReminder(event, reminder.time, siteId))),
+                );
+            }
 
             return ({ sent: true, event });
         } catch (error) {
@@ -1732,10 +1679,10 @@ export class AddonCalendarProvider {
     /**
      * Submit an event, either to create it or to edit it. It will fail if offline or cannot connect.
      *
-     * @param eventId ID of the event. If undefined/null, create a new event.
+     * @param eventId ID of the event. If undefined/null or negative number, create a new event.
      * @param formData Form data.
      * @param siteId Site ID. If not provided, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async submitEventOnline(
         eventId: number = 0,
@@ -1743,8 +1690,10 @@ export class AddonCalendarProvider {
         siteId?: string,
     ): Promise<AddonCalendarEvent> {
         const site = await CoreSites.getSite(siteId);
+        siteId = site.getId();
+
         // Add data that is "hidden" in web.
-        formData.id = eventId;
+        formData.id = eventId > 0 ? eventId : 0;
         formData.userid = site.getUserId();
         formData.visible = 1;
         formData.instance = 0;
@@ -1753,12 +1702,14 @@ export class AddonCalendarProvider {
         } else {
             formData['_qf__core_calendar_local_event_forms_create'] = 1;
         }
+
         const params: AddonCalendarSubmitCreateUpdateFormWSParams = {
             formdata: CoreUtils.objectToGetParams(formData),
         };
         const result =
             await site.write<AddonCalendarSubmitCreateUpdateFormWSResponse>('core_calendar_submit_create_update_form', params);
-        if (result.validationerror) {
+
+        if (result.validationerror || !result.event) {
             // Simulate a WS error.
             throw new CoreWSError({
                 message: Translate.instant('core.invalidformdata'),
@@ -1766,7 +1717,26 @@ export class AddonCalendarProvider {
             });
         }
 
-        return result.event!;
+        if (eventId < 0) {
+            // Offline event has been sent. Change reminders instanceId if any.
+            await CoreUtils.ignoreErrors(
+                CoreReminders.updateReminders(
+                    { instanceId: result.event.id },
+                    {
+                        instanceId: eventId,
+                        component: AddonCalendarProvider.COMPONENT,
+                    },
+                    siteId,
+                ),
+            );
+        }
+
+        if (formData.id === 0) {
+            // Store the new event in local DB.
+            await CoreUtils.ignoreErrors(this.storeEventInLocalDb(result.event, { addDefaultReminder: false, siteId }));
+        }
+
+        return result.event;
     }
 
 }
@@ -1791,6 +1761,7 @@ export type AddonCalendarGetActionEventsByCoursesWSParams = {
     timesortfrom?: number; // Time sort from.
     timesortto?: number; // Time sort to.
     limitnum?: number; // Limit number.
+    searchvalue?: string; // The value a user wishes to search against.
 };
 
 /**
@@ -1810,6 +1781,7 @@ export type AddonCalendarGetActionEventsByCourseWSParams = {
     timesortto?: number; // Time sort to.
     aftereventid?: number; // The last seen event id.
     limitnum?: number; // Limit number.
+    searchvalue?: string; // The value a user wishes to search against.
 };
 
 /**
@@ -1822,6 +1794,7 @@ export type AddonCalendarGetActionEventsByTimesortWSParams = {
     limitnum?: number; // Limit number.
     limittononsuspendedevents?: boolean; // Limit the events to courses the user is not suspended in.
     userid?: number; // The user id.
+    searchvalue?: string; // The value a user wishes to search against.
 };
 
 /**
@@ -1845,18 +1818,24 @@ export type AddonCalendarEventBase = {
     userid?: number; // Userid.
     repeatid?: number; // Repeatid.
     eventcount?: number; // Eventcount.
+    component?: string; // Component.
     modulename?: string; // Modulename.
+    activityname?: string; // Activityname.
+    activitystr?: string; // Activitystr.
     instance?: number; // Instance.
-    eventtype: AddonCalendarEventType; // Eventtype.
+    eventtype: AddonCalendarEventType | string; // Eventtype.
     timestart: number; // Timestart.
     timeduration: number; // Timeduration.
     timesort: number; // Timesort.
+    timeusermidnight: number; // Timeusermidnight.
     visible: number; // Visible.
     timemodified: number; // Timemodified.
+    overdue?: boolean; // Overdue.
     icon: {
         key: string; // Key.
         component: string; // Component.
         alttext: string; // Alttext.
+        iconurl?: string; // @since 4.2. Icon image url.
     };
     category?: {
         id: number; // Id.
@@ -1916,6 +1895,7 @@ export type AddonCalendarEventBase = {
  */
 export type AddonCalendarEvent = AddonCalendarEventBase & {
     url: string; // Url.
+    purpose?: string; // Purpose. @since 4.0
     action?: {
         name: string; // Name.
         url: string; // Url.
@@ -1995,7 +1975,7 @@ export type AddonCalendarMonth = {
     date: CoreWSDate;
     periodname: string; // Periodname.
     includenavigation: boolean; // Includenavigation.
-    initialeventsloaded: boolean; // @since 3.5. Initialeventsloaded.
+    initialeventsloaded: boolean; // Initialeventsloaded.
     previousperiod: CoreWSDate;
     previousperiodlink: string; // Previousperiodlink.
     previousperiodname: string; // Previousperiodname.
@@ -2151,7 +2131,7 @@ export type AddonCalendarGetEventsEvent = {
     description?: string; // Description.
     format: number; // Description format (1 = HTML, 0 = MOODLE, 2 = PLAIN or 4 = MARKDOWN).
     courseid: number; // Course id.
-    categoryid?: number; // @since 3.4. Category id (only for category events).
+    categoryid?: number; // Category id (only for category events).
     groupid: number; // Group id.
     userid: number; // User id.
     repeatid: number; // Repeat id.
@@ -2221,10 +2201,12 @@ type AddonCalendarSubmitCreateUpdateFormWSParams = {
 /**
  * Form data on AddonCalendarSubmitCreateUpdateFormWSParams.
  */
-export type AddonCalendarSubmitCreateUpdateFormDataWSParams = Omit<AddonCalendarOfflineEventDBRecord, 'description'> & {
+export type AddonCalendarSubmitCreateUpdateFormDataWSParams = Omit<AddonCalendarOfflineEventDBRecord, 'id'|'description'> & {
+    id?: number;
     description?: {
         text: string;
         format: number;
+        itemid: number; // File area ID.
     };
     visible?: number;
     instance?: number;
@@ -2250,7 +2232,7 @@ export type AddonCalendarEventToDisplay = Partial<AddonCalendarCalendarEvent> & 
     timestart: number;
     timeduration: number;
     eventcount: number;
-    eventtype: AddonCalendarEventType;
+    eventtype: AddonCalendarEventType | string;
     courseid?: number;
     offline?: boolean;
     showDate?: boolean; // Calculated in the app. Whether date should be shown before this event.
@@ -2268,6 +2250,7 @@ export type AddonCalendarEventToDisplay = Partial<AddonCalendarCalendarEvent> & 
     ispast?: boolean; // Calculated in the app. Whether the event is in the past.
     contextLevel?: ContextLevel;
     contextInstanceId?: number;
+    purpose?: string; // Purpose. @since 4.0
 };
 
 /**
@@ -2276,14 +2259,32 @@ export type AddonCalendarEventToDisplay = Partial<AddonCalendarCalendarEvent> & 
  */
 export type AddonCalendarUpdatedEventEvent = {
     eventId: number;
+    oldEventId?: number; // Old event ID. Used when an offline event is sent.
     sent?: boolean;
 };
 
 /**
- * Additional data sent in push notifications, with some calculated data.
+ * Value and unit for reminders.
+ *
+ * @deprecated since 4.1, use CoreReminderValueAndUnit instead.
  */
-type AddonCalendarPushNotificationData = {
-    eventId: number;
-    reminderId: number;
-    siteId: string;
+export type AddonCalendarValueAndUnit = CoreReminderValueAndUnit;
+
+/**
+ * Options to pass to submit event.
+ */
+export type AddonCalendarSubmitEventOptions = {
+    reminders?: {
+        time?: number;
+    }[];
+    forceOffline?: boolean;
+    siteId?: string; // Site ID. If not defined, current site.
+};
+
+/**
+ * Options to pass to store events in local DB.
+ */
+export type AddonCalendarStoreEventsOptions = {
+    addDefaultReminder?: boolean; // Whether to add default reminder for new events with no reminders. Defaults to true.
+    siteId?: string; // Site ID. If not defined, current site.
 };

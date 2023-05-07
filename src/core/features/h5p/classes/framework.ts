@@ -42,6 +42,8 @@ import { CoreH5PSemantics } from './content-validator';
 import { CoreH5PContentBeingSaved, CoreH5PLibraryBeingSaved } from './storage';
 import { CoreH5PLibraryAddTo, CoreH5PLibraryMetadataSettings } from './validator';
 import { CoreH5PMetadata } from './metadata';
+import { Translate } from '@singletons';
+import { SQLiteDB } from '@classes/sqlitedb';
 
 /**
  * Equivalent to Moodle's implementation of H5PFrameworkInterface.
@@ -54,7 +56,7 @@ export class CoreH5PFramework {
      *
      * @param libraryIds Array of library ids.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async clearFilteredParameters(libraryIds: number[], siteId?: string): Promise<void> {
         if (!libraryIds || !libraryIds.length) {
@@ -63,7 +65,7 @@ export class CoreH5PFramework {
 
         const db = await CoreSites.getSiteDb(siteId);
 
-        const whereAndParams = db.getInOrEqual(libraryIds);
+        const whereAndParams = SQLiteDB.getInOrEqual(libraryIds);
         whereAndParams.sql = 'mainlibraryid ' + whereAndParams.sql;
 
         await db.updateRecordsWhere(CONTENT_TABLE_NAME, { filtered: null }, whereAndParams.sql, whereAndParams.params);
@@ -74,7 +76,7 @@ export class CoreH5PFramework {
      *
      * @param libraryId Library identifier.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the removed entries.
+     * @returns Promise resolved with the removed entries.
      */
     async deleteCachedAssets(libraryId: number, siteId?: string): Promise<CoreH5PLibraryCachedAssetsDBRecord[]> {
 
@@ -101,11 +103,15 @@ export class CoreH5PFramework {
      *
      * @param id Content ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async deleteContentData(id: number, siteId?: string): Promise<void> {
 
         const db = await CoreSites.getSiteDb(siteId);
+
+        // The user content should be reset (instead of removed), because this method is called when H5P content needs
+        // to be updated too (and the previous states must be kept, but reset).
+        await this.resetContentUserData(id, siteId);
 
         await Promise.all([
             // Delete the content data.
@@ -121,7 +127,7 @@ export class CoreH5PFramework {
      *
      * @param id Library ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async deleteLibrary(id: number, siteId?: string): Promise<void> {
         const db = await CoreSites.getSiteDb(siteId);
@@ -134,7 +140,7 @@ export class CoreH5PFramework {
      *
      * @param libraryId Library ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async deleteLibraryDependencies(libraryId: number, siteId?: string): Promise<void> {
         const db = await CoreSites.getSiteDb(siteId);
@@ -147,7 +153,7 @@ export class CoreH5PFramework {
      *
      * @param id Package ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async deleteLibraryUsage(id: number, siteId?: string): Promise<void> {
         const db = await CoreSites.getSiteDb(siteId);
@@ -159,7 +165,7 @@ export class CoreH5PFramework {
      * Get all conent data from DB.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the list of content data.
+     * @returns Promise resolved with the list of content data.
      */
     async getAllContentData(siteId?: string): Promise<CoreH5PContentDBRecord[]> {
         const db = await CoreSites.getSiteDb(siteId);
@@ -172,7 +178,7 @@ export class CoreH5PFramework {
      *
      * @param id Content ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the content data.
+     * @returns Promise resolved with the content data.
      */
     async getContentData(id: number, siteId?: string): Promise<CoreH5PContentDBRecord> {
         const db = await CoreSites.getSiteDb(siteId);
@@ -185,7 +191,7 @@ export class CoreH5PFramework {
      *
      * @param fileUrl H5P file URL.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the content data.
+     * @returns Promise resolved with the content data.
      */
     async getContentDataByUrl(fileUrl: string, siteId?: string): Promise<CoreH5PContentDBRecord> {
         const site = await CoreSites.getSite(siteId);
@@ -207,7 +213,7 @@ export class CoreH5PFramework {
      * Get the latest library version.
      *
      * @param machineName The library's machine name.
-     * @return Promise resolved with the latest library version data.
+     * @returns Promise resolved with the latest library version data.
      */
     async getLatestLibraryVersion(machineName: string, siteId?: string): Promise<CoreH5PLibraryParsedDBRecord> {
 
@@ -240,7 +246,7 @@ export class CoreH5PFramework {
      * @param majorVersion Major version number.
      * @param minorVersion Minor version number.
      * @param siteId The site ID. If not defined, current site.
-     * @return Promise resolved with the library data, rejected if not found.
+     * @returns Promise resolved with the library data, rejected if not found.
      */
     protected async getLibrary(
         machineName: string,
@@ -269,7 +275,7 @@ export class CoreH5PFramework {
      *
      * @param libraryData Library data.
      * @param siteId The site ID. If not defined, current site.
-     * @return Promise resolved with the library data, rejected if not found.
+     * @returns Promise resolved with the library data, rejected if not found.
      */
     getLibraryByData(libraryData: CoreH5PLibraryBasicData, siteId?: string): Promise<CoreH5PLibraryParsedDBRecord> {
         return this.getLibrary(libraryData.machineName, libraryData.majorVersion, libraryData.minorVersion, siteId);
@@ -280,7 +286,7 @@ export class CoreH5PFramework {
      *
      * @param id Library ID.
      * @param siteId The site ID. If not defined, current site.
-     * @return Promise resolved with the library data, rejected if not found.
+     * @returns Promise resolved with the library data, rejected if not found.
      */
     async getLibraryById(id: number, siteId?: string): Promise<CoreH5PLibraryParsedDBRecord> {
         const db = await CoreSites.getSiteDb(siteId);
@@ -297,7 +303,7 @@ export class CoreH5PFramework {
      * @param majorVersion Major version number.
      * @param minorVersion Minor version number.
      * @param siteId The site ID. If not defined, current site.
-     * @return Promise resolved with the library ID, null if not found.
+     * @returns Promise resolved with the library ID, null if not found.
      */
     async getLibraryId(
         machineName: string,
@@ -319,7 +325,7 @@ export class CoreH5PFramework {
      *
      * @param libraryData Library data.
      * @param siteId The site ID. If not defined, current site.
-     * @return Promise resolved with the library ID, null if not found.
+     * @returns Promise resolved with the library ID, null if not found.
      */
     getLibraryIdByData(libraryData: CoreH5PLibraryBasicData, siteId?: string): Promise<number | undefined> {
         return this.getLibraryId(libraryData.machineName, libraryData.majorVersion, libraryData.minorVersion, siteId);
@@ -330,7 +336,7 @@ export class CoreH5PFramework {
      *
      * @param name Identifier for the setting.
      * @param defaultValue Optional default value if settings is not set.
-     * @return Return the value for this display option.
+     * @returns Return the value for this display option.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     getOption(name: string, defaultValue: unknown): unknown {
@@ -343,7 +349,7 @@ export class CoreH5PFramework {
      *
      * @param permission Permission to check.
      * @param id H5P package id.
-     * @return Whether the user has permission to execute an action.
+     * @returns Whether the user has permission to execute an action.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     hasPermission(permission: number, id: number): boolean {
@@ -355,7 +361,7 @@ export class CoreH5PFramework {
      * Determines if content slug is used.
      *
      * @param slug The content slug.
-     * @return Whether the content slug is used
+     * @returns Whether the content slug is used
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     isContentSlugAvailable(slug: string): boolean {
@@ -368,7 +374,7 @@ export class CoreH5PFramework {
      *
      * @param library Library to check.
      * @param dbData Installed library. If not supplied it will be calculated.
-     * @return Promise resolved with boolean: whether it's a patched library.
+     * @returns Promise resolved with boolean: whether it's a patched library.
      */
     async isPatchedLibrary(library: CoreH5PLibraryBasicDataWithPatch, dbData?: CoreH5PLibraryParsedDBRecord): Promise<boolean> {
         if (!dbData) {
@@ -384,10 +390,10 @@ export class CoreH5PFramework {
      * @param libraryData Library data as found in library.json files.
      * @param key Key that should be found in libraryData.
      * @param searchParam The library parameter (Default: 'path').
-     * @return Library parameter values separated by ', '
+     * @returns Library parameter values separated by ', '
      */
     libraryParameterValuesToCsv(libraryData: CoreH5PLibraryBeingSaved, key: string, searchParam: string = 'path'): string {
-        if (typeof libraryData[key] != 'undefined') {
+        if (libraryData[key] !== undefined) {
             const parameterValues: string[] = [];
 
             libraryData[key].forEach((file) => {
@@ -408,7 +414,7 @@ export class CoreH5PFramework {
      * Load addon libraries.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the addon libraries.
+     * @returns Promise resolved with the addon libraries.
      */
     async loadAddons(siteId?: string): Promise<CoreH5PLibraryAddonData[]> {
 
@@ -419,7 +425,7 @@ export class CoreH5PFramework {
                         'l1.patchversion AS patchVersion, l1.addto AS addTo, ' +
                         'l1.preloadedjs AS preloadedJs, l1.preloadedcss AS preloadedCss ' +
                     'FROM ' + LIBRARIES_TABLE_NAME + ' l1 ' +
-                    'JOIN ' + LIBRARIES_TABLE_NAME + ' l2 ON l1.machinename = l2.machinename AND (' +
+                    'LEFT JOIN ' + LIBRARIES_TABLE_NAME + ' l2 ON l1.machinename = l2.machinename AND (' +
                         'l1.majorversion < l2.majorversion OR (l1.majorversion = l2.majorversion AND ' +
                         'l1.minorversion < l2.minorversion)) ' +
                     'WHERE l1.addto IS NOT NULL AND l2.machinename IS NULL';
@@ -441,7 +447,7 @@ export class CoreH5PFramework {
      * @param id Content ID.
      * @param fileUrl H5P file URL. Required if id is not provided.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the content data.
+     * @returns Promise resolved with the content data.
      */
     async loadContent(id?: number, fileUrl?: string, siteId?: string): Promise<CoreH5PFrameworkContentData> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -483,8 +489,12 @@ export class CoreH5PFramework {
         if (!params.metadata) {
             params.metadata = {};
         }
+        // Add title to metadata.
+        if (typeof params.title === 'string' && !params.metadata.title) {
+            params.metadata.title = params.title;
+        }
         content.metadata = params.metadata;
-        content.params = JSON.stringify(typeof params.params != 'undefined' && params.params != null ? params.params : params);
+        content.params = JSON.stringify(params.params !== undefined && params.params != null ? params.params : params);
 
         return content;
     }
@@ -494,7 +504,7 @@ export class CoreH5PFramework {
      *
      * @param id Content ID.
      * @param type The dependency type.
-     * @return Content dependencies, indexed by machine name.
+     * @returns Content dependencies, indexed by machine name.
      */
     async loadContentDependencies(
         id: number,
@@ -543,7 +553,7 @@ export class CoreH5PFramework {
      * @param majorVersion The library's major version.
      * @param minorVersion The library's minor version.
      * @param siteId The site ID. If not defined, current site.
-     * @return Promise resolved with the library data.
+     * @returns Promise resolved with the library data.
      */
     async loadLibrary(
         machineName: string,
@@ -607,7 +617,7 @@ export class CoreH5PFramework {
      * Parse library addon data.
      *
      * @param library Library addon data.
-     * @return Parsed library.
+     * @returns Parsed library.
      */
     parseLibAddonData(library: LibraryAddonDBData): CoreH5PLibraryAddonData {
         const parsedLib = <CoreH5PLibraryAddonData> library;
@@ -620,7 +630,7 @@ export class CoreH5PFramework {
      * Parse library DB data.
      *
      * @param library Library DB data.
-     * @return Parsed library.
+     * @returns Parsed library.
      */
     protected parseLibDBData(library: CoreH5PLibraryDBRecord): CoreH5PLibraryParsedDBRecord {
         return Object.assign(library, {
@@ -635,22 +645,23 @@ export class CoreH5PFramework {
      *
      * @param contentId Content ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    async resetContentUserData(conentId: number, siteId?: string): Promise<void> {
-        // Currently, we do not store user data for a content.
+    async resetContentUserData(contentId: number, siteId?: string): Promise<void> {
+        // In LMS, all the states of the component are deleted here.
+        // This isn't possible in the app because we lack the course ID, which is needed for example by h5pactivity.
     }
 
     /**
      * Stores hash keys for cached assets, aggregated JavaScripts and stylesheets, and connects it to libraries so that we
      * know which cache file to delete when a library is updated.
      *
-     * @param key Hash key for the given libraries.
-     * @param libraries List of dependencies used to create the key.
+     * @param hash Hash key for the given libraries.
+     * @param dependencies List of dependencies used to create the key.
      * @param folderName The name of the folder that contains the H5P.
      * @param siteId The site ID.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async saveCachedAssets(
         hash: string,
@@ -677,7 +688,7 @@ export class CoreH5PFramework {
      *
      * @param libraryData Library data to save.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async saveLibraryData(libraryData: CoreH5PLibraryBeingSaved, siteId?: string): Promise<void> {
         // Some special properties needs some checking and converting before they can be saved.
@@ -685,15 +696,15 @@ export class CoreH5PFramework {
         const preloadedCSS = this.libraryParameterValuesToCsv(libraryData, 'preloadedCss', 'path');
         const dropLibraryCSS = this.libraryParameterValuesToCsv(libraryData, 'dropLibraryCss', 'machineName');
 
-        if (typeof libraryData.semantics == 'undefined') {
+        if (libraryData.semantics === undefined) {
             libraryData.semantics = [];
         }
-        if (typeof libraryData.fullscreen == 'undefined') {
+        if (libraryData.fullscreen === undefined) {
             libraryData.fullscreen = 0;
         }
 
         let embedTypes = '';
-        if (typeof libraryData.embedTypes != 'undefined') {
+        if (libraryData.embedTypes !== undefined) {
             embedTypes = libraryData.embedTypes.join(', ');
         }
 
@@ -712,9 +723,9 @@ export class CoreH5PFramework {
             preloadedjs: preloadedJS,
             preloadedcss: preloadedCSS,
             droplibrarycss: dropLibraryCSS,
-            semantics: typeof libraryData.semantics != 'undefined' ? JSON.stringify(libraryData.semantics) : null,
-            addto: typeof libraryData.addTo != 'undefined' ? JSON.stringify(libraryData.addTo) : null,
-            metadatasettings: typeof libraryData.metadataSettings != 'undefined' ?
+            semantics: libraryData.semantics !== undefined ? JSON.stringify(libraryData.semantics) : null,
+            addto: libraryData.addTo !== undefined ? JSON.stringify(libraryData.addTo) : null,
+            metadatasettings: libraryData.metadataSettings !== undefined ?
                 CoreH5PMetadata.boolifyAndEncodeSettings(libraryData.metadataSettings) : null,
         };
 
@@ -738,14 +749,14 @@ export class CoreH5PFramework {
     /**
      * Save what libraries a library is depending on.
      *
-     * @param libraryId Library Id for the library we're saving dependencies for.
+     * @param library Library data for the library we're saving dependencies for.
      * @param dependencies List of dependencies as associative arrays containing machineName, majorVersion, minorVersion.
-     * @param dependencytype The type of dependency.
+     * @param dependencyType The type of dependency.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async saveLibraryDependencies(
-        libraryId: number,
+        library: CoreH5PLibraryBeingSaved,
         dependencies: CoreH5PLibraryBasicData[],
         dependencyType: string,
         siteId?: string,
@@ -757,9 +768,17 @@ export class CoreH5PFramework {
             // Get the ID of the library.
             const dependencyId = await this.getLibraryIdByData(dependency, siteId);
 
+            if (!dependencyId) {
+                // Missing dependency. It should have been detected before installing the package.
+                throw new CoreError(Translate.instant('core.h5p.missingdependency', { $a: {
+                    lib: CoreH5PCore.libraryToString(library),
+                    dep: CoreH5PCore.libraryToString(dependency),
+                } }));
+            }
+
             // Create the relation.
             const entry: Partial<CoreH5PLibraryDependencyDBRecord> = {
-                libraryid: libraryId,
+                libraryid: library.libraryId,
                 requiredlibraryid: dependencyId,
                 dependencytype: dependencyType,
             };
@@ -774,7 +793,7 @@ export class CoreH5PFramework {
      * @param id Id identifying the package.
      * @param librariesInUse List of libraries the content uses.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async saveLibraryUsage(
         id: number,
@@ -821,17 +840,25 @@ export class CoreH5PFramework {
      * @param folderName The name of the folder that contains the H5P.
      * @param fileUrl The online URL of the package.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with content ID.
+     * @returns Promise resolved with content ID.
      */
     async updateContent(content: CoreH5PContentBeingSaved, folderName: string, fileUrl: string, siteId?: string): Promise<number> {
 
         const db = await CoreSites.getSiteDb(siteId);
 
         // If the libraryid declared in the package is empty, get the latest version.
-        if (content.library && typeof content.library.libraryId == 'undefined') {
+        if (content.library && content.library.libraryId === undefined) {
             const mainLibrary = await this.getLatestLibraryVersion(content.library.machineName, siteId);
 
             content.library.libraryId = mainLibrary.id;
+        }
+
+        // Add title to 'params' to be able to add it to metadata later.
+        if (typeof content.title === 'string') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const params = CoreTextUtils.parseJSON<any>(content.params || '{}');
+            params.title = content.title;
+            content.params = JSON.stringify(params);
         }
 
         const data: Partial<CoreH5PContentDBRecord> = {
@@ -844,23 +871,26 @@ export class CoreH5PFramework {
             fileurl: fileUrl,
             timecreated: undefined,
         };
+        let contentId: number | undefined;
 
-        if (typeof content.id != 'undefined') {
+        if (content.id !== undefined) {
             data.id = content.id;
+            contentId = content.id;
         } else {
             data.timecreated = data.timemodified;
         }
 
         await db.insertRecord(CONTENT_TABLE_NAME, data);
 
-        if (!data.id) {
+        if (!contentId) {
             // New content. Get its ID.
             const entry = await db.getRecord<CoreH5PContentDBRecord>(CONTENT_TABLE_NAME, data);
 
             content.id = entry.id;
+            contentId = content.id;
         }
 
-        return content.id!;
+        return contentId;
     }
 
     /**

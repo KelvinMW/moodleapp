@@ -17,6 +17,7 @@ import { CoreSites } from '@services/sites';
 import { CoreMainMenuHomeHandler, CoreMainMenuHomeHandlerToDisplay } from '@features/mainmenu/services/home-delegate';
 import { CoreSiteHome } from '../sitehome';
 import { makeSingleton } from '@singletons';
+import { CoreSiteInfoUserHomepage } from '@classes/site';
 
 /**
  * Handler to add site home into home page.
@@ -27,12 +28,12 @@ export class CoreSiteHomeHomeHandlerService implements CoreMainMenuHomeHandler {
     static readonly PAGE_NAME = 'site';
 
     name = 'CoreSiteHomeDashboard';
-    priority = 1200;
+    priority = 1100;
 
     /**
      * Check if the handler is enabled on a site level.
      *
-     * @return Whether or not the handler is enabled on a site level.
+     * @returns Whether or not the handler is enabled on a site level.
      */
     isEnabled(): Promise<boolean> {
         return this.isEnabledForSite();
@@ -42,7 +43,7 @@ export class CoreSiteHomeHomeHandlerService implements CoreMainMenuHomeHandler {
      * Check if the handler is enabled on a certain site.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Whether or not the handler is enabled on a site level.
+     * @returns Whether or not the handler is enabled on a site level.
      */
     async isEnabledForSite(siteId?: string): Promise<boolean> {
         return CoreSiteHome.isAvailable(siteId);
@@ -51,18 +52,19 @@ export class CoreSiteHomeHomeHandlerService implements CoreMainMenuHomeHandler {
     /**
      * Returns the data needed to render the handler.
      *
-     * @return Data needed to render the handler.
+     * @returns Data needed to render the handler.
      */
     getDisplayData(): CoreMainMenuHomeHandlerToDisplay {
         const site = CoreSites.getCurrentSite();
-        const displaySiteHome = site?.getInfo() && site?.getInfo()?.userhomepage === 0;
+
+        const displaySiteHome = site?.getInfo() && site?.getInfo()?.userhomepage === CoreSiteInfoUserHomepage.HOMEPAGE_SITE;
 
         return {
             title: 'core.sitehome.sitehome',
             page: CoreSiteHomeHomeHandlerService.PAGE_NAME,
             class: 'core-sitehome-dashboard-handler',
-            icon: 'fas-home',
-            selectPriority: displaySiteHome ? 1100 : 900,
+            icon: 'fas-house',
+            priority: displaySiteHome ? this.priority + 200 : this.priority,
         };
     }
 

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnInit, Input } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CoreSites } from '@services/sites';
 import { CoreCourse } from '@features/course/services/course';
 import { CoreCourseHelper, CoreCourseSection } from '@features/course/services/course-helper';
@@ -29,8 +29,6 @@ import { CoreBlockBaseComponent } from '@features/block/classes/base-block-compo
 })
 export class AddonBlockSiteMainMenuComponent extends CoreBlockBaseComponent implements OnInit {
 
-    @Input() downloadEnabled = false;
-
     component = 'AddonBlockSiteMainMenu';
     mainMenuBlock?: CoreCourseSection;
     siteHomeId = 1;
@@ -42,7 +40,7 @@ export class AddonBlockSiteMainMenuComponent extends CoreBlockBaseComponent impl
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         this.siteHomeId = CoreSites.getCurrentSiteHomeId();
@@ -53,9 +51,9 @@ export class AddonBlockSiteMainMenuComponent extends CoreBlockBaseComponent impl
     /**
      * Perform the invalidate content function.
      *
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
-    protected async invalidateContent(): Promise<void> {
+    async invalidateContent(): Promise<void> {
         const promises: Promise<void>[] = [];
 
         promises.push(CoreCourse.invalidateSections(this.siteHomeId));
@@ -72,7 +70,7 @@ export class AddonBlockSiteMainMenuComponent extends CoreBlockBaseComponent impl
     /**
      * Fetch the data to render the block.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchContent(): Promise<void> {
         const sections = await CoreCourse.getSections(this.siteHomeId, false, true);
@@ -91,7 +89,7 @@ export class AddonBlockSiteMainMenuComponent extends CoreBlockBaseComponent impl
         const items = config.frontpageloggedin.split(',');
         const hasNewsItem = items.find((item) => parseInt(item, 10) == FrontPageItemNames['NEWS_ITEMS']);
 
-        const result = CoreCourseHelper.addHandlerDataForModules(
+        const result = await CoreCourseHelper.addHandlerDataForModules(
             [mainMenuBlock],
             this.siteHomeId,
             undefined,

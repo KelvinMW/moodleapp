@@ -23,7 +23,7 @@ import {
 } from '@features/rating/services/rating';
 import { CoreRatingOffline } from '@features/rating/services/rating-offline';
 import { CoreSites } from '@services/sites';
-import { CoreDomUtils } from '@services/utils/dom';
+import { CoreDomUtils, ToastDuration } from '@services/utils/dom';
 import { Translate } from '@singletons';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 
@@ -36,15 +36,15 @@ import { CoreEventObserver, CoreEvents } from '@singletons/events';
 })
 export class CoreRatingRateComponent implements OnChanges, OnDestroy {
 
-    @Input() protected ratingInfo!: CoreRatingInfo;
-    @Input() protected contextLevel!: ContextLevel; // Context level: course, module, user, etc.
-    @Input() protected instanceId!: number; // Context instance id.
-    @Input() protected itemId!: number; // Item id. Example: forum post id.
-    @Input() protected itemSetId!: number; // Item set id. Example: forum discussion id.
-    @Input() protected courseId!: number;
-    @Input() protected aggregateMethod!: number;
-    @Input() protected scaleId!: number;
-    @Input() protected userId!: number;
+    @Input() ratingInfo!: CoreRatingInfo;
+    @Input() contextLevel!: ContextLevel; // Context level: course, module, user, etc.
+    @Input() instanceId!: number; // Context instance id.
+    @Input() itemId!: number; // Item id. Example: forum post id.
+    @Input() itemSetId!: number; // Item set id. Example: forum discussion id.
+    @Input() courseId!: number;
+    @Input() aggregateMethod!: number;
+    @Input() scaleId!: number;
+    @Input() userId!: number;
     @Output() protected onLoading: EventEmitter<boolean>; // Eevent that indicates whether the component is loading data.
     @Output() protected onUpdate: EventEmitter<void>; // Event emitted when the rating is updated online.
 
@@ -69,13 +69,13 @@ export class CoreRatingRateComponent implements OnChanges, OnDestroy {
     }
 
     /**
-     * Detect changes on input properties.
+     * @inheritdoc
      */
     async ngOnChanges(): Promise<void> {
         this.item = (this.ratingInfo.ratings || []).find((rating) => rating.itemid == this.itemId);
         this.scale = (this.ratingInfo.scales || []).find((scale) => scale.id == this.scaleId);
 
-        if (!this.item || !this.scale || !CoreRating.isAddRatingWSAvailable()) {
+        if (!this.item || !this.scale) {
             this.item = undefined;
 
             return;
@@ -125,6 +125,10 @@ export class CoreRatingRateComponent implements OnChanges, OnDestroy {
      * Send or save the user rating when changed.
      */
     async userRatingChanged(): Promise<void> {
+        if (this.rating === undefined) {
+            return;
+        }
+
         const modal = await CoreDomUtils.showModalLoading('core.sending', true);
 
         try {
@@ -137,13 +141,13 @@ export class CoreRatingRateComponent implements OnChanges, OnDestroy {
                 this.itemSetId,
                 this.courseId,
                 this.scaleId,
-                this.rating!,
+                this.rating,
                 this.userId,
                 this.aggregateMethod,
             );
 
-            if (typeof response == 'undefined') {
-                CoreDomUtils.showToast('core.datastoredoffline', true, 3000);
+            if (response === undefined) {
+                CoreDomUtils.showToast('core.datastoredoffline', true, ToastDuration.LONG);
             } else {
                 this.onUpdate.emit();
             }
@@ -155,7 +159,7 @@ export class CoreRatingRateComponent implements OnChanges, OnDestroy {
     }
 
     /**
-     * Component being destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.updateSiteObserver.off();

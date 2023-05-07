@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Directive, ElementRef, OnInit, Output, EventEmitter } from '@angular/core';
+import { Directive, ElementRef, OnInit, Output, EventEmitter, OnChanges, SimpleChanges, Input } from '@angular/core';
+import { CoreDom } from '@singletons/dom';
 
 /**
  * Directive to emulate click and key actions following aria role button.
@@ -20,10 +21,11 @@ import { Directive, ElementRef, OnInit, Output, EventEmitter } from '@angular/co
 @Directive({
     selector: '[ariaButtonClick]',
 })
-export class CoreAriaButtonClickDirective implements OnInit {
+export class CoreAriaButtonClickDirective implements OnInit, OnChanges {
 
     protected element: HTMLElement;
 
+    @Input() disabled = false;
     @Output() ariaButtonClick = new EventEmitter();
 
     constructor(
@@ -33,25 +35,27 @@ export class CoreAriaButtonClickDirective implements OnInit {
     }
 
     /**
-     * Initialize actions.
+     * @inheritdoc
      */
     ngOnInit(): void {
-        this.element.addEventListener('click', async (event) => {
-            this.ariaButtonClick.emit(event);
-        });
+        CoreDom.initializeClickableElementA11y(this.element, (event) => this.ariaButtonClick.emit(event));
+    }
 
-        this.element.addEventListener('keydown', async (event) => {
-            if ((event.key == ' ' || event.key == 'Enter')) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-        });
+    /**
+     * @inheritdoc
+     */
+    ngOnChanges(changes: SimpleChanges): void {
+        if (!changes.disabled) {
+            return;
+        }
 
-        this.element.addEventListener('keyup', async (event) => {
-            if ((event.key == ' ' || event.key == 'Enter')) {
-                this.ariaButtonClick.emit(event);
-            }
-        });
+        if (this.element.getAttribute('tabindex') === '0' && this.disabled) {
+            this.element.setAttribute('tabindex', '-1');
+        }
+
+        if (this.element.getAttribute('tabindex') === '-1' && !this.disabled) {
+            this.element.setAttribute('tabindex', '0');
+        }
     }
 
 }

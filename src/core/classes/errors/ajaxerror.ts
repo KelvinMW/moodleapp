@@ -12,19 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { CoreError } from '@classes/errors/error';
+import { CoreSiteError, CoreSiteErrorOptions } from '@classes/errors/siteerror';
 
 /**
  * Generic error returned by an Ajax call.
  */
-export class CoreAjaxError extends CoreError {
+export class CoreAjaxError extends CoreSiteError {
 
-    available?: number; // Whether the AJAX call is available. 0 if unknown, 1 if available, -1 if not available.
+    available = 1; // @deprecated since app 4.0. AJAX endpoint should always be available in supported Moodle versions.
+    status?: number;
 
-    constructor(message: string, available?: number) {
-        super(message);
+    constructor(messageOrOptions: string | CoreSiteErrorOptions, available?: number, status?: number) {
+        super(typeof messageOrOptions === 'string' ? { message: messageOrOptions } : messageOrOptions);
 
-        this.available = typeof available == 'undefined' ? 0 : available;
+        this.status = status;
     }
 
 }

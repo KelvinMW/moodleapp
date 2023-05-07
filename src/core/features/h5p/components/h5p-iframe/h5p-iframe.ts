@@ -44,6 +44,9 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
     @Input() onlinePlayerUrl?: string; // The URL of the online player to display the H5P package.
     @Input() trackComponent?: string; // Component to send xAPI events to.
     @Input() contextId?: number; // Context ID. Required for tracking.
+    @Input() enableInAppFullscreen?: boolean; // Whether to enable our custom in-app fullscreen feature.
+    @Input() saveFreq?: number; // Save frequency (in seconds) if enabled.
+    @Input() state?: string; // Initial content state.
     @Output() onIframeUrlSet = new EventEmitter<{src: string; online: boolean}>();
     @Output() onIframeLoaded = new EventEmitter<void>();
 
@@ -63,7 +66,7 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
     ) {
 
         this.logger = CoreLogger.getInstance('CoreH5PIframeComponent');
-        this.site = CoreSites.getCurrentSite()!;
+        this.site = CoreSites.getRequiredCurrentSite();
         this.siteId = this.site.getId();
         this.siteCanDownload = this.site.canDownloadFiles() && !CoreH5P.isOfflineDisabledInSite();
 
@@ -93,7 +96,7 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
     /**
      * Play the H5P.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async play(): Promise<void> {
         let localUrl: string | undefined;
@@ -128,17 +131,14 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
                     CoreH5PCore.DISPLAY_OPTION_DOWNLOAD + '=0',
                 );
 
-                // Get auto-login URL so the user is automatically authenticated.
-                const url = await this.site.getAutoLoginUrl(src, false);
-
                 // Add the preventredirect param so the user can authenticate.
-                this.iframeSrc = CoreUrlUtils.addParamsToUrl(url, { preventredirect: false });
+                this.iframeSrc = CoreUrlUtils.addParamsToUrl(src, { preventredirect: false });
             }
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'Error loading H5P package.', true);
 
         } finally {
-            this.addResizerScript();
+            CoreH5PHelper.addResizerScript();
             this.onIframeUrlSet.emit({ src: this.iframeSrc!, online: !!localUrl });
         }
     }
@@ -146,9 +146,14 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
     /**
      * Get the local URL of the package.
      *
-     * @return Promise resolved with the local URL.
+     * @returns Promise resolved with the local URL.
      */
     protected async getLocalUrl(): Promise<string | undefined> {
+        const otherOptions = {
+            saveFreq: this.saveFreq,
+            state: this.state,
+        };
+
         try {
             const url = await CoreH5P.h5pPlayer.getContentIndexFileUrl(
                 this.fileUrl!,
@@ -156,6 +161,7 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
                 this.trackComponent,
                 this.contextId,
                 this.siteId,
+                otherOptions,
             );
 
             return url;
@@ -175,6 +181,7 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
                     this.trackComponent,
                     this.contextId,
                     this.siteId,
+                    otherOptions,
                 );
 
                 return url;
@@ -183,22 +190,6 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
                 this.logger.error('Error loading downloaded index:', error, this.fileUrl);
             }
         }
-    }
-
-    /**
-     * Add the resizer script if it hasn't been added already.
-     */
-    protected addResizerScript(): void {
-        if (document.head.querySelector('#core-h5p-resizer-script') != null) {
-            // Script already added, don't add it again.
-            return;
-        }
-
-        const script = document.createElement('script');
-        script.id = 'core-h5p-resizer-script';
-        script.type = 'text/javascript';
-        script.src = CoreH5P.h5pPlayer.getResizerScriptUrl();
-        document.head.appendChild(script);
     }
 
     /**
@@ -213,7 +204,7 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
     }
 
     /**
-     * Component being destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.subscription?.unsubscribe();

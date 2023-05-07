@@ -1,9 +1,11 @@
 <ion-header>
     <ion-toolbar>
-        <h2>{{ 'addon.notes.addnewnote' | translate }}</h2>
+        <ion-title>
+            <h1>{{ 'addon.notes.addnewnote' | translate }}</h1>
+        </ion-title>
         <ion-buttons slot="end">
             <ion-button fill="clear" (click)="closeModal()" [attr.aria-label]="'core.close' | translate">
-                <ion-icon name="fas-times" slot="icon-only" aria-hidden=true></ion-icon>
+                <ion-icon name="fas-xmark" slot="icon-only" aria-hidden=true></ion-icon>
             </ion-button>
         </ion-buttons>
     </ion-toolbar>
@@ -20,8 +22,7 @@
         </ion-item>
         <ion-item>
             <ion-label class="sr-only">{{ 'addon.notes.note' | translate }}</ion-label>
-            <ion-textarea placeholder="{{ 'addon.notes.note' | translate }}" rows="5" [(ngModel)]="text" name="text"
-                required="required">
+            <ion-textarea placeholder="{{ 'addon.notes.note' | translate }}" rows="5" [(ngModel)]="text" name="text" required="required">
             </ion-textarea>
         </ion-item>
         <div class="ion-padding">

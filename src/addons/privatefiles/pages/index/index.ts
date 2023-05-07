@@ -16,7 +16,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { IonRefresher } from '@ionic/angular';
 import { Md5 } from 'ts-md5/dist/md5';
 
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreTextUtils } from '@services/utils/text';
@@ -28,8 +28,8 @@ import {
     AddonPrivateFilesFile,
     AddonPrivateFilesGetUserInfoWSResult,
     AddonPrivateFilesGetFilesWSParams,
-} from '@/addons/privatefiles/services/privatefiles';
-import { AddonPrivateFilesHelper } from '@/addons/privatefiles/services/privatefiles-helper';
+} from '@addons/privatefiles/services/privatefiles';
+import { AddonPrivateFilesHelper } from '@addons/privatefiles/services/privatefiles-helper';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreNavigator } from '@services/navigator';
 
@@ -66,22 +66,30 @@ export class AddonPrivateFilesIndexPage implements OnInit, OnDestroy {
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     ngOnInit(): void {
-        this.root = CoreNavigator.getRouteParam('root');
-        const contextId = CoreNavigator.getRouteNumberParam('contextid');
+        try {
+            this.root = CoreNavigator.getRouteParam('root');
+            const contextId = CoreNavigator.getRouteNumberParam('contextid');
 
-        if (contextId) {
-            // Loading a certain folder.
-            this.path = {
-                contextid: contextId,
-                component: CoreNavigator.getRouteParam<string>('component')!,
-                filearea: CoreNavigator.getRouteParam<string>('filearea')!,
-                itemid: CoreNavigator.getRouteNumberParam('itemid')!,
-                filepath: CoreNavigator.getRouteParam<string>('filepath')!,
-                filename: CoreNavigator.getRouteParam<string>('filename')!,
-            };
+            if (contextId) {
+                // Loading a certain folder.
+                this.path = {
+                    contextid: contextId,
+                    component: CoreNavigator.getRequiredRouteParam<string>('component'),
+                    filearea: CoreNavigator.getRequiredRouteParam<string>('filearea'),
+                    itemid: CoreNavigator.getRequiredRouteNumberParam('itemid'),
+                    filepath: CoreNavigator.getRequiredRouteParam<string>('filepath'),
+                    filename: CoreNavigator.getRequiredRouteParam<string>('filename'),
+                };
+            }
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
         }
 
         this.title = this.path?.filename || Translate.instant('addon.privatefiles.files');
@@ -119,9 +127,9 @@ export class AddonPrivateFilesIndexPage implements OnInit, OnDestroy {
      *
      * @param refresher Refresher.
      */
-    refreshData(event?: IonRefresher): void {
+    refreshData(refresher?: IonRefresher): void {
         this.refreshFiles().finally(() => {
-            event?.complete();
+            refresher?.complete();
         });
     }
 
@@ -146,15 +154,7 @@ export class AddonPrivateFilesIndexPage implements OnInit, OnDestroy {
      * Upload a new file.
      */
     async uploadFile(): Promise<void> {
-        const canUpload = await AddonPrivateFiles.versionCanUploadFiles();
-
-        if (!canUpload) {
-            CoreDomUtils.showAlertTranslated('core.notice', 'addon.privatefiles.erroruploadnotworking');
-
-            return;
-        }
-
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             CoreDomUtils.showErrorModal('core.fileuploader.errormustbeonlinetoupload', true);
 
             return;
@@ -177,7 +177,7 @@ export class AddonPrivateFilesIndexPage implements OnInit, OnDestroy {
     /**
      * Fetch the files.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchFiles(): Promise<void> {
         try {
@@ -198,8 +198,7 @@ export class AddonPrivateFilesIndexPage implements OnInit, OnDestroy {
 
                 this.files = await AddonPrivateFiles.getPrivateFiles();
 
-                if (this.showUpload && AddonPrivateFiles.canGetPrivateFilesInfo() && this.userQuota &&
-                    this.userQuota > 0) {
+                if (this.showUpload && this.userQuota && this.userQuota > 0) {
                     // Get the info to calculate the available size.
                     this.filesInfo = await AddonPrivateFiles.getPrivateFilesInfo();
 
@@ -221,7 +220,7 @@ export class AddonPrivateFilesIndexPage implements OnInit, OnDestroy {
     /**
      * Refresh the displayed files.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async refreshFiles(): Promise<void> {
         try {

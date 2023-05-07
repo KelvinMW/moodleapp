@@ -17,15 +17,12 @@ import { IonContent } from '@ionic/angular';
 
 import { CoreCourseModuleMainResourceComponent } from './main-resource-component';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
-import { Network, NgZone } from '@singletons';
-import { Subscription } from 'rxjs';
-import { CoreApp } from '@services/app';
 import { CoreCourse } from '../services/course';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreWSExternalWarning } from '@services/ws';
 import { CoreCourseContentsPage } from '../pages/contents/contents';
-import { CoreConstants } from '@/core/constants';
+import { CoreSites } from '@services/sites';
+import { CoreSyncResult } from '@services/sync';
 
 /**
  * Template class to easily create CoreCourseModuleMainComponent of activities.
@@ -39,13 +36,7 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
 
     moduleName?: string; // Raw module name to be translated. It will be translated on init.
 
-    // Data for context menu.
-    syncIcon?: string; // Sync icon.
-    hasOffline?: boolean; // If it has offline data to be synced.
-    isOnline?: boolean; // If the app is online or not.
-
     protected syncObserver?: CoreEventObserver; // It will observe the sync auto event.
-    protected onlineSubscription: Subscription; // It will observe the status of the network connection.
     protected syncEventName?: string; // Auto sync event name.
 
     constructor(
@@ -54,24 +45,15 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
         courseContentsPage?: CoreCourseContentsPage,
     ) {
         super(loggerName, courseContentsPage);
-
-        // Refresh online status when changes.
-        this.onlineSubscription = Network.onChange().subscribe(() => {
-            // Execute the callback in the Angular zone, so change detection doesn't stop working.
-            NgZone.run(() => {
-                this.isOnline = CoreApp.isOnline();
-            });
-        });
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         await super.ngOnInit();
 
         this.hasOffline = false;
-        this.syncIcon = CoreConstants.ICON_LOADING;
         this.moduleName = CoreCourse.translateModuleName(this.moduleName || '');
 
         if (this.syncEventName) {
@@ -86,7 +68,7 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
      * Compares sync event data with current data to check if refresh content is needed.
      *
      * @param syncEventData Data received on sync observer.
-     * @return True if refresh is needed, false otherwise.
+     * @returns True if refresh is needed, false otherwise.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     protected isRefreshSyncNeeded(syncEventData: unknown): boolean {
@@ -110,7 +92,7 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
      *
      * @param sync If the refresh needs syncing.
      * @param showErrors Wether to show errors to the user or hide them.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async refreshContent(sync: boolean = false, showErrors: boolean = false): Promise<void> {
         if (!this.module) {
@@ -118,20 +100,12 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
             return;
         }
 
-        this.refreshIcon = CoreConstants.ICON_LOADING;
-        this.syncIcon = CoreConstants.ICON_LOADING;
+        await CoreUtils.ignoreErrors(Promise.all([
+            this.invalidateContent(),
+            this.showCompletion ? CoreCourse.invalidateModule(this.module.id) : undefined,
+        ]));
 
-        try {
-            await CoreUtils.ignoreErrors(Promise.all([
-                this.invalidateContent(),
-                this.showCompletion ? CoreCourse.invalidateModule(this.module.id) : undefined,
-            ]));
-
-            await this.loadContent(true, sync, showErrors);
-        } finally {
-            this.refreshIcon = CoreConstants.ICON_REFRESH;
-            this.syncIcon = CoreConstants.ICON_SYNC;
-        }
+        await this.loadContent(true, sync, showErrors);
     }
 
     /**
@@ -139,20 +113,13 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
      *
      * @param sync If the fetch needs syncing.
      * @param showErrors Wether to show errors to the user or hide them.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async showLoadingAndFetch(sync: boolean = false, showErrors: boolean = false): Promise<void> {
-        this.refreshIcon = CoreConstants.ICON_LOADING;
-        this.syncIcon = CoreConstants.ICON_LOADING;
-        this.loaded = false;
+        this.showLoading = true;
         this.content?.scrollToTop();
 
-        try {
-            await this.loadContent(false, sync, showErrors);
-        } finally {
-            this.refreshIcon = CoreConstants.ICON_REFRESH;
-            this.syncIcon = CoreConstants.ICON_REFRESH;
-        }
+        await this.loadContent(false, sync, showErrors);
     }
 
     /**
@@ -160,12 +127,10 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
      *
      * @param sync If the refresh needs syncing.
      * @param showErrors Wether to show errors to the user or hide them.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected showLoadingAndRefresh(sync: boolean = false, showErrors: boolean = false): Promise<void> {
-        this.refreshIcon = CoreConstants.ICON_LOADING;
-        this.syncIcon = CoreConstants.ICON_LOADING;
-        this.loaded = false;
+        this.showLoading = true;
         this.content?.scrollToTop();
 
         return this.refreshContent(sync, showErrors);
@@ -177,7 +142,7 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
      * @param refresh Whether we're refreshing data.
      * @param sync If the refresh needs syncing.
      * @param showErrors Wether to show errors to the user or hide them.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     protected async fetchContent(refresh: boolean = false, sync: boolean = false, showErrors: boolean = false): Promise<void> {
@@ -190,11 +155,9 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
      * @param refresh Whether we're refreshing data.
      * @param sync If the refresh needs syncing.
      * @param showErrors Wether to show errors to the user or hide them.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async loadContent(refresh?: boolean, sync: boolean = false, showErrors: boolean = false): Promise<void> {
-        this.isOnline = CoreApp.isOnline();
-
         if (!this.module) {
             // This can happen if course format changes from single activity to weekly/topics.
             return;
@@ -202,60 +165,58 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
 
         try {
             if (refresh && this.showCompletion) {
-                try {
-                    this.module = await CoreCourse.getModule(this.module.id, this.courseId);
-                } catch {
-                    // Ignore errors.
-                }
+                await CoreUtils.ignoreErrors(this.fetchModule());
             }
 
             await this.fetchContent(refresh, sync, showErrors);
+
+            this.finishSuccessfulFetch();
         } catch (error) {
-            if (!refresh) {
-                // Some call failed, retry without using cache since it might be a new activity.
+            if (!refresh && !CoreSites.getCurrentSite()?.isOfflineDisabled() && this.isNotFoundError(error)) {
+                // Module not found, retry without using cache.
                 return await this.refreshContent(sync);
             }
 
             CoreDomUtils.showErrorModalDefault(error, this.fetchContentDefaultError, true);
         } finally {
-            this.loaded = true;
-            this.refreshIcon = CoreConstants.ICON_REFRESH;
-            this.syncIcon = CoreConstants.ICON_REFRESH;
+            this.showLoading = false;
         }
     }
 
     /**
      * Performs the sync of the activity.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
-    protected async sync(): Promise<unknown> {
-        return {};
+    protected async sync(): Promise<CoreSyncResult> {
+        return {
+            updated: false,
+            warnings: [],
+        };
     }
 
     /**
-     * Checks if sync has succeed from result sync data.
+     * Checks if sync has updated data on the server.
      *
      * @param result Data returned on the sync function.
-     * @return If suceed or not.
+     * @returns If data has been updated or not.
      */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    protected hasSyncSucceed(result: unknown): boolean {
-        return true;
+    protected hasSyncSucceed(result: CoreSyncResult): boolean {
+        return result.updated;
     }
 
     /**
      * Tries to synchronize the activity.
      *
      * @param showErrors If show errors to the user of hide them.
-     * @return Promise resolved with true if sync succeed, or false if failed.
+     * @returns Promise resolved with true if sync hast updated data to the server, false otherwise.
      */
     protected async syncActivity(showErrors: boolean = false): Promise<boolean> {
         try {
-            const result = <{warnings?: CoreWSExternalWarning[]}> await this.sync();
+            const result = await this.sync();
 
-            if (result?.warnings?.length) {
-                CoreDomUtils.showErrorModal(result.warnings[0]);
+            if (result.warnings.length) {
+                CoreDomUtils.showAlert(undefined, result.warnings[0]);
             }
 
             return this.hasSyncSucceed(result);
@@ -269,12 +230,10 @@ export class CoreCourseModuleMainActivityComponent extends CoreCourseModuleMainR
     }
 
     /**
-     * Component being destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         super.ngOnDestroy();
-
-        this.onlineSubscription?.unsubscribe();
         this.syncObserver?.off();
     }
 

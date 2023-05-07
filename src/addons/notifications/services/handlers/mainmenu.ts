@@ -22,6 +22,7 @@ import { CoreMainMenuHandler, CoreMainMenuHandlerData } from '@features/mainmenu
 import { CorePushNotifications } from '@features/pushnotifications/services/pushnotifications';
 import { CorePushNotificationsDelegate } from '@features/pushnotifications/services/push-delegate';
 import { AddonNotifications, AddonNotificationsProvider } from '../notifications';
+import { CoreMainMenuProvider } from '@features/mainmenu/services/mainmenu';
 
 /**
  * Handler to inject an option into main menu.
@@ -32,7 +33,7 @@ export class AddonNotificationsMainMenuHandlerService implements CoreMainMenuHan
     static readonly PAGE_NAME = 'notifications';
 
     name = 'AddonNotifications';
-    priority = 700;
+    priority = 600;
 
     protected handlerData: CoreMainMenuHandlerData = {
         icon: 'fas-bell',
@@ -72,13 +73,13 @@ export class AddonNotificationsMainMenuHandlerService implements CoreMainMenuHan
         });
 
         // Register Badge counter.
-        CorePushNotificationsDelegate.registerCounterHandler('AddonNotifications');
+        CorePushNotificationsDelegate.registerCounterHandler(AddonNotificationsMainMenuHandlerService.name);
     }
 
     /**
      * Check if the handler is enabled on a site level.
      *
-     * @return Whether or not the handler is enabled on a site level.
+     * @returns Whether or not the handler is enabled on a site level.
      */
     async isEnabled(): Promise<boolean> {
         return true;
@@ -87,7 +88,7 @@ export class AddonNotificationsMainMenuHandlerService implements CoreMainMenuHan
     /**
      * Returns the data needed to render the handler.
      *
-     * @return Data needed to render the handler.
+     * @returns Data needed to render the handler.
      */
     getDisplayData(): CoreMainMenuHandlerData {
         if (this.handlerData.loading) {
@@ -101,7 +102,7 @@ export class AddonNotificationsMainMenuHandlerService implements CoreMainMenuHan
      * Triggers an update for the badge number and loading status. Mandatory if showBadge is enabled.
      *
      * @param siteId Site ID or current Site if undefined.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async updateBadge(siteId?: string): Promise<void> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -110,10 +111,22 @@ export class AddonNotificationsMainMenuHandlerService implements CoreMainMenuHan
         }
 
         try {
-            const unreadCount = await AddonNotifications.getUnreadNotificationsCount(undefined, siteId);
+            const unreadCountData = await AddonNotifications.getUnreadNotificationsCount(undefined, siteId);
 
-            this.handlerData.badge = unreadCount > 0 ? String(unreadCount) : '';
-            CorePushNotifications.updateAddonCounter('AddonNotifications', unreadCount, siteId);
+            this.handlerData.badge = unreadCountData.count > 0
+                ? unreadCountData.count + (unreadCountData.hasMore ? '+' : '')
+                : '';
+
+            CorePushNotifications.updateAddonCounter(AddonNotificationsMainMenuHandlerService.name, unreadCountData.count, siteId);
+
+            CoreEvents.trigger(
+                CoreMainMenuProvider.MAIN_MENU_HANDLER_BADGE_UPDATED,
+                {
+                    handler: AddonNotificationsMainMenuHandlerService.name,
+                    value: unreadCountData.count,
+                },
+                siteId,
+            );
         } catch {
             this.handlerData.badge = '';
         } finally {

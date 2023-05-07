@@ -55,7 +55,7 @@ export class CoreH5PContentValidator {
      * Add Addon library.
      *
      * @param library The addon library to add.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async addon(library: CoreH5PLibraryAddonData): Promise<void> {
         const depKey = 'preloaded-' + library.machineName;
@@ -73,7 +73,7 @@ export class CoreH5PContentValidator {
     /**
      * Get the flat dependency tree.
      *
-     * @return Dependencies.
+     * @returns Dependencies.
      */
     getDependencies(): {[key: string]: CoreH5PContentDepsTreeDependency} {
         return this.dependencies;
@@ -83,7 +83,7 @@ export class CoreH5PContentValidator {
      * Validate metadata
      *
      * @param metadata Metadata.
-     * @return Promise resolved with metadata validated & filtered.
+     * @returns Promise resolved with metadata validated & filtered.
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     validateMetadata(metadata: any): Promise<unknown> {
@@ -91,7 +91,7 @@ export class CoreH5PContentValidator {
         const group = CoreUtils.clone(metadata || {});
 
         // Stop complaining about "invalid selected option in select" for old content without license chosen.
-        if (typeof group.license == 'undefined') {
+        if (group.license === undefined) {
             group.license = 'U';
         }
 
@@ -103,7 +103,7 @@ export class CoreH5PContentValidator {
      *
      * @param text Text to validate.
      * @param semantics Semantics.
-     * @return Validated text.
+     * @returns Validated text.
      */
     validateText(text: string, semantics: CoreH5PSemantics): string {
         if (typeof text != 'string') {
@@ -168,8 +168,8 @@ export class CoreH5PContentValidator {
         }
 
         // Check if string is within allowed length.
-        if (typeof semantics.maxLength != 'undefined') {
-            text = text.substr(0, semantics.maxLength);
+        if (semantics.maxLength !== undefined) {
+            text = text.substring(0, semantics.maxLength);
         }
 
         return text;
@@ -180,7 +180,7 @@ export class CoreH5PContentValidator {
      *
      * @param contentPath The path containing content files to validate.
      * @param isLibrary Whether it's a library.
-     * @return True if all files are valid.
+     * @returns True if all files are valid.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     validateContentFiles(contentPath: string, isLibrary: boolean = false): boolean {
@@ -191,9 +191,9 @@ export class CoreH5PContentValidator {
     /**
      * Validate given value against number semantics.
      *
-     * @param num Number to validate.
+     * @param value Number to validate.
      * @param semantics Semantics.
-     * @return Validated number.
+     * @returns Validated number.
      */
     validateNumber(value: unknown, semantics: CoreH5PSemantics): number {
         // Validate that num is indeed a number.
@@ -202,22 +202,22 @@ export class CoreH5PContentValidator {
             num = 0;
         }
         // Check if number is within valid bounds. Move within bounds if not.
-        if (typeof semantics.min != 'undefined' && num < semantics.min) {
+        if (semantics.min !== undefined && num < semantics.min) {
             num = semantics.min;
         }
-        if (typeof semantics.max != 'undefined' && num > semantics.max) {
+        if (semantics.max !== undefined && num > semantics.max) {
             num = semantics.max;
         }
         // Check if number is within allowed bounds even if step value is set.
-        if (typeof semantics.step != 'undefined') {
-            const testNumber = num - (typeof semantics.min != 'undefined' ? semantics.min : 0);
+        if (semantics.step !== undefined) {
+            const testNumber = num - (semantics.min !== undefined ? semantics.min : 0);
             const rest = testNumber % semantics.step;
             if (rest !== 0) {
                 num -= rest;
             }
         }
         // Check if number has proper number of decimals.
-        if (typeof semantics.decimals != 'undefined') {
+        if (semantics.decimals !== undefined) {
             num = Number(num.toFixed(semantics.decimals));
         }
 
@@ -228,7 +228,7 @@ export class CoreH5PContentValidator {
      * Validate given value against boolean semantics.
      *
      * @param bool Boolean to check.
-     * @return Validated bool.
+     * @returns Validated bool.
      */
     validateBoolean(bool: unknown): boolean {
         return !!bool;
@@ -239,7 +239,7 @@ export class CoreH5PContentValidator {
      *
      * @param select Values to validate.
      * @param semantics Semantics.
-     * @return Validated select.
+     * @returns Validated select.
      */
     validateSelect(select: string | string[], semantics: CoreH5PSemantics): string | string[] {
         const optional = semantics.optional;
@@ -294,7 +294,7 @@ export class CoreH5PContentValidator {
      *
      * @param list List to validate.
      * @param semantics Semantics.
-     * @return Validated list.
+     * @returns Validated list.
      */
     async validateList(list: Record<string, unknown> | unknown[], semantics: CoreH5PSemantics): Promise<unknown[] | null> {
         const field = semantics.field!;
@@ -303,7 +303,7 @@ export class CoreH5PContentValidator {
         let keys = Object.keys(list);
 
         // Check that list is not longer than allowed length.
-        if (typeof semantics.max != 'undefined') {
+        if (semantics.max !== undefined) {
             keys = keys.slice(0, semantics.max);
         }
 
@@ -347,7 +347,7 @@ export class CoreH5PContentValidator {
      * @param file File to validate.
      * @param semantics Semantics.
      * @param typeValidKeys List of valid keys.
-     * @return Promise resolved with the validated file.
+     * @returns Promise resolved with the validated file.
      */
     protected async validateFilelike(file: FileLike, semantics: CoreH5PSemantics, typeValidKeys: string[] = []): Promise<FileLike> {
         // Do not allow to use files from other content folders.
@@ -357,8 +357,8 @@ export class CoreH5PContentValidator {
         }
 
         // Remove temporary files suffix.
-        if (file.path.substr(-4, 4) === '#tmp') {
-            file.path = file.path.substr(0, file.path.length - 4);
+        if (file.path.slice(-4) === '#tmp') {
+            file.path = file.path.substring(0, file.path.length - 4);
         }
 
         // Make sure path and mime does not have any special chars
@@ -392,8 +392,8 @@ export class CoreH5PContentValidator {
             file.bitrate = parseInt(file.bitrate, 10);
         }
 
-        if (typeof file.quality != 'undefined') {
-            if (file.quality === null || typeof file.quality.level == 'undefined' || typeof file.quality.label == 'undefined') {
+        if (file.quality !== undefined) {
+            if (file.quality === null || file.quality.level === undefined || file.quality.label === undefined) {
                 delete file.quality;
             } else {
                 this.filterParams(file.quality, ['level', 'label']);
@@ -402,7 +402,7 @@ export class CoreH5PContentValidator {
             }
         }
 
-        if (typeof file.copyright != 'undefined') {
+        if (file.copyright !== undefined) {
             await this.validateGroup(file.copyright, this.getCopyrightSemantics());
         }
 
@@ -414,7 +414,7 @@ export class CoreH5PContentValidator {
      *
      * @param file File.
      * @param semantics Semantics.
-     * @return Promise resolved with the validated file.
+     * @returns Promise resolved with the validated file.
      */
     validateFile(file: FileLike, semantics: CoreH5PSemantics): Promise<FileLike> {
         return this.validateFilelike(file, semantics);
@@ -425,7 +425,7 @@ export class CoreH5PContentValidator {
      *
      * @param image Image.
      * @param semantics Semantics.
-     * @return Promise resolved with the validated file.
+     * @returns Promise resolved with the validated file.
      */
     validateImage(image: FileLike, semantics: CoreH5PSemantics): Promise<FileLike> {
         return this.validateFilelike(image, semantics, ['width', 'height', 'originalImage']);
@@ -436,7 +436,7 @@ export class CoreH5PContentValidator {
      *
      * @param video Video.
      * @param semantics Semantics.
-     * @return Promise resolved with the validated file.
+     * @returns Promise resolved with the validated file.
      */
     async validateVideo(video: Record<string, FileLike>, semantics: CoreH5PSemantics): Promise<Record<string, FileLike>> {
         for (const key in video) {
@@ -451,7 +451,7 @@ export class CoreH5PContentValidator {
      *
      * @param audio Audio.
      * @param semantics Semantics.
-     * @return Promise resolved with the validated file.
+     * @returns Promise resolved with the validated file.
      */
     async validateAudio(audio: Record<string, FileLike>, semantics: CoreH5PSemantics): Promise<Record<string, FileLike>> {
         for (const key in audio) {
@@ -468,7 +468,7 @@ export class CoreH5PContentValidator {
      * @param group Group.
      * @param semantics Semantics.
      * @param flatten Whether to flatten.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async validateGroup(group: unknown, semantics: CoreH5PSemantics, flatten: boolean = true): Promise<unknown> {
         if (!semantics.fields) {
@@ -493,33 +493,24 @@ export class CoreH5PContentValidator {
                 }
 
                 // Find semantics for name=key.
-                let found = false;
-                let validateFunction: undefined | ((...args: unknown[]) => unknown);
-                let field: CoreH5PSemantics | undefined;
+                const field = semantics.fields.find(field => field.name === key);
+                let value: unknown = null;
 
-                for (let i = 0; i < semantics.fields.length; i++) {
-                    field = semantics.fields[i];
+                if (field) {
+                    if (semantics.optional) {
+                        field.optional = true;
+                    }
 
-                    if (field.name == key) {
-                        if (semantics.optional) {
-                            field.optional = true;
-                        }
-                        validateFunction = this[this.typeMap[field.type || '']].bind(this);
-                        found = true;
-                        break;
+                    const validateFunction = this[this.typeMap[field.type || '']].bind(this);
+                    if (validateFunction) {
+                        value = await validateFunction(groupObject[key], field);
+
+                        groupObject[key] = value;
                     }
                 }
 
-                if (found && validateFunction) {
-                    const val = await validateFunction(groupObject[key], field);
-
-                    groupObject[key] = val;
-                    if (val === null) {
-                        delete groupObject[key];
-                    }
-                } else {
-                    // Something exists in content that does not have a corresponding semantics field. Remove it.
-                    delete groupObject.key;
+                if (value === null) {
+                    delete groupObject[key];
                 }
             }
 
@@ -534,7 +525,7 @@ export class CoreH5PContentValidator {
      *
      * @param value Value.
      * @param semantics Semantics.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async validateLibrary(value: LibraryType, semantics: CoreH5PSemantics): Promise<LibraryType | undefined> {
         if (!value.library) {
@@ -594,14 +585,14 @@ export class CoreH5PContentValidator {
     }
 
     /**
-     * Check params for a whitelist of allowed properties.
+     * Check params for a allowlist of allowed properties.
      *
      * @param params Object to filter.
-     * @param whitelist List of keys to keep.
+     * @param allowlist List of keys to keep.
      */
-    filterParams(params: Record<string, unknown>, whitelist: string[]): void {
+    filterParams(params: Record<string, unknown>, allowlist: string[]): void {
         for (const key in params) {
-            if (whitelist.indexOf(key) == -1) {
+            if (allowlist.indexOf(key) == -1) {
                 delete params[key];
             }
         }
@@ -614,7 +605,7 @@ export class CoreH5PContentValidator {
      * @param text The string with raw HTML in it.
      * @param allowedTags An array of allowed tags.
      * @param allowedStyles Allowed styles.
-     * @return An XSS safe version of the string.
+     * @returns An XSS safe version of the string.
      */
     protected filterXss(text: string, allowedTags?: string[], allowedStyles?: RegExp[]): string {
         if (!text || typeof text != 'string') {
@@ -634,7 +625,7 @@ export class CoreH5PContentValidator {
         // Defuse all HTML entities.
         text = text.replace(/&/g, '&amp;');
 
-        // Change back only well-formed entities in our whitelist:
+        // Change back only well-formed entities in our allowed list:
         // Decimal numeric entities.
         text = text.replace(/&amp;#([0-9]+;)/g, '&#$1');
         // Hexadecimal numeric entities.
@@ -659,7 +650,7 @@ export class CoreH5PContentValidator {
      *             If store is TRUE then the array contains the allowed tags.
      *             If store is FALSE then the array has one element, the HTML tag to process.
      * @param store Whether to store m.
-     * @return string If the element isn't allowed, an empty string. Otherwise, the cleaned up version of the HTML element.
+     * @returns string If the element isn't allowed, an empty string. Otherwise, the cleaned up version of the HTML element.
      */
     protected filterXssSplit(tags: string[], store: boolean = false): string {
         if (store) {
@@ -670,7 +661,7 @@ export class CoreH5PContentValidator {
 
         const tag = tags[0];
 
-        if (tag.substr(0, 1) != '<') {
+        if (tag.substring(0, 1) != '<') {
             // We matched a lone ">" character.
             return '&gt;';
         } else if (tag.length == 1) {
@@ -726,7 +717,7 @@ export class CoreH5PContentValidator {
      *
      * @param attr HTML attributes.
      * @param allowedStyles Allowed styles.
-     * @return Cleaned up version of the HTML attributes.
+     * @returns Cleaned up version of the HTML attributes.
      */
     protected filterXssAttributes(attr: string, allowedStyles?: RegExp[]): string[] {
         const attrArray: string[] = [];
@@ -746,7 +737,7 @@ export class CoreH5PContentValidator {
                     matches = attr.match(/^([-a-zA-Z]+)/);
                     if (matches && matches.length > 1) {
                         attrName = matches[1].toLowerCase();
-                        skip = attrName == 'style' || attrName.substr(0, 2) == 'on' || attrName.substr(0, 1) == '-' ||
+                        skip = attrName == 'style' || attrName.substring(0, 2) == 'on' || attrName.substring(0, 1) == '-' ||
                                 attrName.length > 96; // Ignore long attributes to avoid unnecessary processing overhead.
                         working = mode = 1;
                         attr = attr.replace(/^[-a-zA-Z]+/, '');
@@ -778,8 +769,7 @@ export class CoreH5PContentValidator {
                     if (matches && matches.length > 1) {
                         if (allowedStyles && attrName === 'style') {
                             // Allow certain styles.
-                            for (let i = 0; i < allowedStyles.length; i++) {
-                                const pattern = allowedStyles[i];
+                            for (const pattern of allowedStyles) {
                                 if (matches[1].match(pattern)) {
                                     // All patterns are start to end patterns, and CKEditor adds one span per style.
                                     attrArray.push('style="' + matches[1] + '"');
@@ -849,7 +839,7 @@ export class CoreH5PContentValidator {
      *
      * @param str The string with the attribute value.
      * @param decode Whether to decode entities in the str.
-     * @return Cleaned up and HTML-escaped version of str.
+     * @returns Cleaned up and HTML-escaped version of str.
      */
     filterXssBadProtocol(str: string, decode: boolean = true): string {
         // Get the plain text representation of the attribute value (i.e. its meaning).
@@ -864,7 +854,7 @@ export class CoreH5PContentValidator {
      * Strips dangerous protocols (e.g. 'javascript:') from a URI.
      *
      * @param uri A plain-text URI that might contain dangerous protocols.
-     * @return A plain-text URI stripped of dangerous protocols.
+     * @returns A plain-text URI stripped of dangerous protocols.
      */
     protected stripDangerousProtocols(uri: string): string {
 
@@ -883,7 +873,7 @@ export class CoreH5PContentValidator {
 
             if (colonPos > 0) {
                 // We found a colon, possibly a protocol. Verify.
-                const protocol = uri.substr(0, colonPos);
+                const protocol = uri.substring(0, colonPos);
                 // If a colon is preceded by a slash, question mark or hash, it cannot possibly be part of the URL scheme.
                 // This must be a relative URL, which inherits the (safe) protocol of the base document.
                 if (protocol.match(/[/?#]/)) {
@@ -891,7 +881,7 @@ export class CoreH5PContentValidator {
                 }
                 // Check if this is a disallowed protocol.
                 if (!allowedProtocols[protocol.toLowerCase()]) {
-                    uri = uri.substr(colonPos + 1);
+                    uri = uri.substring(colonPos + 1);
                 }
             }
         } while (before != uri);
@@ -902,7 +892,7 @@ export class CoreH5PContentValidator {
     /**
      * Get metadata semantics.
      *
-     * @return Semantics.
+     * @returns Semantics.
      */
     getMetadataSemantics(): CoreH5PSemantics[] {
 
@@ -918,6 +908,12 @@ export class CoreH5PContentValidator {
                 type: 'text',
                 label: Translate.instant('core.h5p.title'),
                 placeholder: 'La Gioconda',
+            },
+            {
+                name: 'a11yTitle',
+                type: 'text',
+                label: Translate.instant('core.h5p.a11yTitle:label'),
+                optional: true,
             },
             {
                 name: 'license',
@@ -1122,13 +1118,13 @@ export class CoreH5PContentValidator {
             },
         ];
 
-        return this.metadataSemantics!;
+        return this.metadataSemantics;
     }
 
     /**
      * Get copyright semantics.
      *
-     * @return Semantics.
+     * @returns Semantics.
      */
     getCopyrightSemantics(): CoreH5PSemantics {
 
@@ -1266,13 +1262,13 @@ export class CoreH5PContentValidator {
             ],
         };
 
-        return this.copyrightSemantics!;
+        return this.copyrightSemantics;
     }
 
     /**
      * Get CC versions for semantics.
      *
-     * @return CC versions.
+     * @returns CC versions.
      */
     protected getCCVersions(): VersionSemantics[] {
         return [

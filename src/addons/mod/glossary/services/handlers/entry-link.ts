@@ -17,6 +17,7 @@ import { CoreContentLinksHandlerBase } from '@features/contentlinks/classes/base
 import { CoreContentLinksAction } from '@features/contentlinks/services/contentlinks-delegate';
 import { CoreCourse } from '@features/course/services/course';
 import { CoreNavigator } from '@services/navigator';
+import { CoreSitesReadingStrategy } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { makeSingleton } from '@singletons';
 import { AddonModGlossary } from '../glossary';
@@ -43,23 +44,20 @@ export class AddonModGlossaryEntryLinkHandlerService extends CoreContentLinksHan
                 try {
                     const entryId = params.mode == 'entry' ? Number(params.hook) : Number(params.eid);
 
-                    const response = await AddonModGlossary.getEntry(entryId, { siteId });
+                    const response = await AddonModGlossary.getEntry(
+                        entryId,
+                        { siteId, readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE },
+                    );
 
                     const module = await CoreCourse.getModuleBasicInfoByInstance(
                         response.entry.glossaryid,
                         'glossary',
-                        siteId,
+                        { siteId, readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE },
                     );
 
                     await CoreNavigator.navigateToSitePath(
-                        AddonModGlossaryModuleHandlerService.PAGE_NAME + `/entry/${entryId}`,
-                        {
-                            params: {
-                                courseId: module.course,
-                                cmId: module.id,
-                            },
-                            siteId,
-                        },
+                        AddonModGlossaryModuleHandlerService.PAGE_NAME + `/${module.course}/${module.id}/entry/${entryId}`,
+                        { siteId },
                     );
                 } catch (error) {
                     CoreDomUtils.showErrorModalDefault(error, 'addon.mod_glossary.errorloadingentry', true);

@@ -13,10 +13,10 @@
 // limitations under the License.
 
 import { Injectable, Type } from '@angular/core';
-import { Params } from '@angular/router';
 
 import { CoreDelegate, CoreDelegateHandler } from '@classes/delegate';
 import { CoreCourseAnyCourseData } from '@features/courses/services/courses';
+import { CoreNavigationOptions } from '@services/navigator';
 import { makeSingleton } from '@singletons';
 import { CoreCourseWSSection } from './course';
 import { CoreCourseSection } from './course-helper';
@@ -37,7 +37,7 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      *
      * @param course The course.
      * @param sections List of sections.
-     * @return Title.
+     * @returns Title.
      */
     getCourseTitle?(course: CoreCourseAnyCourseData, sections?: CoreCourseWSSection[]): string;
 
@@ -45,7 +45,7 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      * Whether it allows seeing all sections at the same time. Defaults to true.
      *
      * @param course The course to check.
-     * @return Whether it can view all sections.
+     * @returns Whether it can view all sections.
      */
     canViewAllSections?(course: CoreCourseAnyCourseData): boolean;
 
@@ -53,25 +53,35 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      * Whether the option blocks should be displayed. Defaults to true.
      *
      * @param course The course to check.
-     * @return Whether it can display blocks.
+     * @returns Whether it can display blocks.
      */
     displayBlocks?(course: CoreCourseAnyCourseData): boolean;
 
     /**
-     * Whether the option to enable section/module download should be displayed. Defaults to true.
+     * Whether the option to enable section/module download should be displayed.
      *
+     * @deprecated on 4.0 Not used anymore because prefetch has been moved to storage manager.
      * @param course The course to check.
-     * @return Whether the option to enable section/module download should be displayed.
+     * @returns Whether the option to enable section/module download should be displayed.
      */
     displayEnableDownload?(course: CoreCourseAnyCourseData): boolean;
+
+    /**
+     * Whether the default course index should be displayed. Defaults to true.
+     *
+     * @deprecated on 4.0. Please use displayCourseIndex instead.
+     * @param course The course to check.
+     * @returns Whether the default course index should be displayed.
+     */
+    displaySectionSelector?(course: CoreCourseAnyCourseData): boolean;
 
     /**
      * Whether the default section selector should be displayed. Defaults to true.
      *
      * @param course The course to check.
-     * @return Whether the default section selector should be displayed.
+     * @returns Whether the default section selector should be displayed.
      */
-    displaySectionSelector?(course: CoreCourseAnyCourseData): boolean;
+    displayCourseIndex?(course: CoreCourseAnyCourseData): boolean;
 
     /**
      * Whether the course refresher should be displayed. If it returns false, a refresher must be included in the course format,
@@ -79,7 +89,7 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      *
      * @param course The course to check.
      * @param sections List of course sections.
-     * @return Whether the refresher should be displayed.
+     * @returns Whether the refresher should be displayed.
      */
     displayRefresher?(course: CoreCourseAnyCourseData, sections: CoreCourseWSSection[]): boolean;
 
@@ -88,9 +98,20 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      *
      * @param course The course to get the title.
      * @param sections List of sections.
-     * @return Promise resolved with current section.
+     * @returns Promise resolved with current section and whether the section should be selected. If only the section is returned,
+     *         forceSelected will default to false.
      */
-    getCurrentSection?(course: CoreCourseAnyCourseData, sections: CoreCourseSection[]): Promise<CoreCourseSection>;
+    getCurrentSection?(
+        course: CoreCourseAnyCourseData,
+        sections: CoreCourseSection[],
+    ): Promise<CoreCourseFormatCurrentSectionData<CoreCourseSection> | CoreCourseSection>;
+
+    /**
+     * Returns the name for the highlighted section.
+     *
+     * @returns The name for the highlighted section based on the given course format.
+     */
+    getSectionHightlightedName?(): string;
 
     /**
      * Open the page to display a course. If not defined, the page CoreCourseSectionPage will be opened.
@@ -99,10 +120,10 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      * Your page should include the course handlers using CoreCoursesDelegate.
      *
      * @param course The course to open. It should contain a "format" attribute.
-     * @param params Params to pass to the course page.
-     * @return Promise resolved when done.
+     * @param navOptions Navigation options that includes params to pass to the page.
+     * @returns Promise resolved when done.
      */
-    openCourse?(course: CoreCourseAnyCourseData, params?: Params): Promise<void>;
+    openCourse?(course: CoreCourseAnyCourseData, navOptions?: CoreNavigationOptions): Promise<void>;
 
     /**
      * Return the Component to use to display the course format instead of using the default one.
@@ -111,27 +132,9 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      * It's recommended to return the class of the component, but you can also return an instance of the component.
      *
      * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
+     * @returns Promise resolved with component to use, undefined if not found.
      */
     getCourseFormatComponent?(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined>;
-
-    /**
-     * Return the Component to use to display the course summary inside the default course format.
-     * It's recommended to return the class of the component, but you can also return an instance of the component.
-     *
-     * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
-     */
-    getCourseSummaryComponent?(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined>;
-
-    /**
-     * Return the Component to use to display the section selector inside the default course format.
-     * It's recommended to return the class of the component, but you can also return an instance of the component.
-     *
-     * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
-     */
-    getSectionSelectorComponent?(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined>;
 
     /**
      * Return the Component to use to display a single section. This component will only be used if the user is viewing a
@@ -139,7 +142,7 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      * It's recommended to return the class of the component, but you can also return an instance of the component.
      *
      * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
+     * @returns Promise resolved with component to use, undefined if not found.
      */
     getSingleSectionComponent?(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined>;
 
@@ -148,7 +151,7 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      * It's recommended to return the class of the component, but you can also return an instance of the component.
      *
      * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
+     * @returns Promise resolved with component to use, undefined if not found.
      */
     getAllSectionsComponent?(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined>;
 
@@ -157,7 +160,7 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      *
      * @param course The course to get the title.
      * @param sections List of sections.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     invalidateData?(course: CoreCourseAnyCourseData, sections: CoreCourseWSSection[]): Promise<void>;
 
@@ -166,7 +169,7 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
      * activity completion then you should return false.
      *
      * @param course The course.
-     * @return Whether course view should be refreshed when an activity completion changes.
+     * @returns Whether course view should be refreshed when an activity completion changes.
      */
     shouldRefreshWhenCompletionChanges?(course: CoreCourseAnyCourseData): Promise<boolean>;
 }
@@ -188,7 +191,7 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      * Whether it allows seeing all sections at the same time. Defaults to true.
      *
      * @param course The course to check.
-     * @return Whether it allows seeing all sections at the same time.
+     * @returns Whether it allows seeing all sections at the same time.
      */
     canViewAllSections(course: CoreCourseAnyCourseData): boolean {
         return !!this.executeFunctionOnEnabled<boolean>(course.format || '', 'canViewAllSections', [course]);
@@ -198,20 +201,10 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      * Whether the option blocks should be displayed. Defaults to true.
      *
      * @param course The course to check.
-     * @return Whether it can display blocks.
+     * @returns Whether it can display blocks.
      */
     displayBlocks(course: CoreCourseAnyCourseData): boolean {
         return !!this.executeFunctionOnEnabled<boolean>(course.format || '', 'displayBlocks', [course]);
-    }
-
-    /**
-     * Whether the option to enable section/module download should be displayed. Defaults to true.
-     *
-     * @param course The course to check.
-     * @return Whether the option to enable section/module download should be displayed
-     */
-    displayEnableDownload(course: CoreCourseAnyCourseData): boolean {
-        return !!this.executeFunctionOnEnabled<boolean>(course.format || '', 'displayEnableDownload', [course]);
     }
 
     /**
@@ -220,19 +213,26 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      *
      * @param course The course to check.
      * @param sections List of course sections.
-     * @return Whether the refresher should be displayed.
+     * @returns Whether the refresher should be displayed.
      */
     displayRefresher(course: CoreCourseAnyCourseData, sections: CoreCourseWSSection[]): boolean {
         return !!this.executeFunctionOnEnabled<boolean>(course.format || '', 'displayRefresher', [course, sections]);
     }
 
     /**
-     * Whether the default section selector should be displayed. Defaults to true.
+     * Whether the default course index should be displayed. Defaults to true.
      *
      * @param course The course to check.
-     * @return Whether the section selector should be displayed.
+     * @returns Whether the course index should be displayed.
      */
-    displaySectionSelector(course: CoreCourseAnyCourseData): boolean {
+    displayCourseIndex(course: CoreCourseAnyCourseData): boolean {
+        const display = this.executeFunctionOnEnabled<boolean>(course.format || '', 'displayCourseIndex', [course]);
+
+        if (display !== undefined) {
+            return display;
+        }
+
+        // Use displaySectionSelector while is not completely deprecated.
         return !!this.executeFunctionOnEnabled<boolean>(course.format || '', 'displaySectionSelector', [course]);
     }
 
@@ -240,7 +240,7 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      * Get the component to use to display all sections in a course.
      *
      * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
+     * @returns Promise resolved with component to use, undefined if not found.
      */
     async getAllSectionsComponent(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined> {
         try {
@@ -254,7 +254,7 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      * Get the component to use to display a course format.
      *
      * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
+     * @returns Promise resolved with component to use, undefined if not found.
      */
     async getCourseFormatComponent(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined> {
         try {
@@ -265,28 +265,14 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
     }
 
     /**
-     * Get the component to use to display the course summary in the default course format.
-     *
-     * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
-     */
-    async getCourseSummaryComponent(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined> {
-        try {
-            return await this.executeFunctionOnEnabled<Type<unknown>>(course.format || '', 'getCourseSummaryComponent', [course]);
-        } catch (error) {
-            this.logger.error('Error getting course summary component', error);
-        }
-    }
-
-    /**
      * Given a course, return the title to use in the course page.
      *
      * @param course The course to get the title.
      * @param sections List of sections.
-     * @return Course title.
+     * @returns Course title.
      */
-    getCourseTitle(course: CoreCourseAnyCourseData, sections?: CoreCourseWSSection[]): string | undefined {
-        return this.executeFunctionOnEnabled(course.format || '', 'getCourseTitle', [course, sections]);
+    getCourseTitle(course: CoreCourseAnyCourseData, sections?: CoreCourseWSSection[]): string {
+        return this.executeFunctionOnEnabled(course.format || '', 'getCourseTitle', [course, sections]) || '';
     }
 
     /**
@@ -294,35 +280,50 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      *
      * @param course The course to get the title.
      * @param sections List of sections.
-     * @return Promise resolved with current section.
+     * @returns Promise.
      */
-    async getCurrentSection(course: CoreCourseAnyCourseData, sections: CoreCourseSection[]): Promise<CoreCourseSection> {
+    async getCurrentSection<T = CoreCourseSection>(
+        course: CoreCourseAnyCourseData,
+        sections: T[],
+    ): Promise<CoreCourseFormatCurrentSectionData<T>> {
         try {
-            const section = await this.executeFunctionOnEnabled<CoreCourseSection>(
+            const sectionData = await this.executeFunctionOnEnabled<CoreCourseFormatCurrentSectionData<T> | T>(
                 course.format || '',
                 'getCurrentSection',
                 [course, sections],
             );
 
-            return section || sections[0];
+            if (sectionData && 'forceSelected' in sectionData) {
+                return sectionData;
+            } else if (sectionData) {
+                // Function just returned the section, don't force selecting it.
+                return {
+                    section: sectionData,
+                    forceSelected: false,
+                };
+            }
         } catch {
-            // This function should never fail. Just return the first section (usually, "All sections").
-            return sections[0];
+            // This function should never fail.
         }
+
+        // Return the first section (usually, "All sections").
+        return {
+            section: sections[0],
+            forceSelected: false,
+        };
     }
 
     /**
-     * Get the component to use to display the section selector inside the default course format.
+     * Returns the name for the highlighted section.
      *
-     * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
+     * @param course The course to get the text.
+     * @returns The name for the highlighted section based on the given course format.
      */
-    async getSectionSelectorComponent(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined> {
-        try {
-            return await this.executeFunctionOnEnabled<Type<unknown>>(course.format || '', 'getSectionSelectorComponent', [course]);
-        } catch (error) {
-            this.logger.error('Error getting section selector component', error);
-        }
+    getSectionHightlightedName(course: CoreCourseAnyCourseData): string | undefined {
+        return this.executeFunctionOnEnabled<string>(
+            course.format || '',
+            'getSectionHightlightedName',
+        );
     }
 
     /**
@@ -330,7 +331,7 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      * a single section. If all the sections are displayed at once then it won't be used.
      *
      * @param course The course to render.
-     * @return Promise resolved with component to use, undefined if not found.
+     * @returns Promise resolved with component to use, undefined if not found.
      */
     async getSingleSectionComponent(course: CoreCourseAnyCourseData): Promise<Type<unknown> | undefined> {
         try {
@@ -345,7 +346,7 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      *
      * @param course The course to get the title.
      * @param sections List of sections.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateData(course: CoreCourseAnyCourseData, sections: CoreCourseWSSection[]): Promise<void> {
         await this.executeFunctionOnEnabled(course.format || '', 'invalidateData', [course, sections]);
@@ -355,11 +356,11 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      * Open a course. Should not be called directly. Call CoreCourseHelper.openCourse instead.
      *
      * @param course The course to open. It should contain a "format" attribute.
-     * @param params Params to pass to the course page.
-     * @return Promise resolved when done.
+     * @param navOptions Navigation options that includes params to pass to the page.
+     * @returns Promise resolved when done.
      */
-    async openCourse(course: CoreCourseAnyCourseData, params?: Params): Promise<void> {
-        await this.executeFunctionOnEnabled(course.format || '', 'openCourse', [course, params]);
+    async openCourse(course: CoreCourseAnyCourseData, navOptions?: CoreNavigationOptions): Promise<void> {
+        await this.executeFunctionOnEnabled(course.format || '', 'openCourse', [course, navOptions]);
     }
 
     /**
@@ -367,12 +368,17 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
      * activity completion then you should return false.
      *
      * @param course The course.
-     * @return Whether course view should be refreshed when an activity completion changes.
+     * @returns Whether course view should be refreshed when an activity completion changes.
      */
     async shouldRefreshWhenCompletionChanges(course: CoreCourseAnyCourseData): Promise<boolean | undefined> {
-        return await this.executeFunctionOnEnabled(course.format || '', 'shouldRefreshWhenCompletionChanges', [course]);
+        return this.executeFunctionOnEnabled(course.format || '', 'shouldRefreshWhenCompletionChanges', [course]);
     }
 
 }
 
 export const CoreCourseFormatDelegate = makeSingleton(CoreCourseFormatDelegateService);
+
+export type CoreCourseFormatCurrentSectionData<T = CoreCourseSection> = {
+    section: T; // Current section.
+    forceSelected: boolean; // If true, the app will force selecting the section when opening the course.
+};

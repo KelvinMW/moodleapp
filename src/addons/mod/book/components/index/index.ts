@@ -12,230 +12,118 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, Optional, Input, OnInit } from '@angular/core';
-import { IonContent } from '@ionic/angular';
-import {
-    CoreCourseModuleMainResourceComponent, CoreCourseResourceDownloadResult,
-} from '@features/course/classes/main-resource-component';
-import {
-    AddonModBookProvider,
-    AddonModBookContentsMap,
-    AddonModBookTocChapter,
-    AddonModBookNavStyle,
-    AddonModBook,
-    AddonModBookBookWSData,
-} from '../../services/book';
-import { CoreTag, CoreTagItem } from '@features/tag/services/tag';
-import { CoreDomUtils } from '@services/utils/dom';
+import { Component, Optional, OnInit, OnDestroy } from '@angular/core';
+import { CoreCourseModuleMainResourceComponent } from '@features/course/classes/main-resource-component';
+import { AddonModBook, AddonModBookBookWSData, AddonModBookNumbering, AddonModBookTocChapter } from '../../services/book';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
-import { Translate } from '@singletons';
-import { CoreUtils } from '@services/utils/utils';
 import { CoreCourse } from '@features/course/services/course';
-import { AddonModBookTocComponent } from '../toc/toc';
-import { CoreConstants } from '@/core/constants';
+import { CoreNavigator } from '@services/navigator';
+import { AddonModBookModuleHandlerService } from '../../services/handlers/module';
 
 /**
- * Component that displays a book.
+ * Component that displays a book entry page.
  */
 @Component({
     selector: 'addon-mod-book-index',
     templateUrl: 'addon-mod-book-index.html',
 })
-export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComponent implements OnInit {
+export class AddonModBookIndexComponent extends CoreCourseModuleMainResourceComponent implements OnInit, OnDestroy {
 
-    @Input() initialChapterId?: number; // The initial chapter ID to load.
+    showNumbers = true;
+    addPadding = true;
+    showBullets = false;
+    chapters: AddonModBookTocChapter[] = [];
+    hasStartedBook = false;
 
-    component = AddonModBookProvider.COMPONENT;
-    chapterContent?: string;
-    previousChapter?: AddonModBookTocChapter;
-    nextChapter?: AddonModBookTocChapter;
-    tagsEnabled = false;
-    displayNavBar = true;
-    previousNavBarTitle?: string;
-    nextNavBarTitle?: string;
-    warning = '';
-    tags?: CoreTagItem[];
-
-    protected chapters: AddonModBookTocChapter[] = [];
-    protected currentChapter?: number;
     protected book?: AddonModBookBookWSData;
-    protected displayTitlesInNavBar = false;
-    protected contentsMap: AddonModBookContentsMap = {};
+    protected checkCompletionAfterLog = false;
 
-    constructor(
-        protected content?: IonContent,
-        @Optional() courseContentsPage?: CoreCourseContentsPage,
-    ) {
+    constructor( @Optional() courseContentsPage?: CoreCourseContentsPage) {
         super('AddonModBookIndexComponent', courseContentsPage);
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         super.ngOnInit();
 
-        this.tagsEnabled = CoreTag.areTagsAvailableInSite();
         this.loadContent();
     }
 
     /**
-     * Show the TOC.
+     * @inheritdoc
      */
-    async showToc(): Promise<void> {
-        // Create the toc modal.
-        const modalData = await CoreDomUtils.openSideModal<number>({
-            component: AddonModBookTocComponent,
-            componentProps: {
-                moduleId: this.module.id,
-                chapters: this.chapters,
-                selected: this.currentChapter,
-                courseId: this.courseId,
-                book: this.book,
-            },
-        });
-
-        if (modalData) {
-            this.changeChapter(modalData);
-        }
+    protected async fetchContent(): Promise<void> {
+        await Promise.all([
+            this.loadBook(),
+            this.loadTOC(),
+        ]);
     }
 
     /**
-     * Change the current chapter.
-     *
-     * @param chapterId Chapter to load.
-     * @return Promise resolved when done.
+     * @inheritdoc
      */
-    changeChapter(chapterId: number): void {
-        if (chapterId && chapterId != this.currentChapter) {
-            this.loaded = false;
-            this.refreshIcon = CoreConstants.ICON_LOADING;
-            this.loadChapter(chapterId, true);
-        }
+    protected async invalidateContent(): Promise<void> {
+        await AddonModBook.invalidateContent(this.module.id, this.courseId);
     }
 
     /**
-     * Perform the invalidate content function.
+     * Load book data.
      *
-     * @return Resolved when done.
+     * @returns Promise resolved when done.
      */
-    protected invalidateContent(): Promise<void> {
-        return AddonModBook.invalidateContent(this.module.id, this.courseId);
+    protected async loadBook(): Promise<void> {
+        this.book = await AddonModBook.getBook(this.courseId, this.module.id);
+
+        this.dataRetrieved.emit(this.book);
+
+        this.description = this.book.intro;
+        this.showNumbers = this.book.numbering == AddonModBookNumbering.NUMBERS;
+        this.showBullets = this.book.numbering == AddonModBookNumbering.BULLETS;
+        this.addPadding = this.book.numbering != AddonModBookNumbering.NONE;
+
+        const lastChapterViewed = await AddonModBook.getLastChapterViewed(this.book.id);
+        this.hasStartedBook = lastChapterViewed !== undefined;
     }
 
     /**
-     * Download book contents and load the current chapter.
+     * Load book TOC.
      *
-     * @param refresh Whether we're refreshing data.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
-    protected async fetchContent(refresh = false): Promise<void> {
-        const promises: Promise<void>[] = [];
-        let downloadResult: CoreCourseResourceDownloadResult | undefined;
+    protected async loadTOC(): Promise<void> {
+        const contents = await CoreCourse.getModuleContents(this.module, this.courseId);
 
-        // Try to get the book data. Ignore errors since this WS isn't available in some Moodle versions.
-        promises.push(CoreUtils.ignoreErrors(AddonModBook.getBook(this.courseId, this.module.id))
-            .then((book) => {
-                if (!book) {
-                    return;
-                }
-
-                this.book = book;
-                this.dataRetrieved.emit(book);
-
-                this.description = book.intro;
-                this.displayNavBar = book.navstyle != AddonModBookNavStyle.TOC_ONLY;
-                this.displayTitlesInNavBar = book.navstyle == AddonModBookNavStyle.TEXT;
-
-                return;
-            }));
-
-        // Get module status to determine if it needs to be downloaded.
-        promises.push(this.downloadResourceIfNeeded(refresh).then((result) => {
-            downloadResult = result;
-
-            return;
-        }));
-
-        try {
-            await Promise.all(promises);
-
-            this.contentsMap = AddonModBook.getContentsMap(this.module.contents);
-            this.chapters = AddonModBook.getTocList(this.module.contents);
-
-            if (typeof this.currentChapter == 'undefined' && typeof this.initialChapterId != 'undefined' && this.chapters) {
-                // Initial chapter set. Validate that the chapter exists.
-                const chapter = this.chapters.find((chapter) => chapter.id == this.initialChapterId);
-
-                if (chapter) {
-                    this.currentChapter = this.initialChapterId;
-                }
-            }
-
-            if (typeof this.currentChapter == 'undefined') {
-                // Load the first chapter.
-                this.currentChapter = AddonModBook.getFirstChapter(this.chapters);
-            }
-
-            // Show chapter.
-            try {
-                await this.loadChapter(this.currentChapter!, refresh);
-
-                this.warning = downloadResult?.failed ? this.getErrorDownloadingSomeFilesMessage(downloadResult.error!) : '';
-            } catch {
-                // Ignore errors, they're handled inside the loadChapter function.
-            }
-        } finally {
-            this.fillContextMenu(refresh);
-        }
+        this.chapters = AddonModBook.getTocList(contents);
     }
 
     /**
-     * Load a book chapter.
-     *
-     * @param chapterId Chapter to load.
-     * @param logChapterId Whether chapter ID should be passed to the log view function.
-     * @return Promise resolved when done.
+     * @inheritdoc
      */
-    protected async loadChapter(chapterId: number, logChapterId: boolean): Promise<void> {
-        this.currentChapter = chapterId;
-        this.content?.scrollToTop();
+    protected async logActivity(): Promise<void> {
+        AddonModBook.logView(this.module.instance, undefined, this.module.name);
+    }
 
-        try {
-            const content = await AddonModBook.getChapterContent(this.contentsMap, chapterId, this.module.id);
+    /**
+     * Open the book in a certain chapter.
+     *
+     * @param chapterId Chapter to open, undefined for last chapter viewed.
+     */
+    async openBook(chapterId?: number): Promise<void> {
+        await CoreNavigator.navigateToSitePath(
+            `${AddonModBookModuleHandlerService.PAGE_NAME}/${this.courseId}/${this.module.id}/contents`,
+            { params: { chapterId } },
+        );
 
-            this.tags = this.tagsEnabled ? this.contentsMap[this.currentChapter].tags : [];
+        this.hasStartedBook = true;
+    }
 
-            this.chapterContent = content;
-            this.previousChapter = AddonModBook.getPreviousChapter(this.chapters, chapterId);
-            this.nextChapter = AddonModBook.getNextChapter(this.chapters, chapterId);
-
-            this.previousNavBarTitle = this.previousChapter && this.displayTitlesInNavBar
-                ? Translate.instant('addon.mod_book.navprevtitle', { $a: this.previousChapter.title })
-                : '';
-            this.nextNavBarTitle = this.nextChapter && this.displayTitlesInNavBar
-                ? Translate.instant('addon.mod_book.navnexttitle', { $a: this.nextChapter.title })
-                : '';
-
-            // Chapter loaded, log view. We don't return the promise because we don't want to block the user for this.
-            await CoreUtils.ignoreErrors(AddonModBook.logView(
-                this.module.instance!,
-                logChapterId ? chapterId : undefined,
-                this.module.name,
-            ));
-
-            // Module is completed when last chapter is viewed, so we only check completion if the last is reached.
-            if (!this.nextChapter) {
-                CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-            }
-        } catch (error) {
-            CoreDomUtils.showErrorModalDefault(error, 'addon.mod_book.errorchapter', true);
-
-            throw error;
-        } finally {
-            this.loaded = true;
-            this.refreshIcon = CoreConstants.ICON_REFRESH;
-        }
+    /**
+     * @inheritdoc
+     */
+    ngOnDestroy(): void {
+        super.ngOnDestroy();
     }
 
 }

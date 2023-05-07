@@ -15,16 +15,16 @@
 import { Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { CoreSite } from '@classes/site';
 import { CoreContentLinksHelper } from '@features/contentlinks/services/contentlinks-helper';
-import { CoreCourse, CoreCourseCommonModWSOptions, CoreCourseWSModule } from '@features/course/services/course';
-import { CoreCourseHelper } from '@features/course/services/course-helper';
+import { CoreCourse, CoreCourseCommonModWSOptions } from '@features/course/services/course';
+import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CanLeave } from '@guards/can-leave';
 import { IonContent } from '@ionic/angular';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
-import { Network, NgZone, Translate } from '@singletons';
+import { NgZone, Translate } from '@singletons';
 import { CoreEvents } from '@singletons/events';
 import { Subscription } from 'rxjs';
 import {
@@ -51,9 +51,8 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
 
     @ViewChild(IonContent) content?: IonContent;
 
-    protected module?: CoreCourseWSModule;
+    protected module?: CoreCourseModuleData;
     protected currentPage?: number;
-    protected siteAfterSubmit?: string;
     protected onlineObserver: Subscription;
     protected originalData?: Record<string, AddonModFeedbackResponseValue>;
     protected currentSite: CoreSite;
@@ -75,15 +74,16 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
     hasNextPage = false;
     completed = false;
     completedOffline = false;
+    siteAfterSubmit?: string;
 
     constructor() {
-        this.currentSite = CoreSites.getCurrentSite()!;
+        this.currentSite = CoreSites.getRequiredCurrentSite();
 
         // Refresh online status when changes.
-        this.onlineObserver = Network.onChange().subscribe(() => {
+        this.onlineObserver = CoreNetwork.onChange().subscribe(() => {
             // Execute the callback in the Angular zone, so change detection doesn't stop working.
             NgZone.run(() => {
-                this.offline = !CoreApp.isOnline();
+                this.offline = !CoreNetwork.isOnline();
             });
         });
     }
@@ -92,14 +92,30 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
-        this.cmId = CoreNavigator.getRouteNumberParam('cmId')!;
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.currentPage = CoreNavigator.getRouteNumberParam('page');
-        this.title = CoreNavigator.getRouteParam('title');
-        this.preview = !!CoreNavigator.getRouteBooleanParam('preview');
-        this.fromIndex = !!CoreNavigator.getRouteBooleanParam('fromIndex');
+        try {
+            this.cmId = CoreNavigator.getRequiredRouteNumberParam('cmId');
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.currentPage = CoreNavigator.getRouteNumberParam('page');
+            this.title = CoreNavigator.getRouteParam('title');
+            this.preview = !!CoreNavigator.getRouteBooleanParam('preview');
+            this.fromIndex = !!CoreNavigator.getRouteBooleanParam('fromIndex');
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         await this.fetchData();
+
+        if (!this.access || this.access.isempty && (!this.access.canedititems && !this.access.canviewreports)) {
+            CoreDomUtils.showErrorModal(Translate.instant('core.nopermissiontoaccesspage'));
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         if (!this.feedback) {
             return;
@@ -146,13 +162,13 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
     /**
      * Fetch all the data required for the view.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchData(): Promise<void> {
         try {
             this.module = await CoreCourse.getModule(this.cmId, this.courseId, undefined, true, false, this.currentSite.getId());
 
-            this.offline = !CoreApp.isOnline();
+            this.offline = !CoreNetwork.isOnline();
             const options = {
                 cmId: this.cmId,
                 readingStrategy: this.offline ? CoreSitesReadingStrategy.PREFER_CACHE : CoreSitesReadingStrategy.ONLY_NETWORK,
@@ -187,7 +203,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Fetch access information.
      *
      * @param options Options.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchAccessData(options: CoreCourseCommonModWSOptions): Promise<void> {
         try {
@@ -210,7 +226,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Get resume page from WS.
      *
      * @param options Options.
-     * @return Promise resolved with the page to resume.
+     * @returns Promise resolved with the page to resume.
      */
     protected async fetchResumePage(options: CoreCourseCommonModWSOptions): Promise<number> {
         try {
@@ -233,7 +249,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Fetch page data.
      *
      * @param page Page to load.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchFeedbackPageData(page: number = 0): Promise<void> {
         this.items = [];
@@ -253,7 +269,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Fetch page items.
      *
      * @param page Page to get.
-     * @return Promise resolved with WS response.
+     * @returns Promise resolved with WS response.
      */
     protected async fetchPageItems(page: number): Promise<AddonModFeedbackPageItems> {
         const options = {
@@ -301,7 +317,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Function to allow page navigation through the questions form.
      *
      * @param goPrevious If true it will go back to the previous page, if false, it will go forward.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async gotoPage(goPrevious: boolean): Promise<void> {
         this.content?.scrollToTop();
@@ -398,10 +414,12 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
 
     /**
      * Function to go to the page after submit.
+     *
+     * @returns Promise resolved when done.
      */
     async continue(): Promise<void> {
         if (!this.siteAfterSubmit) {
-            return CoreCourseHelper.getAndOpenCourse(this.courseId, {}, this.currentSite.getId());
+            return CoreNavigator.back();
         }
 
         const modal = await CoreDomUtils.showModalLoading();
@@ -410,7 +428,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
             const treated = await CoreContentLinksHelper.handleLink(this.siteAfterSubmit);
 
             if (!treated) {
-                await this.currentSite.openInBrowserWithAutoLoginIfSameSite(this.siteAfterSubmit);
+                await this.currentSite.openInBrowserWithAutoLogin(this.siteAfterSubmit);
             }
         } finally {
             modal.dismiss();
@@ -418,7 +436,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
     }
 
     /**
-     * Component being destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.onlineObserver.unsubscribe();

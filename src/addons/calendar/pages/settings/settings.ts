@@ -13,9 +13,12 @@
 // limitations under the License.
 
 import { Component, OnInit } from '@angular/core';
-import { AddonCalendar, AddonCalendarProvider } from '../../services/calendar';
-import { CoreEvents } from '@singletons/events';
-import { CoreSites } from '@services/sites';
+import { CoreDomUtils } from '@services/utils/dom';
+import {
+    CoreReminders,
+    CoreRemindersService,
+} from '@features/reminders/services/reminders';
+import { CoreRemindersSetReminderMenuComponent } from '@features/reminders/components/set-reminder-menu/set-reminder-menu';
 
 /**
  * Page that displays the calendar settings.
@@ -26,28 +29,54 @@ import { CoreSites } from '@services/sites';
 })
 export class AddonCalendarSettingsPage implements OnInit {
 
-    defaultTime = -1;
+    defaultTimeLabel = '';
+
+    protected defaultTime?: number;
 
     /**
-     * View loaded.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
-        this.defaultTime = await AddonCalendar.getDefaultNotificationTime();
+        this.updateDefaultTimeLabel();
     }
 
     /**
-     * Update default time.
+     * Change default time.
      *
-     * @param newTime New time.
+     * @param e Event.
+     * @returns Promise resolved when done.
      */
-    updateDefaultTime(newTime: number): void {
-        AddonCalendar.setDefaultNotificationTime(newTime);
+    async changeDefaultTime(e: Event): Promise<void> {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        e.preventDefault();
 
-        CoreEvents.trigger(
-            AddonCalendarProvider.DEFAULT_NOTIFICATION_TIME_CHANGED,
-            { time: newTime },
-            CoreSites.getCurrentSiteId(),
-        );
+        const reminderTime = await CoreDomUtils.openPopover<{timeBefore: number}>({
+            component: CoreRemindersSetReminderMenuComponent,
+            componentProps: {
+                initialValue: this.defaultTime,
+                noReminderLabel: 'core.settings.disabled',
+            },
+            event: e,
+        });
+
+        if (reminderTime === undefined) {
+            // User canceled.
+            return;
+        }
+
+        await CoreReminders.setDefaultNotificationTime(reminderTime.timeBefore ?? CoreRemindersService.DISABLED);
+        this.updateDefaultTimeLabel();
+    }
+
+    /**
+     * Update default time label.
+     */
+    async updateDefaultTimeLabel(): Promise<void> {
+        this.defaultTime = await CoreReminders.getDefaultNotificationTime();
+
+        const defaultTime = CoreRemindersService.convertSecondsToValueAndUnit(this.defaultTime);
+        this.defaultTimeLabel = CoreReminders.getUnitValueLabel(defaultTime.value, defaultTime.unit);
     }
 
 }

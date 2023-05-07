@@ -14,8 +14,7 @@
 
 import { Injectable } from '@angular/core';
 import { CoreCourseActivityPrefetchHandlerBase } from '@features/course/classes/activity-prefetch-handler';
-import { CoreCourseAnyModuleData } from '@features/course/services/course';
-import { CoreCourseHelper } from '@features/course/services/course-helper';
+import { CoreCourse, CoreCourseAnyModuleData } from '@features/course/services/course';
 import { CoreFilepool } from '@services/filepool';
 import { CoreGroups } from '@services/groups';
 import { CoreFileSizeSum, CorePluginFileDelegate } from '@services/plugin-file-delegate';
@@ -43,7 +42,7 @@ export class AddonModWikiPrefetchHandlerService extends CoreCourseActivityPrefet
      * @param module The module object returned by WS.
      * @param courseId The course ID.
      * @param options Other options.
-     * @return List of pages.
+     * @returns List of pages.
      */
     protected async getAllPages(
         module: CoreCourseAnyModuleData,
@@ -141,7 +140,7 @@ export class AddonModWikiPrefetchHandlerService extends CoreCourseActivityPrefet
         return this.prefetchPackage(
             module,
             courseId,
-            this.prefetchWiki.bind(this, module, courseId, !!single, downloadTime),
+            (siteId) => this.prefetchWiki(module, courseId, !!single, downloadTime, siteId),
             siteId,
         );
     }
@@ -154,7 +153,7 @@ export class AddonModWikiPrefetchHandlerService extends CoreCourseActivityPrefet
      * @param single True if we're downloading a single module, false if we're downloading a whole section.
      * @param downloadTime The previous download time, 0 if no previous download.
      * @param siteId Site ID.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async prefetchWiki(
         module: CoreCourseAnyModuleData,
@@ -190,7 +189,7 @@ export class AddonModWikiPrefetchHandlerService extends CoreCourseActivityPrefet
 
         // Fetch info to provide wiki links.
         promises.push(AddonModWiki.getWiki(courseId, module.id, { siteId }).then((wiki) =>
-            CoreCourseHelper.getModuleCourseIdByInstance(wiki.id, 'wiki', siteId)));
+            CoreCourse.getModuleBasicInfoByInstance(wiki.id, 'wiki', { siteId })));
 
         // Get related page files and fetch them.
         promises.push(this.getFiles(module, courseId, single, siteId).then((files) =>
@@ -203,7 +202,7 @@ export class AddonModWikiPrefetchHandlerService extends CoreCourseActivityPrefet
      * @inheritdoc
      */
     sync(module: CoreCourseAnyModuleData, courseId: number, siteId?: string): Promise<AddonModWikiSyncWikiResult> {
-        return AddonModWikiSync.syncWiki(module.instance!, module.course, module.id, siteId);
+        return AddonModWikiSync.syncWiki(module.instance, module.course, module.id, siteId);
     }
 
 }

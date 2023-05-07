@@ -14,7 +14,6 @@
 
 import { Component, Input, Output, EventEmitter, OnChanges, SimpleChange, ViewChild, ElementRef } from '@angular/core';
 import { IonInfiniteScroll } from '@ionic/angular';
-import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 
 const THRESHOLD = .15; // % of the scroll element height that must be close to the edge to consider loading more items necessary.
@@ -36,15 +35,12 @@ export class CoreInfiniteLoadingComponent implements OnChanges {
     @Input() position: 'top' | 'bottom' = 'bottom';
     @Output() action: EventEmitter<() => void>; // Will emit an event when triggered.
 
-    @ViewChild('topbutton') topButton?: ElementRef;
-    @ViewChild('bottombutton') bottomButton?: ElementRef;
-    @ViewChild('spinnercontainer') spinnerContainer?: ElementRef;
     @ViewChild(IonInfiniteScroll) infiniteScroll?: IonInfiniteScroll;
 
     loadingMore = false; // Hide button and avoid loading more.
     hostElement: HTMLElement;
 
-    constructor(protected element: ElementRef<HTMLElement>) {
+    constructor(element: ElementRef<HTMLElement>) {
         this.action = new EventEmitter();
         this.hostElement = element.nativeElement;
     }
@@ -107,7 +103,7 @@ export class CoreInfiniteLoadingComponent implements OnChanges {
         }
 
         this.loadingMore = true;
-        this.action.emit(this.complete.bind(this));
+        this.action.emit(() => this.complete());
     }
 
     /**
@@ -116,7 +112,7 @@ export class CoreInfiniteLoadingComponent implements OnChanges {
     complete(): void {
         if (this.position == 'top') {
             // Wait a bit before allowing loading more, otherwise it could be re-triggered automatically when it shouldn't.
-            setTimeout(this.completeLoadMore.bind(this), 400);
+            setTimeout(() => this.completeLoadMore(), 400);
         } else {
             this.completeLoadMore();
         }
@@ -136,40 +132,22 @@ export class CoreInfiniteLoadingComponent implements OnChanges {
     /**
      * Get the height of the element.
      *
-     * @return Height.
+     * @returns Height.
      * @todo erase if not needed: I'm depreacating it because if not needed or getBoundingClientRect has the same result, it should
      * be erased, also with getElementHeight
      * @deprecated since 3.9.5
      */
     getHeight(): number {
-        return (this.position == 'top' ?
-            this.getElementHeight(this.topButton?.nativeElement) :
-            this.getElementHeight(this.bottomButton?.nativeElement)) +
-            this.getElementHeight(this.infiniteScrollElement) +
-            this.getElementHeight(this.spinnerContainer?.nativeElement);
+        return this.hostElement.getBoundingClientRect().height;
     }
 
     /**
      * Get the infinite scroll element.
      *
-     * @return Element or null.
+     * @returns Element or null.
      */
     get infiniteScrollElement(): HTMLIonInfiniteScrollElement | null {
         return this.hostElement.querySelector('ion-infinite-scroll');
-    }
-
-    /**
-     * Get the height of an element.
-     *
-     * @param element Element ref.
-     * @return Height.
-     */
-    protected getElementHeight(element?: HTMLElement | null): number {
-        if (element) {
-            return CoreDomUtils.getElementHeight(element, true, true, true);
-        }
-
-        return 0;
     }
 
 }

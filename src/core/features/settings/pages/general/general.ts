@@ -20,9 +20,13 @@ import { CoreLang } from '@services/lang';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CorePushNotifications } from '@features/pushnotifications/services/pushnotifications';
 import { CoreSettingsHelper, CoreColorScheme, CoreZoomLevel } from '../../services/settings-helper';
-import { CoreApp } from '@services/app';
 import { CoreIframeUtils } from '@services/utils/iframe';
-import { Diagnostic } from '@singletons';
+import { Diagnostic, Translate } from '@singletons';
+import { CoreSites } from '@services/sites';
+import { CoreUtils } from '@services/utils/utils';
+import { AlertButton } from '@ionic/angular';
+import { CoreNavigator } from '@services/navigator';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Page that displays the general settings.
@@ -37,7 +41,7 @@ export class CoreSettingsGeneralPage {
     languages: { code: string; name: string }[] = [];
     selectedLanguage = '';
     zoomLevels: { value: CoreZoomLevel; style: number; selected: boolean }[] = [];
-    selectedZoomLevel = CoreZoomLevel.NORMAL;
+    selectedZoomLevel = CoreZoomLevel.NONE;
     richTextEditor = true;
     debugDisplay = false;
     analyticsSupported = false;
@@ -77,7 +81,7 @@ export class CoreSettingsGeneralPage {
                 this.colorSchemes.push(CoreColorScheme.LIGHT);
                 this.selectedScheme = this.colorSchemes[0];
             } else {
-                this.isAndroid = CoreApp.isAndroid();
+                this.isAndroid = CorePlatform.isAndroid();
                 this.colorSchemes = CoreSettingsHelper.getAllowedColorSchemes();
                 this.selectedScheme = await CoreConfig.get(CoreConstants.SETTINGS_COLOR_SCHEME, CoreColorScheme.LIGHT);
             }
@@ -107,17 +111,87 @@ export class CoreSettingsGeneralPage {
 
     /**
      * Called when a new language is selected.
+     *
+     * @param ev Event
      */
-    languageChanged(): void {
-        CoreLang.changeCurrentLanguage(this.selectedLanguage).finally(() => {
-            CoreEvents.trigger(CoreEvents.LANGUAGE_CHANGED, this.selectedLanguage);
+    async languageChanged(ev: Event): Promise<void> {
+        ev.stopPropagation();
+        ev.preventDefault();
+
+        const previousLanguage = await CoreLang.getCurrentLanguage();
+        if (this.selectedLanguage === previousLanguage) {
+            // Prevent opening again.
+
+            return;
+        }
+
+        const previousLanguageCancel = Translate.instant('core.cancel');
+
+        try {
+            await CoreLang.changeCurrentLanguage(this.selectedLanguage);
+        } finally {
+            const langName = this.languages.find((lang) => lang.code == this.selectedLanguage)?.name;
+
+            const buttons: AlertButton[] = [
+                {
+                    text: previousLanguageCancel,
+                    role: 'cancel',
+                    handler: (): void => {
+                        clearTimeout(timeout);
+                        this.selectedLanguage = previousLanguage;
+                        CoreLang.changeCurrentLanguage(this.selectedLanguage);
+                    },
+                },
+                {
+                    text: Translate.instant('core.settings.changelanguage', { $a: langName }),
+                    cssClass: 'timed-button',
+                    handler: (): void => {
+                        clearTimeout(timeout);
+                        this.applyLanguageAndRestart();
+                    },
+                },
+            ];
+
+            const alert = await CoreDomUtils.showAlertWithOptions(
+                {
+                    message: Translate.instant('core.settings.changelanguagealert'),
+                    buttons,
+                },
+            );
+            const timeout = window.setTimeout(async () => {
+                await alert.dismiss();
+                this.applyLanguageAndRestart();
+            }, 10000);
+        }
+    }
+
+    /**
+     * Apply language changes and restart the app.
+     */
+    protected async applyLanguageAndRestart(): Promise<void> {
+        // Invalidate cache for all sites to get the content in the right language.
+        const sites = await CoreSites.getSitesInstances();
+        await CoreUtils.ignoreErrors(Promise.all(sites.map((site) => site.invalidateWsCache())));
+
+        CoreEvents.trigger(CoreEvents.LANGUAGE_CHANGED, this.selectedLanguage);
+
+        CoreNavigator.navigate('/reload', {
+            reset: true,
         });
     }
 
     /**
      * Called when a new zoom level is selected.
+     *
+     * @param ev Event
+     * @param value New value
      */
-    zoomLevelChanged(): void {
+    zoomLevelChanged(ev: Event, value: CoreZoomLevel): void {
+        ev.stopPropagation();
+        ev.preventDefault();
+
+        this.selectedZoomLevel = value;
+
         this.zoomLevels = this.zoomLevels.map((fontSize) => {
             fontSize.selected = fontSize.value === this.selectedZoomLevel;
 
@@ -130,31 +204,51 @@ export class CoreSettingsGeneralPage {
 
     /**
      * Called when a new color scheme is selected.
+     *
+     * @param ev Event
      */
-    colorSchemeChanged(): void {
+    colorSchemeChanged(ev: Event): void {
+        ev.stopPropagation();
+        ev.preventDefault();
+
         CoreSettingsHelper.setColorScheme(this.selectedScheme);
         CoreConfig.set(CoreConstants.SETTINGS_COLOR_SCHEME, this.selectedScheme);
     }
 
     /**
      * Called when the rich text editor is enabled or disabled.
+     *
+     * @param ev Event
      */
-    richTextEditorChanged(): void {
+    richTextEditorChanged(ev: Event): void {
+        ev.stopPropagation();
+        ev.preventDefault();
+
         CoreConfig.set(CoreConstants.SETTINGS_RICH_TEXT_EDITOR, this.richTextEditor ? 1 : 0);
     }
 
     /**
      * Called when the debug display setting is enabled or disabled.
+     *
+     * @param ev Event
      */
-    debugDisplayChanged(): void {
+    debugDisplayChanged(ev: Event): void {
+        ev.stopPropagation();
+        ev.preventDefault();
+
         CoreConfig.set(CoreConstants.SETTINGS_DEBUG_DISPLAY, this.debugDisplay ? 1 : 0);
         CoreDomUtils.setDebugDisplay(this.debugDisplay);
     }
 
     /**
      * Called when the analytics setting is enabled or disabled.
+     *
+     * @param ev Event
      */
-    async analyticsEnabledChanged(): Promise<void> {
+    async analyticsEnabledChanged(ev: Event):  Promise<void> {
+        ev.stopPropagation();
+        ev.preventDefault();
+
         await CorePushNotifications.enableAnalytics(this.analyticsEnabled);
 
         CoreConfig.set(CoreConstants.SETTINGS_ANALYTICS_ENABLED, this.analyticsEnabled ? 1 : 0);
@@ -162,8 +256,13 @@ export class CoreSettingsGeneralPage {
 
     /**
      * Open native settings.
+     *
+     * @param ev Event
      */
-    openNativeSettings(): void {
+    openNativeSettings(ev: Event): void {
+        ev.stopPropagation();
+        ev.preventDefault();
+
         Diagnostic.switchToSettings();
     }
 

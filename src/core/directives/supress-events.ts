@@ -63,7 +63,7 @@ export class CoreSupressEventsDirective implements OnInit {
 
         let events: string[];
 
-        if (this.suppressEvents == 'all' || typeof this.suppressEvents == 'undefined' || this.suppressEvents === null) {
+        if (this.suppressEvents == 'all' || this.suppressEvents === undefined || this.suppressEvents === null) {
             // Suppress all events.
             events = ['click', 'mousedown', 'touchdown', 'touchmove', 'touchstart'];
 
@@ -80,7 +80,7 @@ export class CoreSupressEventsDirective implements OnInit {
 
         // Suppress the events.
         for (const evName of events) {
-            this.element.addEventListener(evName, this.stopBubble.bind(this));
+            this.element.addEventListener(evName, (event) => this.stopBubble(event));
         }
 
         // Now listen to "click" events.

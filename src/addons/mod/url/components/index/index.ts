@@ -18,7 +18,6 @@ import { CoreError } from '@classes/errors/error';
 import { CoreCourseModuleMainResourceComponent } from '@features/course/classes/main-resource-component';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
 import { CoreCourse } from '@features/course/services/course';
-import { CoreSites } from '@services/sites';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { CoreTextUtils } from '@services/utils/text';
 import { AddonModUrl, AddonModUrlDisplayOptions, AddonModUrlProvider, AddonModUrlUrl } from '../../services/url';
@@ -36,7 +35,6 @@ export class AddonModUrlIndexComponent extends CoreCourseModuleMainResourceCompo
 
     component = AddonModUrlProvider.COMPONENT;
 
-    canGetUrl = false;
     url?: string;
     name?: string;
     shouldEmbed = false;
@@ -48,31 +46,25 @@ export class AddonModUrlIndexComponent extends CoreCourseModuleMainResourceCompo
     mimetype?: string;
     displayDescription = true;
 
+    protected checkCompletionAfterLog = false;
+
     constructor(@Optional() courseContentsPage?: CoreCourseContentsPage) {
         super('AddonModUrlIndexComponent', courseContentsPage);
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         super.ngOnInit();
 
-        this.canGetUrl = AddonModUrl.isGetUrlWSAvailable();
-
         await this.loadContent();
-
-        if ((this.shouldIframe ||
-            (this.shouldEmbed && this.isOther)) ||
-            (!this.shouldIframe && (!this.shouldEmbed || !this.isOther))) {
-            this.logView();
-        }
     }
 
     /**
      * Perform the invalidate content function.
      *
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async invalidateContent(): Promise<void> {
         await AddonModUrl.invalidateContent(this.module.id, this.courseId);
@@ -82,13 +74,10 @@ export class AddonModUrlIndexComponent extends CoreCourseModuleMainResourceCompo
      * Download url contents.
      *
      * @param refresh Whether we're refreshing data.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchContent(refresh = false): Promise<void> {
         try {
-            if (!this.canGetUrl) {
-                throw null;
-            }
             // Fetch the module data.
             const url = await AddonModUrl.getUrl(this.courseId, this.module.id);
 
@@ -98,32 +87,39 @@ export class AddonModUrlIndexComponent extends CoreCourseModuleMainResourceCompo
 
             if (url.displayoptions) {
                 const unserialized = CoreTextUtils.unserialize<AddonModUrlDisplayOptions>(url.displayoptions);
-                this.displayDescription = typeof unserialized.printintro == 'undefined' || !!unserialized.printintro;
+                this.displayDescription = unserialized.printintro === undefined || !!unserialized.printintro;
             }
 
-            // Try to load module contents, it's needed to get the URL with parameters.
-            await CoreCourse.loadModuleContents(this.module, this.courseId, undefined, false, refresh, undefined, 'url');
+            // Try to get module contents, it's needed to get the URL with parameters.
+            const contents = await CoreCourse.getModuleContents(
+                this.module,
+                undefined,
+                undefined,
+                false,
+                refresh,
+                undefined,
+                'url',
+            );
 
             // Always use the URL from the module because it already includes the parameters.
-            this.url = this.module.contents[0] && this.module.contents[0].fileurl ? this.module.contents[0].fileurl : undefined;
+            this.url = contents[0] && contents[0].fileurl ? contents[0].fileurl : undefined;
 
             await this.calculateDisplayOptions(url);
 
         } catch {
-            // Fallback in case is not prefetched or not available.
-            const mod =
-                await CoreCourse.getModule(this.module.id, this.courseId, undefined, false, false, undefined, 'url');
+            // Fallback in case is not prefetched.
+            const mod = await CoreCourse.getModule(this.module.id, this.courseId, undefined, false, false, undefined, 'url');
 
             this.name = mod.name;
             this.description = mod.description;
             this.dataRetrieved.emit(mod);
 
-            if (!mod.contents.length) {
+            if (!mod.contents?.length) {
                 // If the data was cached maybe we don't have contents. Reject.
                 throw new CoreError('No contents found in module.');
             }
 
-            this.url = mod.contents && mod.contents[0] && mod.contents[0].fileurl ? mod.contents[0].fileurl : undefined;
+            this.url = mod.contents[0].fileurl ? mod.contents[0].fileurl : undefined;
         }
     }
 
@@ -131,7 +127,7 @@ export class AddonModUrlIndexComponent extends CoreCourseModuleMainResourceCompo
      * Calculate the display options to determine how the URL should be rendered.
      *
      * @param url Object with the URL data.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async calculateDisplayOptions(url: AddonModUrlUrl): Promise<void> {
         const displayType = AddonModUrl.getFinalDisplayType(url);
@@ -148,29 +144,31 @@ export class AddonModUrlIndexComponent extends CoreCourseModuleMainResourceCompo
             this.isVideo = CoreMimetypeUtils.isExtensionInGroup(extension, ['web_video']);
             this.isOther = !this.isImage && !this.isAudio && !this.isVideo;
         }
-
-        if (this.shouldIframe || (this.shouldEmbed && !this.isImage && !this.isAudio && !this.isVideo)) {
-            // Will be displayed in an iframe. Check if we need to auto-login.
-            const currentSite = CoreSites.getCurrentSite();
-
-            if (currentSite?.containsUrl(this.url)) {
-                // Format the URL to add auto-login.
-                this.url = await currentSite.getAutoLoginUrl(this.url!, false);
-            }
-        }
     }
 
     /**
      * Log view into the site and checks module completion.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async logView(): Promise<void> {
         try {
-            await AddonModUrl.logView(this.module.instance!, this.module.name);
-            CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
+            await AddonModUrl.logView(this.module.instance, this.module.name);
+
+            this.checkCompletion();
         } catch {
             // Ignore errors.
+        }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected async logActivity(): Promise<void> {
+        if ((this.shouldIframe ||
+            (this.shouldEmbed && this.isOther)) ||
+            (!this.shouldIframe && (!this.shouldEmbed || !this.isOther))) {
+            this.logView();
         }
     }
 
@@ -179,7 +177,11 @@ export class AddonModUrlIndexComponent extends CoreCourseModuleMainResourceCompo
      */
     go(): void {
         this.logView();
-        AddonModUrlHelper.open(this.url!);
+        if (!this.url) {
+            return;
+        }
+
+        AddonModUrlHelper.open(this.url);
     }
 
 }

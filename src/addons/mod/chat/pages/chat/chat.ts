@@ -13,17 +13,17 @@
 // limitations under the License.
 
 import { Component, ViewChild, OnInit, OnDestroy } from '@angular/core';
-import { CoreAnimations } from '@components/animations';
 import { CoreSendMessageFormComponent } from '@components/send-message-form/send-message-form';
 import { CanLeave } from '@guards/can-leave';
 import { IonContent } from '@ionic/angular';
 import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
-import { Network, NgZone, Translate } from '@singletons';
-import { CoreEventObserver, CoreEvents } from '@singletons/events';
+import { NgZone, Translate } from '@singletons';
+import { CoreEvents } from '@singletons/events';
 import { Subscription } from 'rxjs';
 import { AddonModChatUsersModalComponent, AddonModChatUsersModalResult } from '../../components/users-modal/users-modal';
 import { AddonModChat, AddonModChatProvider, AddonModChatUser } from '../../services/chat';
@@ -35,7 +35,6 @@ import { AddonModChatFormattedMessage, AddonModChatHelper } from '../../services
 @Component({
     selector: 'page-addon-mod-chat-chat',
     templateUrl: 'chat.html',
-    animations: [CoreAnimations.SLIDE_IN_OUT],
     styleUrls: ['chat.scss'],
 })
 export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
@@ -59,25 +58,18 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
     protected lastTime = 0;
     protected oldContentHeight = 0;
     protected onlineSubscription: Subscription;
-    protected keyboardObserver: CoreEventObserver;
     protected viewDestroyed = false;
     protected pollingRunning = false;
     protected users: AddonModChatUser[] = [];
 
     constructor() {
         this.currentUserId = CoreSites.getCurrentSiteUserId();
-        this.isOnline = CoreApp.isOnline();
-        this.onlineSubscription = Network.onChange().subscribe(() => {
+        this.isOnline = CoreNetwork.isOnline();
+        this.onlineSubscription = CoreNetwork.onChange().subscribe(() => {
             // Execute the callback in the Angular zone, so change detection doesn't stop working.
             NgZone.run(() => {
-                this.isOnline = CoreApp.isOnline();
+                this.isOnline = CoreNetwork.isOnline();
             });
-        });
-
-        // Recalculate footer position when keyboard is shown or hidden.
-        this.keyboardObserver = CoreEvents.on(CoreEvents.KEYBOARD_CHANGE, () => {
-            // @todo probably not needed.
-            // this.content.resize();
         });
     }
 
@@ -85,12 +77,12 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
      * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
-        this.courseId = CoreNavigator.getRouteNumberParam('courseId')!;
-        this.cmId = CoreNavigator.getRouteNumberParam('cmId')!;
-        this.chatId = CoreNavigator.getRouteNumberParam('chatId')!;
-        this.title = CoreNavigator.getRouteParam('title') || '';
-
         try {
+            this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId');
+            this.cmId = CoreNavigator.getRequiredRouteNumberParam('cmId');
+            this.chatId = CoreNavigator.getRequiredRouteNumberParam('chatId');
+            this.title = CoreNavigator.getRouteParam('title') || '';
+
             await this.loginUser();
 
             await this.fetchMessages();
@@ -124,7 +116,7 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
     /**
      * Convenience function to login the user.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async loginUser(): Promise<void> {
         this.sessionId = await AddonModChat.loginUser(this.chatId);
@@ -133,7 +125,7 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
     /**
      * Convenience function to fetch chat messages.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchMessages(): Promise<void> {
         const messagesInfo = await AddonModChat.getLatestMessages(this.sessionId!, this.lastTime);
@@ -166,7 +158,7 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
         this.messages[this.messages.length - 1].showTail = true;
 
         // New messages or beeps, scroll to bottom.
-        setTimeout(() => this.scrollToBottom());
+        this.scrollToBottom();
     }
 
     protected async loadMessageBeepWho(message: AddonModChatFormattedMessage): Promise<void> {
@@ -202,7 +194,7 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
      * Get the user fullname for a beep.
      *
      * @param id User Id before parsing.
-     * @return User fullname.
+     * @returns User fullname.
      */
     protected async getUserFullname(id: string): Promise<string> {
         const idNumber = parseInt(id, 10);
@@ -228,7 +220,7 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
             }
 
             return id;
-        } catch (error) {
+        } catch {
             // Ignore errors.
             return id;
         }
@@ -260,7 +252,7 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
     /**
      * Convenience function to be called every certain time to fetch chat messages.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchMessagesInterval(): Promise<void> {
         if (!this.isOnline || this.pollingRunning) {
@@ -327,7 +319,7 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
     /**
      * Try to reconnect.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async reconnect(): Promise<void> {
         const modal = await CoreDomUtils.showModalLoading();
@@ -348,43 +340,18 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
     /**
      * Scroll bottom when render has finished.
      */
-    scrollToBottom(): void {
+    async scrollToBottom(): Promise<void> {
         // Need a timeout to leave time to the view to be rendered.
-        setTimeout(() => {
-            if (!this.viewDestroyed) {
-                this.content?.scrollToBottom();
-            }
-        });
-    }
-
-    /**
-     * Content or scroll has been resized. For content, only call it if it's been added on top.
-     */
-    resizeContent(): void {
-        // @todo probably not needed.
-        // let top = this.content.getContentDimensions().scrollTop;
-        // this.content.resize();
-
-        // // Wait for new content height to be calculated.
-        // setTimeout(() => {
-        //     // Visible content size changed, maintain the bottom position.
-        //     if (!this.viewDestroyed && this.content && this.domUtils.getContentHeight(this.content) != this.oldContentHeight) {
-        //         if (!top) {
-        //             top = this.content.getContentDimensions().scrollTop;
-        //         }
-
-        //         top += this.oldContentHeight - this.domUtils.getContentHeight(this.content);
-        //         this.oldContentHeight = this.domUtils.getContentHeight(this.content);
-
-        //         this.content.scrollTo(0, top, 0);
-        //     }
-        // });
+        await CoreUtils.nextTick();
+        if (!this.viewDestroyed) {
+            this.content?.scrollToBottom();
+        }
     }
 
     /**
      * Check if we can leave the page or not.
      *
-     * @return Resolved with true if we can leave it, rejected if not.
+     * @returns Resolved with true if we can leave it, rejected if not.
      */
     async canLeave(): Promise<boolean> {
         if (! this.messages.some((message) => !message.special)) {
@@ -402,7 +369,6 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
      */
     ngOnDestroy(): void {
         this.onlineSubscription && this.onlineSubscription.unsubscribe();
-        this.keyboardObserver && this.keyboardObserver.off();
         this.stopPolling();
         this.viewDestroyed = true;
     }

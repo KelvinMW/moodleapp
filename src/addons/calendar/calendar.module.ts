@@ -63,15 +63,14 @@ const mainMenuChildrenRoutes: Routes = [
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
-            useFactory: () => async () => {
+            useValue: async () => {
                 CoreContentLinksDelegate.registerHandler(AddonCalendarViewLinkHandler.instance);
                 CoreMainMenuDelegate.registerHandler(AddonCalendarMainMenuHandler.instance);
                 CoreCronDelegate.register(AddonCalendarSyncCronHandler.instance);
 
                 await AddonCalendar.initialize();
 
-                AddonCalendar.scheduleAllSitesEventsNotifications();
+                AddonCalendar.updateAllSitesEventReminders();
             },
         },
     ],

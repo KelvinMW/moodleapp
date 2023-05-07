@@ -17,9 +17,7 @@ import { Component, OnDestroy, OnInit, Optional, Type } from '@angular/core';
 import { Params } from '@angular/router';
 import { CoreCommentsProvider } from '@features/comments/services/comments';
 import { CoreCourseModuleMainActivityComponent } from '@features/course/classes/main-activity-component';
-import { CoreCourseModule } from '@features/course/course.module';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
-import { CoreCourse } from '@features/course/services/course';
 import { CoreRatingProvider } from '@features/rating/services/rating';
 import { CoreRatingSyncProvider } from '@features/rating/services/rating-sync';
 import { IonContent } from '@ionic/angular';
@@ -41,7 +39,7 @@ import {
     AddonModDataData,
     AddonModDataSearchEntriesAdvancedField,
 } from '../../services/data';
-import { AddonModDataHelper } from '../../services/data-helper';
+import { AddonModDataHelper, AddonModDatDisplayFieldsOptions } from '../../services/data-helper';
 import { AddonModDataAutoSyncData, AddonModDataSyncProvider, AddonModDataSyncResult } from '../../services/data-sync';
 import { AddonModDataModuleHandlerService } from '../../services/handlers/module';
 import { AddonModDataPrefetchHandler } from '../../services/handlers/prefetch';
@@ -95,9 +93,10 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
         fields: Record<number, AddonModDataField>;
         entries: Record<number, AddonModDataEntry>;
         database: AddonModDataData;
-        module: CoreCourseModule;
+        title: string;
         group: number;
-        gotoEntry: (a: number) => void;
+        access: AddonModDataGetDataAccessInformationWSResponse | undefined;
+        gotoEntry: (entryId: number) => void;
     };
 
     // Data for found records translation.
@@ -105,7 +104,7 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
         num: number;
         max: number;
         reseturl: string;
-    };;
+    };
 
     hasOfflineRatings = false;
 
@@ -134,7 +133,7 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
         // Refresh entries on change.
         this.entryChangedObserver = CoreEvents.on(AddonModDataProvider.ENTRY_CHANGED, (eventData) => {
             if (this.database?.id == eventData.dataId) {
-                this.loaded = false;
+                this.showLoading = true;
 
                 return this.loadContent(true);
             }
@@ -155,13 +154,12 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
         });
 
         await this.loadContent(false, true);
-        await this.logView(true);
     }
 
     /**
      * Perform the invalidate content function.
      *
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async invalidateContent(): Promise<void> {
         const promises: Promise<void>[] = [];
@@ -188,11 +186,11 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
      * Compares sync event data with current data to check if refresh content is needed.
      *
      * @param syncEventData Data receiven on sync observer.
-     * @return True if refresh is needed, false otherwise.
+     * @returns True if refresh is needed, false otherwise.
      */
     protected isRefreshSyncNeeded(syncEventData: AddonModDataAutoSyncData): boolean {
-        if (this.database && syncEventData.dataId == this.database.id && typeof syncEventData.entryId == 'undefined') {
-            this.loaded = false;
+        if (this.database && syncEventData.dataId == this.database.id && syncEventData.entryId === undefined) {
+            this.showLoading = true;
             // Refresh the data.
             this.content?.scrollToTop();
 
@@ -203,14 +201,9 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
     }
 
     /**
-     * Download data contents.
-     *
-     * @param refresh If it's refreshing content.
-     * @param sync If it should try to sync.
-     * @param showErrors If show errors to the user of hide them.
-     * @return Promise resolved when done.
+     * @inheritdoc
      */
-    protected async fetchContent(refresh: boolean = false, sync: boolean = false, showErrors: boolean = false): Promise<void> {
+    protected async fetchContent(refresh?: boolean, sync = false, showErrors = false): Promise<void> {
         let canAdd = false;
         let canSearch = false;
 
@@ -226,6 +219,12 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
         }
 
         this.groupInfo = await CoreGroups.getActivityGroupInfo(this.database.coursemodule);
+        if (this.groupInfo.visibleGroups && this.groupInfo.groups.length) {
+            // There is a bug in Moodle with All participants and visible groups (MOBILE-3597). Remove it.
+            this.groupInfo.groups = this.groupInfo.groups.filter(group => group.id !== 0);
+            this.groupInfo.defaultGroupId = this.groupInfo.groups[0].id;
+        }
+
         this.selectedGroup = CoreGroups.validateGroupId(this.selectedGroup, this.groupInfo);
 
         this.access = await AddonModData.getDatabaseAccessInformation(this.database.id, {
@@ -251,6 +250,8 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
 
             this.isEmpty = true;
             this.groupInfo = undefined;
+
+            return;
         } else {
             canSearch = true;
             canAdd = this.access.canaddentry;
@@ -271,14 +272,13 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
         } finally {
             this.canAdd = canAdd;
             this.canSearch = canSearch;
-            this.fillContextMenu(refresh);
         }
     }
 
     /**
      * Fetch current database entries.
      *
-     * @return Resolved then done.
+     * @returns Resolved then done.
      */
     protected async fetchEntriesData(): Promise<void> {
 
@@ -303,13 +303,13 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
         this.hasNextPage = numEntries >= AddonModDataProvider.PER_PAGE && ((this.search.page + 1) *
             AddonModDataProvider.PER_PAGE) < entries.totalcount;
 
-        this.hasOffline = entries.hasOfflineActions;
+        this.hasOffline = !!entries.hasOfflineActions;
 
         this.hasOfflineRatings = !!entries.hasOfflineRatings;
 
         this.entriesRendered = '';
 
-        this.foundRecordsTranslationData = typeof entries.maxcount != 'undefined'
+        this.foundRecordsTranslationData = entries.maxcount !== undefined
             ? {
                 num: entries.totalcount,
                 max: entries.maxcount,
@@ -349,18 +349,21 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
             this.entries.forEach((entry, index) => {
                 entriesById[entry.id] = entry;
 
-                const actions = AddonModDataHelper.getActions(this.database!, this.access!, entry);
-                const offset = this.search.searching
-                    ? 0
-                    : this.search.page * AddonModDataProvider.PER_PAGE + index - numOfflineEntries;
+                const actions = AddonModDataHelper.getActions(this.database!, this.access!, entry, AddonModDataTemplateMode.LIST);
+                const options: AddonModDatDisplayFieldsOptions = {};
+                if (!this.search.searching) {
+                    options.offset = this.search.page * AddonModDataProvider.PER_PAGE + index - numOfflineEntries;
+                    options.sortBy = this.search.sortBy;
+                    options.sortDirection = this.search.sortDirection;
+                }
 
                 entriesHTML += AddonModDataHelper.displayShowFields(
                     template,
                     this.fieldsArray,
                     entry,
-                    offset,
                     AddonModDataTemplateMode.LIST,
                     actions,
+                    options,
                 );
             });
 
@@ -371,9 +374,10 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
                 fields: this.fields,
                 entries: entriesById,
                 database: this.database!,
-                module: this.module,
+                title: this.module.name,
                 group: this.selectedGroup,
-                gotoEntry: this.gotoEntry.bind(this),
+                access: this.access,
+                gotoEntry: (entryId) => this.gotoEntry(entryId),
             };
         } else if (!this.search.searching) {
             // Empty and no searching.
@@ -408,27 +412,32 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
      * Performs the search and closes the modal.
      *
      * @param page Page number.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async searchEntries(page: number): Promise<void> {
-        this.loaded = false;
+        this.showLoading = true;
         this.search.page = page;
 
         try {
             await this.fetchEntriesData();
             // Log activity view for coherence with Moodle web.
-            await this.logView();
+            await this.logActivity();
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'core.course.errorgetmodule', true);
         } finally {
-            this.loaded = true;
+            this.showLoading = false;
         }
     }
 
     /**
      * Reset all search filters and closes the modal.
+     *
+     * @param ev Event.
      */
-    searchReset(): void {
+    searchReset(ev: Event): void {
+        ev.preventDefault();
+        ev.stopPropagation();
+
         this.search.sortBy = '0';
         this.search.sortDirection = 'DESC';
         this.search.text = '';
@@ -442,7 +451,7 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
      * Set group to see the database.
      *
      * @param groupId Group ID.
-     * @return Resolved when new group is selected or rejected if not.
+     * @returns Resolved when new group is selected or rejected if not.
      */
     async setGroup(groupId: number): Promise<void> {
         this.selectedGroup = groupId;
@@ -463,7 +472,7 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
             await this.fetchEntriesData();
 
             // Log activity view for coherence with Moodle web.
-            return this.logView();
+            return this.logActivity();
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'core.course.errorgetmodule', true);
         }
@@ -474,8 +483,7 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
      */
     gotoAddEntries(): void {
         const params: Params = {
-            module: this.module,
-            courseId: this.courseId,
+            title: this.module.name,
             group: this.selectedGroup,
         };
 
@@ -492,8 +500,7 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
      */
     gotoEntry(entryId: number): void {
         const params: Params = {
-            module: this.module,
-            courseId: this.courseId,
+            title: this.module.name,
             group: this.selectedGroup,
         };
 
@@ -502,6 +509,8 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
             const pageXOffset = this.entries.findIndex((entry) => entry.id == entryId);
             if (pageXOffset >= 0) {
                 params.offset = this.search.page * AddonModDataProvider.PER_PAGE + pageXOffset;
+                params.sortBy = this.search.sortBy;
+                params.sortDirection = this.search.sortDirection;
             }
         }
 
@@ -512,43 +521,21 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
     }
 
     /**
-     * Performs the sync of the activity.
-     *
-     * @return Promise resolved when done.
+     * @inheritdoc
      */
     protected sync(): Promise<AddonModDataSyncResult> {
         return AddonModDataPrefetchHandler.sync(this.module, this.courseId);
     }
 
     /**
-     * Checks if sync has succeed from result sync data.
-     *
-     * @param result Data returned on the sync function.
-     * @return If suceed or not.
+     * @inheritdoc
      */
-    protected hasSyncSucceed(result: AddonModDataSyncResult): boolean {
-        return result.updated;
-    }
-
-    /**
-     * Log viewing the activity.
-     *
-     * @param checkCompletion Whether to check completion.
-     * @return Promise resolved when done.
-     */
-    protected async logView(checkCompletion = false): Promise<void> {
+    protected async logActivity(): Promise<void> {
         if (!this.database || !this.database.id) {
             return;
         }
 
-        try {
-            await AddonModData.logView(this.database.id, this.database.name);
-            if (checkCompletion) {
-                CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-            }
-        } catch {
-            // Ignore errors, the user could be offline.
-        }
+        await AddonModData.logView(this.database.id, this.database.name);
     }
 
     /**
@@ -564,7 +551,7 @@ export class AddonModDataIndexComponent extends CoreCourseModuleMainActivityComp
 }
 
 export type AddonModDataSearchDataParams = {
-    sortBy: string;
+    sortBy: string | number;
     sortDirection: string;
     page: number;
     text: string;

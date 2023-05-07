@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, Input, Output, OnChanges, EventEmitter, SimpleChange } from '@angular/core';
+import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreTextUtils } from '@services/utils/text';
-import { CoreTimeUtils } from '@services/utils/time';
-import { CoreUtils } from '@services/utils/utils';
-import { CoreCourse } from '@features/course/services/course';
-import moment from 'moment';
 import { CoreContentLinksHelper } from '@features/contentlinks/services/contentlinks-helper';
-import { AddonCalendarEvent } from '@addons/calendar/services/calendar';
+import { CoreEnrolledCourseDataWithOptions } from '@features/courses/services/courses-helper';
+import { AddonBlockTimelineDayEvents } from '@addons/block/timeline/classes/section';
 
 /**
  * Directive to render a list of events in course overview.
@@ -31,102 +28,25 @@ import { AddonCalendarEvent } from '@addons/calendar/services/calendar';
     templateUrl: 'addon-block-timeline-events.html',
     styleUrls: ['events.scss'],
 })
-export class AddonBlockTimelineEventsComponent implements OnChanges {
+export class AddonBlockTimelineEventsComponent {
 
-    @Input() events: AddonBlockTimelineEvent[] = []; // The events to render.
-    @Input() showCourse?: boolean | string; // Whether to show the course name.
-    @Input() from = 0; // Number of days from today to offset the events.
-    @Input() to?: number; // Number of days from today to limit the events to. If not defined, no limit.
-    @Input() canLoadMore?: boolean; // Whether more events can be loaded.
-    @Output() loadMore: EventEmitter<void>; // Notify that more events should be loaded.
-
-    empty = true;
-    loadingMore = false;
-    filteredEvents: AddonBlockTimelineEventFilteredEvent[] = [];
-
-    constructor() {
-        this.loadMore = new EventEmitter();
-    }
-
-    /**
-     * Detect changes on input properties.
-     */
-    ngOnChanges(changes: {[name: string]: SimpleChange}): void {
-        this.showCourse = CoreUtils.isTrueOrOne(this.showCourse);
-
-        if (changes.events || changes.from || changes.to) {
-            if (this.events && this.events.length > 0) {
-                const filteredEvents = this.filterEventsByTime(this.from, this.to);
-                this.empty = !filteredEvents || filteredEvents.length <= 0;
-
-                const eventsByDay: Record<number, AddonCalendarEvent[]> = {};
-                filteredEvents.forEach((event) => {
-                    const dayTimestamp = CoreTimeUtils.getMidnightForTimestamp(event.timesort);
-                    if (eventsByDay[dayTimestamp]) {
-                        eventsByDay[dayTimestamp].push(event);
-                    } else {
-                        eventsByDay[dayTimestamp] = [event];
-                    }
-                });
-
-                const todaysMidnight = CoreTimeUtils.getMidnightForTimestamp();
-                this.filteredEvents = [];
-                Object.keys(eventsByDay).forEach((key) => {
-                    const dayTimestamp = parseInt(key);
-                    this.filteredEvents.push({
-                        color: dayTimestamp < todaysMidnight ? 'danger' : 'light',
-                        dayTimestamp,
-                        events: eventsByDay[dayTimestamp],
-                    });
-                });
-            } else {
-                this.empty = true;
-            }
-        }
-    }
-
-    /**
-     * Filter the events by time.
-     *
-     * @param start Number of days to start getting events from today. E.g. -1 will get events from yesterday.
-     * @param end Number of days after the start.
-     * @return Filtered events.
-     */
-    protected filterEventsByTime(start: number, end?: number): AddonBlockTimelineEvent[] {
-        start = moment().add(start, 'days').startOf('day').unix();
-        end = typeof end != 'undefined' ? moment().add(end, 'days').startOf('day').unix() : end;
-
-        return this.events.filter((event) => {
-            if (end) {
-                return start <= event.timesort && event.timesort < end;
-            }
-
-            return start <= event.timesort;
-        }).map((event) => {
-            event.iconUrl = CoreCourse.getModuleIconSrc(event.icon.component);
-            event.iconTitle = event.modulename && CoreCourse.translateModuleName(event.modulename);
-
-            return event;
-        });
-    }
-
-    /**
-     * Load more events clicked.
-     */
-    loadMoreEvents(): void {
-        this.loadingMore = true;
-        this.loadMore.emit();
-    }
+    @Input() events: AddonBlockTimelineDayEvents[] = []; // The events to render.
+    @Input() course?: CoreEnrolledCourseDataWithOptions; // Whether to show the course name.
+    @Input() showInlineCourse = true; // Whether to show the course name within event items.
+    @Input() canLoadMore = false; // Whether more events can be loaded.
+    @Input() loadingMore = false; // Whether loading is ongoing.
+    @Output() loadMore = new EventEmitter(); // Notify that more events should be loaded.
 
     /**
      * Action clicked.
      *
-     * @param e Click event.
+     * @param event Click event.
      * @param url Url of the action.
+     * @returns Promise resolved when done.
      */
-    async action(e: Event, url: string): Promise<void> {
-        e.preventDefault();
-        e.stopPropagation();
+    async action(event: Event, url: string): Promise<void> {
+        event.preventDefault();
+        event.stopPropagation();
 
         // Fix URL format.
         url = CoreTextUtils.decodeHTMLEntities(url);
@@ -136,7 +56,7 @@ export class AddonBlockTimelineEventsComponent implements OnChanges {
         try {
             const treated = await CoreContentLinksHelper.handleLink(url);
             if (!treated) {
-                return CoreSites.getCurrentSite()?.openInBrowserWithAutoLoginIfSameSite(url);
+                return CoreSites.getRequiredCurrentSite().openInBrowserWithAutoLogin(url);
             }
         } finally {
             modal.dismiss();
@@ -144,14 +64,3 @@ export class AddonBlockTimelineEventsComponent implements OnChanges {
     }
 
 }
-
-type AddonBlockTimelineEvent = AddonCalendarEvent & {
-    iconUrl?: string;
-    iconTitle?: string;
-};
-
-type AddonBlockTimelineEventFilteredEvent = {
-    events: AddonBlockTimelineEvent[];
-    dayTimestamp: number;
-    color: string;
-};

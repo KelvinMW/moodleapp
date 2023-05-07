@@ -20,6 +20,7 @@ import { makeSingleton } from '@singletons';
 import { CoreCourse } from '../../course/services/course';
 import { CoreCourses } from '../../courses/services/courses';
 import { AddonModForum, AddonModForumData } from '@addons/mod/forum/services/forum';
+import { CoreError } from '@classes/errors/error';
 
 /**
  * Items with index 1 and 3 were removed on 2.5 and not being supported in the app.
@@ -43,7 +44,7 @@ export class CoreSiteHomeProvider {
      * Get the news forum for the Site Home.
      *
      * @param siteHomeId Site Home ID.
-     * @return Promise resolved with the forum if found, rejected otherwise.
+     * @returns Promise resolved with the forum if found, rejected otherwise.
      */
     async getNewsForum(siteHomeId?: number): Promise<AddonModForumData> {
         if (!siteHomeId) {
@@ -57,14 +58,14 @@ export class CoreSiteHomeProvider {
             return forum;
         }
 
-        throw null;
+        throw new CoreError('No news forum found');
     }
 
     /**
      * Invalidate the WS call to get the news forum for the Site Home.
      *
      * @param siteHomeId Site Home ID.
-     * @return Promise resolved when invalidated.
+     * @returns Promise resolved when invalidated.
      */
     async invalidateNewsForum(siteHomeId: number): Promise<void> {
         await AddonModForum.invalidateForumData(siteHomeId);
@@ -74,7 +75,7 @@ export class CoreSiteHomeProvider {
      * Returns whether or not the frontpage is available for the current site.
      *
      * @param siteId The site ID. If not defined, current site.
-     * @return Promise resolved with boolean: whether it's available.
+     * @returns Promise resolved with boolean: whether it's available.
      */
     async isAvailable(siteId?: string): Promise<boolean> {
         try {
@@ -124,7 +125,7 @@ export class CoreSiteHomeProvider {
      * Check if Site Home is disabled in a certain site.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved with true if disabled, rejected or resolved with false otherwise.
+     * @returns Promise resolved with true if disabled, rejected or resolved with false otherwise.
      */
     async isDisabled(siteId?: string): Promise<boolean> {
         const site = await CoreSites.getSite(siteId);
@@ -136,7 +137,7 @@ export class CoreSiteHomeProvider {
      * Check if Site Home is disabled in a certain site.
      *
      * @param site Site. If not defined, use current site.
-     * @return Whether it's disabled.
+     * @returns Whether it's disabled.
      */
     isDisabledInSite(site: CoreSite): boolean {
         site = site || CoreSites.getCurrentSite();
@@ -148,7 +149,7 @@ export class CoreSiteHomeProvider {
      * Get the nams of the valid frontpage items.
      *
      * @param frontpageItemIds CSV string with indexes of site home components.
-     * @return Valid names for each item.
+     * @returns Valid names for each item.
      */
     async getFrontPageItems(frontpageItemIds?: string): Promise<string[]> {
         if (!frontpageItemIds) {
@@ -168,20 +169,12 @@ export class CoreSiteHomeProvider {
                     // Get number of news items to show.
                     add = !!CoreSites.getCurrentSite()?.getStoredConfig('newsitems');
                     break;
-                case FrontPageItemNames['LIST_OF_CATEGORIES']:
                 case FrontPageItemNames['COMBO_LIST']:
+                    itemNumber = FrontPageItemNames['LIST_OF_CATEGORIES']; // Do not break here.
+                case FrontPageItemNames['LIST_OF_CATEGORIES']:
                 case FrontPageItemNames['LIST_OF_COURSE']:
-                    add = CoreCourses.isGetCoursesByFieldAvailable();
-                    if (add && itemNumber == FrontPageItemNames['COMBO_LIST']) {
-                        itemNumber = FrontPageItemNames['LIST_OF_CATEGORIES'];
-                    }
-                    break;
                 case FrontPageItemNames['ENROLLED_COURSES']:
-                    if (!CoreCourses.isMyCoursesDisabledInSite()) {
-                        const courses = await CoreCourses.getUserCourses();
-
-                        add = courses.length > 0;
-                    }
+                    add = true;
                     break;
                 case FrontPageItemNames['COURSE_SEARCH_BOX']:
                     add = !CoreCourses.isSearchCoursesDisabledInSite();

@@ -17,12 +17,17 @@ import { RouterModule, Routes } from '@angular/router';
 
 import { CoreSharedModule } from '@/core/shared.module';
 import { AddonModImscpComponentsModule } from './components/components.module';
-import { AddonModImscpIndexPage } from './pages/index/index.page';
+import { AddonModImscpIndexPage } from './pages/index/index';
+import { AddonModImscpViewPage } from '@addons/mod/imscp/pages/view/view';
 
 const routes: Routes = [
     {
         path: ':courseId/:cmId',
         component: AddonModImscpIndexPage,
+    },
+    {
+        path: ':courseId/:cmId/view',
+        component: AddonModImscpViewPage,
     },
 ];
 
@@ -34,6 +39,7 @@ const routes: Routes = [
     ],
     declarations: [
         AddonModImscpIndexPage,
+        AddonModImscpViewPage,
     ],
 })
 export class AddonModImscpLazyModule {}

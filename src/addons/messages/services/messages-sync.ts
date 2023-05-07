@@ -26,7 +26,7 @@ import { CoreEvents } from '@singletons/events';
 import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton, Translate } from '@singletons';
 import { CoreSites } from '@services/sites';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreConstants } from '@/core/constants';
 import { CoreUser } from '@features/user/services/user';
 import { CoreError } from '@classes/errors/error';
@@ -50,7 +50,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
      *
      * @param conversationId Conversation ID.
      * @param userId User ID talking to (if no conversation ID).
-     * @return Sync ID.
+     * @returns Sync ID.
      */
     protected getSyncId(conversationId?: number, userId?: number): string {
         if (conversationId) {
@@ -69,12 +69,12 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
      * @param siteId Site ID to sync. If not defined, sync all sites.
      * @param onlyDeviceOffline True to only sync discussions that failed because device was offline,
      *                          false to sync all.
-     * @return Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     syncAllDiscussions(siteId?: string, onlyDeviceOffline: boolean = false): Promise<void> {
         const syncFunctionLog = 'all discussions' + (onlyDeviceOffline ? ' (Only offline)' : '');
 
-        return this.syncOnSites(syncFunctionLog, this.syncAllDiscussionsFunc.bind(this, onlyDeviceOffline), siteId);
+        return this.syncOnSites(syncFunctionLog, (siteId) => this.syncAllDiscussionsFunc(onlyDeviceOffline, siteId), siteId);
     }
 
     /**
@@ -82,7 +82,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
      *
      * @param onlyDeviceOffline True to only sync discussions that failed because device was offline.
      * @param siteId Site ID to sync. If not defined, sync all sites.
-     * @param Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     protected async syncAllDiscussionsFunc(onlyDeviceOffline: boolean, siteId: string): Promise<void> {
         const userIds: number[] = [];
@@ -107,7 +107,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
         // Sync all conversations.
         conversationIds.forEach((conversationId) => {
             promises.push(this.syncDiscussion(conversationId, undefined, siteId).then((result) => {
-                if (typeof result == 'undefined') {
+                if (result === undefined) {
                     return;
                 }
 
@@ -120,7 +120,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
 
         userIds.forEach((userId) => {
             promises.push(this.syncDiscussion(undefined, userId, siteId).then((result) => {
-                if (typeof result == 'undefined') {
+                if (result === undefined) {
                     return;
                 }
 
@@ -140,16 +140,17 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
      * @param conversationId Conversation ID.
      * @param userId User ID talking to (if no conversation ID).
      * @param siteId Site ID.
-     * @return Promise resolved with the list of warnings if sync is successful, rejected otherwise.
+     * @returns Promise resolved with the list of warnings if sync is successful, rejected otherwise.
      */
     syncDiscussion(conversationId?: number, userId?: number, siteId?: string): Promise<AddonMessagesSyncEvents> {
         siteId = siteId || CoreSites.getCurrentSiteId();
 
         const syncId = this.getSyncId(conversationId, userId);
 
-        if (this.isSyncing(syncId, siteId)) {
+        const currentSyncPromise = this.getOngoingSync(syncId, siteId);
+        if (currentSyncPromise) {
             // There's already a sync ongoing for this conversation, return the promise.
-            return this.getOngoingSync(syncId, siteId)!;
+            return currentSyncPromise;
         }
 
         return this.addOngoingSync(syncId, this.performSyncDiscussion(conversationId, userId, siteId), siteId);
@@ -161,7 +162,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
      * @param conversationId Conversation ID.
      * @param userId User ID talking to (if no conversation ID).
      * @param siteId Site ID.
-     * @return Promise resolved with the list of warnings if sync is successful, rejected otherwise.
+     * @returns Promise resolved with the list of warnings if sync is successful, rejected otherwise.
      */
     protected async performSyncDiscussion(
         conversationId: number | undefined,
@@ -192,7 +193,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
         if (!messages.length) {
             // Nothing to sync.
             return result;
-        } else if (!CoreApp.isOnline()) {
+        } else if (!CoreNetwork.isOnline()) {
             // Cannot sync in offline. Mark messages as device offline.
             AddonMessagesOffline.setMessagesDeviceOffline(messages, true);
 
@@ -227,7 +228,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
             } catch (error) {
                 if (!CoreUtils.isWebServiceError(error)) {
                     // Error sending, stop execution.
-                    if (CoreApp.isOnline()) {
+                    if (CoreNetwork.isOnline()) {
                         // App is online, unmark deviceoffline if marked.
                         AddonMessagesOffline.setMessagesDeviceOffline(messages, false);
                     }
@@ -268,7 +269,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
      * @param conversationId Conversation ID.
      * @param userId User ID talking to (if no conversation ID).
      * @param siteId Site ID.
-     * @return Promise resolved with the messages texts.
+     * @returns Promise resolved with the messages texts.
      */
     protected async getMessagesSentAfter(
         time: number,
@@ -329,7 +330,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
      * @param userId User ID talking to (if no conversation ID).
      * @param errors List of errors.
      * @param warnings Array where to place the warnings.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async handleSyncErrors(
         conversationId?: number,
@@ -384,7 +385,7 @@ export class AddonMessagesSyncProvider extends CoreSyncBaseProvider<AddonMessage
      * @param conversationId Conversation ID.
      * @param userId User ID talking to (if no conversation ID).
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when there's no sync going on for the identifier.
+     * @returns Promise resolved when there's no sync going on for the identifier.
      */
     waitForSyncConversation(
         conversationId?: number,

@@ -3,11 +3,13 @@
         <ion-buttons slot="start">
             <ion-back-button [text]="'core.back' | translate"></ion-back-button>
         </ion-buttons>
-        <h1>
-            <core-format-text *ngIf="h5pActivity" [text]="h5pActivity.name" contextLevel="module"
-                [contextInstanceId]="h5pActivity.coursemodule" [courseId]="courseId">
-            </core-format-text>
-        </h1>
+        <ion-title>
+            <h1>
+                <core-format-text *ngIf="h5pActivity" [text]="h5pActivity.name" contextLevel="module"
+                    [contextInstanceId]="h5pActivity.coursemodule" [courseId]="courseId">
+                </core-format-text>
+            </h1>
+        </ion-title>
     </ion-toolbar>
 </ion-header>
 <ion-content>
@@ -17,8 +19,8 @@
     <core-loading [hideUntil]="loaded">
         <!-- User viewed. -->
         <ion-item class="ion-text-wrap" *ngIf="user && !isCurrentUser" core-user-link [userId]="user.id" [courseId]="courseId"
-            [attr.aria-label]="user.fullname">
-            <core-user-avatar [user]="user" slot="start" [courseId]="courseId"></core-user-avatar>
+            [attr.aria-label]="user.fullname" button detail="true">
+            <core-user-avatar [user]="user" slot="start" [courseId]="courseId" [linkProfile]="false"></core-user-avatar>
             <ion-label>
                 <h2>{{ user.fullname }}</h2>
             </ion-label>
@@ -35,7 +37,7 @@
             <ng-container *ngIf="attemptsData.scored">
                 <ion-item-divider>
                     <ion-label>
-                        <h2>{{ attemptsData.scored.title }}</h2>
+                        <h3 class="item-heading">{{ attemptsData.scored.title }}</h3>
                     </ion-label>
                 </ion-item-divider>
                 <ng-container *ngTemplateOutlet="attemptsTemplate; context: {attempts: attemptsData.scored.attempts}">
@@ -46,7 +48,7 @@
             <ng-container *ngIf="attemptsData.attempts && attemptsData.attempts.length">
                 <ion-item-divider>
                     <ion-label>
-                        <h2>{{ 'addon.mod_h5pactivity.all_attempts' | translate }}</h2>
+                        <h3 class="item-heading">{{ 'addon.mod_h5pactivity.all_attempts' | translate }}</h3>
                     </ion-label>
                 </ion-item-divider>
                 <ng-container *ngTemplateOutlet="attemptsTemplate; context: {attempts: attemptsData.attempts}"></ng-container>
@@ -99,7 +101,7 @@
                         [alt]="'addon.mod_h5pactivity.attempt_completion_no' | translate">
                 </ion-col>
                 <ion-col class="ion-text-center addon-mod_h5pactivity-table-success-col">
-                    <ion-icon *ngIf="attempt.success !== null && attempt.success" name="fas-check-circle"
+                    <ion-icon *ngIf="attempt.success !== null && attempt.success" name="fas-circle-check"
                         [attr.aria-label]="'addon.mod_h5pactivity.attempt_success_pass' | translate">
                     </ion-icon>
                     <ion-icon *ngIf="attempt.success !== null && !attempt.success" name="far-circle"

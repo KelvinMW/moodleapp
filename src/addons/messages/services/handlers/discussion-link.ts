@@ -37,7 +37,7 @@ export class AddonMessagesDiscussionLinkHandlerService extends CoreContentLinksH
      * @param siteIds List of sites the URL belongs to.
      * @param url The URL to treat.
      * @param params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
-     * @return List of (or promise resolved with list of) actions.
+     * @returns List of (or promise resolved with list of) actions.
      */
     getActions(
         siteIds: string[],
@@ -46,10 +46,8 @@ export class AddonMessagesDiscussionLinkHandlerService extends CoreContentLinksH
     ): CoreContentLinksAction[] | Promise<CoreContentLinksAction[]> {
         return [{
             action: (siteId): void => {
-                const stateParams = {
-                    userId: parseInt(params.id || params.user2, 10),
-                };
-                CoreNavigator.navigateToSitePath('/messages/discussion', { params: stateParams, siteId });
+                const userId = parseInt(params.id || params.user2, 10);
+                CoreNavigator.navigateToSitePath(`/messages/discussion/user/${userId}`, { siteId });
             },
         }];
     }
@@ -61,7 +59,7 @@ export class AddonMessagesDiscussionLinkHandlerService extends CoreContentLinksH
      * @param siteId The site ID.
      * @param url The URL to treat.
      * @param params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
-     * @return Whether the handler is enabled for the URL and site.
+     * @returns Whether the handler is enabled for the URL and site.
      */
     async isEnabled(siteId: string, url: string, params: Record<string, string>): Promise<boolean> {
         const enabled = await AddonMessages.isPluginEnabled(siteId);
@@ -69,12 +67,12 @@ export class AddonMessagesDiscussionLinkHandlerService extends CoreContentLinksH
             return false;
         }
 
-        if (typeof params.id == 'undefined' && typeof params.user2 == 'undefined') {
+        if (params.id === undefined && params.user2 === undefined) {
             // Other user not defined, cannot treat the URL.
             return false;
         }
 
-        if (typeof params.user1 != 'undefined') {
+        if (params.user1 !== undefined) {
             // Check if user1 is the current user, since the app only supports current user.
             const site = await CoreSites.getSite(siteId);
 

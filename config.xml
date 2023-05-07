@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<widget android-versionCode="39503" id="com.moodle.moodlemobile" ios-CFBundleVersion="3.9.5.3" version="3.9.5" versionCode="39503" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+<widget android-versionCode="42000" id="com.moodle.moodlemobile" ios-CFBundleVersion="4.2.0.0" version="4.2.0" versionCode="42000" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cdv="http://cordova.apache.org/ns/1.0">
     <name>Moodle</name>
     <description>Moodle official app</description>
     <author email="mobile@moodle.com" href="http://moodle.com">Moodle Mobile team</author>
@@ -27,7 +27,7 @@
     <preference name="UIWebViewBounce" value="false" />
     <preference name="DisallowOverscroll" value="true" />
     <preference name="prerendered-icon" value="true" />
-    <preference name="AppendUserAgent" value="MoodleMobile" />
+    <preference name="AppendUserAgent" value="MoodleMobile 4.2.0 (42000)" />
     <preference name="BackupWebStorage" value="none" />
     <preference name="ScrollEnabled" value="false" />
     <preference name="KeyboardDisplayRequiresUserAction" value="false" />
@@ -35,33 +35,40 @@
     <preference name="AllowInlineMediaPlayback" value="true" />
     <preference name="LoadUrlTimeoutValue" value="60000" />
     <preference name="load-url-timeout" value="60000" />
-    <preference name="SplashScreen" value="screen" />
-    <preference name="SplashScreenDelay" value="15000" />
-    <preference name="SplashMaintainAspectRatio" value="true" />
-    <preference name="SplashShowOnlyFirstTime" value="false" />
+    <preference name="AutoHideSplashScreen" value="false" />
     <preference name="android-minSdkVersion" value="22" />
-    <preference name="android-targetSdkVersion" value="30" />
+    <preference name="android-targetSdkVersion" value="33" />
     <preference name="AndroidPersistentFileLocation" value="Compatibility" />
     <preference name="AndroidInsecureFileModeEnabled" value="true" />
     <preference name="CustomURLSchemePluginClearsAndroidIntent" value="true" />
     <preference name="iosPersistentFileLocation" value="Compatibility" />
     <preference name="iosScheme" value="moodleappfs" />
     <preference name="WKWebViewOnly" value="true" />
+    <preference name="WKFullScreenEnabled" value="false" />
+    <preference name="AndroidXEnabled" value="true" />
+    <preference name="GradlePluginGoogleServicesEnabled" value="true" />
+    <preference name="GradlePluginGoogleServicesVersion" value="4.3.10" />
+    <preference name="GradlePluginKotlinVersion" value="1.7.21" />
+    <preference name="StatusBarOverlaysWebView" value="false" />
     <feature name="StatusBar">
         <param name="ios-package" onload="true" value="CDVStatusBar" />
     </feature>
     <platform name="android">
+        <preference name="AndroidWindowSplashScreenAnimatedIcon" value="resources/android/icon-foreground.png" />
+        <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
+        <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
         <resource-file src="MainActivity.java" target="app/src/main/java/com/moodle/moodlemobile/MainActivity.java" />
         <resource-file src="google-services.json" target="app/google-services.json" />
         <resource-file src="resources/android/icon/drawable-ldpi-smallicon.png" target="app/src/main/res/mipmap-ldpi/smallicon.png" />
         <resource-file src="resources/android/icon/drawable-mdpi-smallicon.png" target="app/src/main/res/mipmap-mdpi/smallicon.png" />
         <resource-file src="resources/android/icon/drawable-hdpi-smallicon.png" target="app/src/main/res/mipmap-hdpi/smallicon.png" />
         <resource-file src="resources/android/icon/drawable-xhdpi-smallicon.png" target="app/src/main/res/mipmap-xhdpi/smallicon.png" />
+        <resource-file src="resources/android/xml/network_security_config.xml" target="app/src/main/res/xml/network_security_config.xml" />
         <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application/activity[@android:name='MainActivity']">
-            <activity android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|screenLayout|smallestScreenSize" />
+            <activity android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|screenLayout|smallestScreenSize" android:exported="true" />
         </edit-config>
         <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application">
-            <application android:largeHeap="true" android:usesCleartextTraffic="true" />
+            <application android:largeHeap="true" android:networkSecurityConfig="@xml/network_security_config" />
         </edit-config>
         <config-file parent="/manifest/application" target="AndroidManifest.xml">
             <meta-data android:name="firebase_analytics_collection_deactivated" android:value="true" />
@@ -125,11 +132,6 @@
             </feature>
         </config-file>
         <config-file parent="/*" target="res/xml/config.xml">
-            <feature name="Globalization">
-                <param name="android-package" value="org.apache.cordova.globalization.Globalization" />
-            </feature>
-        </config-file>
-        <config-file parent="/*" target="res/xml/config.xml">
             <feature name="InAppBrowser">
                 <param name="android-package" value="org.apache.cordova.inappbrowser.InAppBrowser" />
             </feature>
@@ -174,20 +176,8 @@
             </feature>
         </config-file>
         <config-file parent="/*" target="res/xml/config.xml">
-            <feature name="SplashScreen">
-                <param name="android-package" value="org.apache.cordova.splashscreen.SplashScreen" />
-                <param name="onload" value="true" />
-            </feature>
-        </config-file>
-        <config-file parent="/*" target="res/xml/config.xml">
             <feature name="StatusBar">
                 <param name="android-package" value="org.apache.cordova.statusbar.StatusBar" />
-                <param name="onload" value="true" />
-            </feature>
-        </config-file>
-        <config-file parent="/*" target="res/xml/config.xml">
-            <feature name="Whitelist">
-                <param name="android-package" value="org.apache.cordova.whitelist.WhitelistPlugin" />
                 <param name="onload" value="true" />
             </feature>
         </config-file>
@@ -201,28 +191,9 @@
                 <param name="android-package" value="com.adobe.phonegap.push.PushPlugin" />
             </feature>
         </config-file>
-        <config-file parent="/manifest/application" target="AndroidManifest.xml">
-            <activity android:exported="true" android:name="com.adobe.phonegap.push.PushHandlerActivity" android:permission="${applicationId}.permission.PushHandlerActivity" />
-            <receiver android:name="com.adobe.phonegap.push.BackgroundActionButtonHandler" />
-            <receiver android:name="com.adobe.phonegap.push.PushDismissedHandler" />
-            <service android:name="com.adobe.phonegap.push.FCMService">
-                <intent-filter>
-                    <action android:name="com.google.firebase.MESSAGING_EVENT" />
-                </intent-filter>
-            </service>
-            <service android:name="com.adobe.phonegap.push.PushInstanceIDListenerService">
-                <intent-filter>
-                    <action android:name="com.google.firebase.INSTANCE_ID_EVENT" />
-                </intent-filter>
-            </service>
-        </config-file>
-        <config-file parent="/*" target="res/xml/config.xml">
-            <feature name="Media">
-                <param name="android-package" value="org.apache.cordova.media.AudioHandler" />
-            </feature>
-        </config-file>
         <config-file parent="/*" target="AndroidManifest.xml">
             <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+            <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
         </config-file>
         <config-file parent="/*" target="AndroidManifest.xml">
             <queries>
@@ -256,7 +227,7 @@
             <true />
         </edit-config>
         <edit-config file="*-Info.plist" mode="merge" target="CFBundleShortVersionString">
-            <string>3.9.5</string>
+            <string>4.2.0</string>
         </edit-config>
         <edit-config file="*-Info.plist" mode="overwrite" target="CFBundleLocalizations">
             <array>
@@ -287,6 +258,9 @@
         </config-file>
         <config-file parent="NSCrossWebsiteTrackingUsageDescription" target="*-Info.plist">
             <string>This app needs third party cookies to correctly render embedded content from the Moodle site.</string>
+        </config-file>
+        <config-file parent="ITSAppUsesNonExemptEncryption" target="*-Info.plist">
+            <false />
         </config-file>
         <config-file parent="CFBundleDocumentTypes" target="*-Info.plist">
             <array>

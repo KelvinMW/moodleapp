@@ -25,13 +25,14 @@ import { CoreUtils } from '@services/utils/utils';
 @Component({
     selector: 'addon-user-profile-field-checkbox',
     templateUrl: 'addon-user-profile-field-checkbox.html',
+    styleUrls: ['./checkbox.scss'],
 })
 export class AddonUserProfileFieldCheckboxComponent extends CoreUserProfileFieldBaseComponent {
 
     /**
      * Create the Form control.
      *
-     * @return Form control.
+     * @returns Form control.
      */
     protected createFormControl(field: AuthEmailSignupProfileField): FormControl {
         const formData = {

@@ -21,27 +21,32 @@ import {
     AddonMessageOutputAirnotifierHandler,
     AddonMessageOutputAirnotifierHandlerService,
 } from './services/handlers/messageoutput';
+import { AddonMessageOutputAirnotifier } from './services/airnotifier';
+import { CoreSharedModule } from '@/core/shared.module';
+import { AddonMessageOutputAirnotifierDevicesPage } from '@addons/messageoutput/airnotifier/pages/devices/devices';
 
 const routes: Routes = [
     {
         path: AddonMessageOutputAirnotifierHandlerService.PAGE_NAME,
-        loadChildren: () => import('./pages/devices/devices.module').then( m => m.AddonMessageOutputAirnotifierDevicesPageModule),
+        component: AddonMessageOutputAirnotifierDevicesPage,
     },
 ];
 
 @NgModule({
     declarations: [
+        AddonMessageOutputAirnotifierDevicesPage,
     ],
     imports: [
+        CoreSharedModule,
         CoreMainMenuTabRoutingModule.forChild(routes),
     ],
     providers: [
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
-            useFactory: () => () => {
+            useValue: () => {
                 AddonMessageOutputDelegate.registerHandler(AddonMessageOutputAirnotifierHandler.instance);
+                AddonMessageOutputAirnotifier.initialize();
             },
         },
     ],

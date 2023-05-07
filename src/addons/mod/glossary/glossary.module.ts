@@ -17,7 +17,8 @@ import { APP_INITIALIZER, NgModule, Type } from '@angular/core';
 import { Routes } from '@angular/router';
 import { CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
 import { COURSE_CONTENTS_PATH } from '@features/course/course.module';
-import { CoreCourseContentsRoutingModule } from '@features/course/pages/contents/contents-routing.module';
+import { CoreCourseContentsRoutingModule } from '@features/course/course-contents-routing.module';
+import { CoreCourseHelper } from '@features/course/services/course-helper';
 import { CoreCourseModuleDelegate } from '@features/course/services/module-delegate';
 import { CoreCourseModulePrefetchDelegate } from '@features/course/services/module-prefetch-delegate';
 import { CoreMainMenuTabRoutingModule } from '@features/mainmenu/mainmenu-tab-routing.module';
@@ -48,44 +49,40 @@ export const ADDON_MOD_GLOSSARY_SERVICES: Type<unknown>[] = [
 ];
 
 const mainMenuRoutes: Routes = [
-    {
-        path: `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/entry/:entryId`,
-        loadChildren: () => import('./pages/entry/entry.module').then(m => m.AddonModGlossaryEntryPageModule),
-    },
-    {
-        path: `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/edit/:timecreated`,
-        loadChildren: () => import('./pages/edit/edit.module').then(m => m.AddonModGlossaryEditPageModule),
-    },
+    // Course activity navigation.
     {
         path: AddonModGlossaryModuleHandlerService.PAGE_NAME,
         loadChildren: () => import('./glossary-lazy.module').then(m => m.AddonModGlossaryLazyModule),
     },
+
+    // Single Activity format navigation.
+    {
+        path: `${COURSE_CONTENTS_PATH}/${AddonModGlossaryModuleHandlerService.PAGE_NAME}/entry/new`,
+        loadChildren: () => import('./glossary-edit-lazy.module').then(m => m.AddonModGlossaryEditLazyModule),
+        data: { glossaryPathPrefix: `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/` },
+    },
+    {
+        path: `${COURSE_CONTENTS_PATH}/${AddonModGlossaryModuleHandlerService.PAGE_NAME}/entry/:entrySlug/edit`,
+        loadChildren: () => import('./glossary-edit-lazy.module').then(m => m.AddonModGlossaryEditLazyModule),
+        data: { glossaryPathPrefix: `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/` },
+    },
     ...conditionalRoutes(
-        [
-            {
-                path: `${COURSE_CONTENTS_PATH}/${AddonModGlossaryModuleHandlerService.PAGE_NAME}/entry/:entryId`,
-                loadChildren: () => import('./pages/entry/entry.module').then(m => m.AddonModGlossaryEntryPageModule),
-            },
-            {
-                path: `${COURSE_CONTENTS_PATH}/${AddonModGlossaryModuleHandlerService.PAGE_NAME}/edit/:timecreated`,
-                loadChildren: () => import('./pages/edit/edit.module').then(m => m.AddonModGlossaryEditPageModule),
-            },
-        ],
+        [{
+            path: `${COURSE_CONTENTS_PATH}/${AddonModGlossaryModuleHandlerService.PAGE_NAME}/entry/:entrySlug`,
+            loadChildren: () => import('./glossary-entry-lazy.module').then(m => m.AddonModGlossaryEntryLazyModule),
+            data: { glossaryPathPrefix: `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/` },
+        }],
         () => CoreScreen.isMobile,
     ),
 ];
 
+// Single Activity format navigation.
 const courseContentsRoutes: Routes = conditionalRoutes(
-    [
-        {
-            path: `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/entry/:entryId`,
-            loadChildren: () => import('./pages/entry/entry.module').then(m => m.AddonModGlossaryEntryPageModule),
-        },
-        {
-            path: `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/edit/:timecreated`,
-            loadChildren: () => import('./pages/edit/edit.module').then(m => m.AddonModGlossaryEditPageModule),
-        },
-    ],
+    [{
+        path: `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/entry/:entrySlug`,
+        loadChildren: () => import('./glossary-entry-lazy.module').then(m => m.AddonModGlossaryEntryLazyModule),
+        data: { glossaryPathPrefix: `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/` },
+    }],
     () => CoreScreen.isTablet,
 );
 
@@ -104,8 +101,7 @@ const courseContentsRoutes: Routes = conditionalRoutes(
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
-            useFactory: () => () => {
+            useValue: () => {
                 CoreCourseModuleDelegate.registerHandler(AddonModGlossaryModuleHandler.instance);
                 CoreCourseModulePrefetchDelegate.registerHandler(AddonModGlossaryPrefetchHandler.instance);
                 CoreCronDelegate.register(AddonModGlossarySyncCronHandler.instance);
@@ -114,6 +110,8 @@ const courseContentsRoutes: Routes = conditionalRoutes(
                 CoreContentLinksDelegate.registerHandler(AddonModGlossaryEditLinkHandler.instance);
                 CoreContentLinksDelegate.registerHandler(AddonModGlossaryEntryLinkHandler.instance);
                 CoreTagAreaDelegate.registerHandler(AddonModGlossaryTagAreaHandler.instance);
+
+                CoreCourseHelper.registerModuleReminderClick(AddonModGlossaryProvider.COMPONENT);
             },
         },
     ],

@@ -14,14 +14,17 @@
 
 import { Injectable } from '@angular/core';
 
-import { CoreSites } from '@services/sites';
+import { CoreSites, CoreSitesCommonWSOptions, CoreSitesReadingStrategy } from '@services/sites';
 import { CoreWSExternalWarning } from '@services/ws';
 import { CoreConstants } from '@/core/constants';
 import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
 import { CoreError } from '@classes/errors/error';
 import { CoreWSError } from '@classes/errors/wserror';
-import { makeSingleton } from '@singletons';
+import { makeSingleton, Translate } from '@singletons';
 import { CoreEvents, CoreEventSiteData } from '@singletons/events';
+import { CoreDomUtils } from '@services/utils/dom';
+import { CoreUtils } from '@services/utils/utils';
+import { CorePath } from '@singletons/path';
 
 const ROOT_CACHE_KEY = 'mmaMessageOutputAirnotifier:';
 
@@ -31,10 +34,17 @@ const ROOT_CACHE_KEY = 'mmaMessageOutputAirnotifier:';
 @Injectable({ providedIn: 'root' })
 export class AddonMessageOutputAirnotifierProvider {
 
-    constructor() {
+    /**
+     * Initialize.
+     */
+    initialize(): void {
         CoreEvents.on(CoreEvents.DEVICE_REGISTERED_IN_MOODLE, async (data: CoreEventSiteData) => {
             // Get user devices to make Moodle send the devices data to Airnotifier.
             this.getUserDevices(true, data.siteId);
+        });
+
+        CoreEvents.on(CoreEvents.LOGIN, (data) => {
+            this.warnPushDisabledForAdmin(data.siteId);
         });
     }
 
@@ -44,7 +54,7 @@ export class AddonMessageOutputAirnotifierProvider {
      * @param deviceId Device ID.
      * @param enable True to enable, false to disable.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if success.
+     * @returns Promise resolved if success.
      */
     async enableDevice(deviceId: number, enable: boolean, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -72,9 +82,38 @@ export class AddonMessageOutputAirnotifierProvider {
     }
 
     /**
+     * Get the cache key for the is system configured call.
+     *
+     * @returns Cache key.
+     */
+    protected getSystemConfiguredCacheKey(): string {
+        return ROOT_CACHE_KEY + 'isAirnotifierConfigured';
+    }
+
+    /**
+     * Check if airnotifier is configured.
+     *
+     * @param options Options.
+     * @returns Promise resolved with boolean: whether it's configured.
+     */
+    async isSystemConfigured(options: CoreSitesCommonWSOptions = {}): Promise<boolean> {
+        const site = await CoreSites.getSite(options.siteId);
+
+        const preSets: CoreSiteWSPreSets = {
+            cacheKey: this.getSystemConfiguredCacheKey(),
+            updateFrequency: CoreSite.FREQUENCY_RARELY,
+            ...CoreSites.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
+        };
+
+        const result = await site.read<number>('message_airnotifier_is_system_configured', {}, preSets);
+
+        return result === 1;
+    }
+
+    /**
      * Get the cache key for the get user devices call.
      *
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getUserDevicesCacheKey(): string {
         return ROOT_CACHE_KEY + 'userDevices';
@@ -85,7 +124,7 @@ export class AddonMessageOutputAirnotifierProvider {
      *
      * @param ignoreCache Whether to ignore cache.
      * @param siteId Site ID. If not defined, use current site.
-     * @return Promise resolved with the devices.
+     * @returns Promise resolved with the devices.
      */
     async getUserDevices(ignoreCache?: boolean, siteId?: string): Promise<AddonMessageOutputAirnotifierDevice[]> {
 
@@ -117,7 +156,7 @@ export class AddonMessageOutputAirnotifierProvider {
      * Invalidate get user devices.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when data is invalidated.
+     * @returns Promise resolved when data is invalidated.
      */
     async invalidateUserDevices(siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -126,14 +165,77 @@ export class AddonMessageOutputAirnotifierProvider {
     }
 
     /**
-     * Returns whether or not the plugin is enabled for the current site.
+     * Is user is an admin and push are disabled, notify him.
      *
-     * @return True if enabled, false otherwise.
-     * @since 3.2
+     * @param siteId Site ID.
+     * @returns Promise resolved when done.
      */
-    isEnabled(): boolean {
-        return CoreSites.wsAvailableInCurrentSite('message_airnotifier_enable_device') &&
-                CoreSites.wsAvailableInCurrentSite('message_airnotifier_get_user_devices');
+    protected async warnPushDisabledForAdmin(siteId?: string): Promise<void> {
+        if (!siteId) {
+            return;
+        }
+
+        try {
+            const site = await CoreSites.getSite(siteId);
+
+            if (!site.getInfo()?.userissiteadmin) {
+                // Not an admin or we don't know, stop.
+                return;
+            }
+
+            // Check if the admin already asked not to be reminded.
+            const dontAsk = await site.getLocalSiteConfig('AddonMessageOutputAirnotifierDontRemindDisabled', 0);
+            if (dontAsk) {
+                return;
+            }
+
+            // Check if airnotifier is configured.
+            const isConfigured = await this.isSystemConfigured({
+                readingStrategy: CoreSitesReadingStrategy.ONLY_NETWORK,
+                siteId,
+            });
+
+            if (isConfigured) {
+                return;
+            }
+
+            // Warn the admin.
+            const dontShowAgain = await CoreDomUtils.showPrompt(
+                Translate.instant('addon.messageoutput_airnotifier.pushdisabledwarning'),
+                undefined,
+                Translate.instant('core.dontshowagain'),
+                'checkbox',
+                [
+                    {
+                        text: Translate.instant('core.ok'),
+                    },
+                    {
+                        text: Translate.instant('core.goto', { $a: Translate.instant('core.settings.settings') }),
+                        handler: (data, resolve) => {
+                            resolve(data[0]);
+
+                            const url = CorePath.concatenatePaths(
+                                site.getURL(),
+                                site.isVersionGreaterEqualThan('3.11') ?
+                                    'message/output/airnotifier/checkconfiguration.php' :
+                                    'admin/message.php',
+                            );
+
+                            // Don't try auto-login, admins cannot use it.
+                            CoreUtils.openInBrowser(url, {
+                                showBrowserWarning: false,
+                            });
+                        },
+                    },
+                ],
+            );
+
+            if (dontShowAgain) {
+                await site.setLocalSiteConfig('AddonMessageOutputAirnotifierDontRemindDisabled', 1);
+            }
+        } catch {
+            // Ignore errors.
+        }
     }
 
 }

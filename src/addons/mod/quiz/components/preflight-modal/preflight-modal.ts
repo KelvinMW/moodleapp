@@ -14,7 +14,6 @@
 
 import { Component, OnInit, ViewChild, ElementRef, Input, Type } from '@angular/core';
 import { FormBuilder, FormGroup } from '@angular/forms';
-import { IonContent } from '@ionic/angular';
 import { CoreSites } from '@services/sites';
 
 import { CoreDomUtils } from '@services/utils/dom';
@@ -22,6 +21,7 @@ import { CoreForms } from '@singletons/form';
 import { ModalController, Translate } from '@singletons';
 import { AddonModQuizAccessRuleDelegate } from '../../services/access-rules-delegate';
 import { AddonModQuizAttemptWSData, AddonModQuizQuizWSData } from '../../services/quiz';
+import { CoreDom } from '@singletons/dom';
 
 /**
  * Modal that renders the access rules for a quiz.
@@ -32,7 +32,6 @@ import { AddonModQuizAttemptWSData, AddonModQuizQuizWSData } from '../../service
 })
 export class AddonModQuizPreflightModalComponent implements OnInit {
 
-    @ViewChild(IonContent) content?: IonContent;
     @ViewChild('preflightFormEl') formElement?: ElementRef;
 
     @Input() title!: string;
@@ -55,7 +54,7 @@ export class AddonModQuizPreflightModalComponent implements OnInit {
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         this.title = this.title || Translate.instant('addon.mod_quiz.startattempt');
@@ -67,11 +66,13 @@ export class AddonModQuizPreflightModalComponent implements OnInit {
         }
 
         try {
+            const quiz = this.quiz;
+
             await Promise.all(this.rules.map(async (rule) => {
                 // Check if preflight is required for rule and, if so, get the component to render it.
                 const required = await AddonModQuizAccessRuleDelegate.isPreflightCheckRequiredForRule(
                     rule,
-                    this.quiz!,
+                    quiz,
                     this.attempt,
                     this.prefetch,
                     this.siteId,
@@ -111,15 +112,14 @@ export class AddonModQuizPreflightModalComponent implements OnInit {
      *
      * @param e Event.
      */
-    sendData(e: Event): void {
+    async sendData(e: Event): Promise<void> {
         e.preventDefault();
         e.stopPropagation();
 
         if (!this.preflightForm.valid) {
             // Form not valid. Scroll to the first element with errors.
-            const hasScrolled = CoreDomUtils.scrollToInputError(
+            const hasScrolled = await CoreDom.scrollToInputError(
                 this.elementRef.nativeElement,
-                this.content,
             );
 
             if (!hasScrolled) {

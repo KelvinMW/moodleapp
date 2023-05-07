@@ -16,7 +16,7 @@ import { Injectable } from '@angular/core';
 import { FileEntry } from '@ionic-native/file/ngx';
 import { CoreFileUploader, CoreFileUploaderStoreFilesResult } from '@features/fileuploader/services/fileuploader';
 import { CoreUser } from '@features/user/services/user';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFile } from '@services/file';
 import { CoreSites } from '@services/sites';
 import { CoreTimeUtils } from '@services/utils/time';
@@ -52,7 +52,7 @@ export class AddonModForumHelperProvider {
      * @param groupIds Groups this discussion belongs to.
      * @param timeCreated The time the discussion was created. Only used when editing discussion.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with ids of the created discussions or null if stored offline
+     * @returns Promise resolved with ids of the created discussions or null if stored offline
      */
     async addNewDiscussion(
         forumId: number,
@@ -62,7 +62,7 @@ export class AddonModForumHelperProvider {
         message: string,
         attachments?: CoreFileEntry[],
         options?: AddonModForumDiscussionOptions,
-        groupIds?: number[],
+        groupIds: number[] = [],
         timeCreated?: number,
         siteId?: string,
     ): Promise<number[] | null> {
@@ -76,7 +76,7 @@ export class AddonModForumHelperProvider {
         // Convenience function to store a message to be synchronized later.
         const storeOffline = async (): Promise<void> => {
             // Multiple groups, the discussion is being posted to all groups.
-            const groupId = groupIds!.length > 1 ? AddonModForumProvider.ALL_GROUPS : groupIds![0];
+            const groupId = groupIds.length > 1 ? AddonModForumProvider.ALL_GROUPS : groupIds[0];
 
             if (offlineAttachments && options) {
                 options.attachmentsid = offlineAttachments;
@@ -106,6 +106,10 @@ export class AddonModForumHelperProvider {
             try {
                 await Promise.all(promises);
             } catch (error) {
+                if (CoreUtils.isWebServiceError(error)) {
+                    throw error;
+                }
+
                 // Cannot upload them in online, save them in offline.
                 saveOffline = true;
 
@@ -120,7 +124,7 @@ export class AddonModForumHelperProvider {
             await AddonModForumOffline.deleteNewDiscussion(forumId, timeCreated, siteId);
         }
 
-        if (saveOffline || !CoreApp.isOnline()) {
+        if (saveOffline || !CoreNetwork.isOnline()) {
             await storeOffline();
 
             return null;
@@ -176,9 +180,9 @@ export class AddonModForumHelperProvider {
      *
      * @param offlineReply Offline version of the reply.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the object converted to Online.
+     * @returns Promise resolved with the object converted to Online.
      */
-    convertOfflineReplyToOnline(offlineReply: AddonModForumOfflineReply, siteId?: string): Promise<AddonModForumPost> {
+    async convertOfflineReplyToOnline(offlineReply: AddonModForumOfflineReply, siteId?: string): Promise<AddonModForumPost> {
         const reply: AddonModForumPost = {
             id: -offlineReply.timecreated,
             discussionid: offlineReply.discussionid,
@@ -232,11 +236,11 @@ export class AddonModForumHelperProvider {
             ),
         );
 
-        return Promise.all(promises).then(() => {
-            reply.attachment = reply.attachments!.length > 0 ? 1 : 0;
+        await Promise.all(promises);
 
-            return reply;
-        });
+        reply.attachment = reply.attachments?.length ? 1 : 0;
+
+        return reply;
     }
 
     /**
@@ -245,7 +249,7 @@ export class AddonModForumHelperProvider {
      * @param forumId Forum ID.
      * @param timecreated The time the discussion was created.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when deleted.
+     * @returns Promise resolved when deleted.
      */
     async deleteNewDiscussionStoredFiles(forumId: number, timecreated: number, siteId?: string): Promise<void> {
         const folderPath = await AddonModForumOffline.getNewDiscussionFolder(forumId, timecreated, siteId);
@@ -261,7 +265,7 @@ export class AddonModForumHelperProvider {
      * @param postId ID of the post being replied.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User the reply belongs to. If not defined, current user in site.
-     * @return Promise resolved when deleted.
+     * @returns Promise resolved when deleted.
      */
     async deleteReplyStoredFiles(forumId: number, postId: number, siteId?: string, userId?: number): Promise<void> {
         const folderPath = await AddonModForumOffline.getReplyFolder(forumId, postId, siteId, userId);
@@ -274,23 +278,26 @@ export class AddonModForumHelperProvider {
      * Returns the availability message of the given forum.
      *
      * @param forum Forum instance.
-     * @return Message or null if the forum has no cut-off or due date.
+     * @param getDueDateMessage Whether to get due date message. If false, only cutoff date message will be returned.
+     * @returns Message or null if the forum has no cut-off or due date.
      */
-    getAvailabilityMessage(forum: AddonModForumData): string | null {
+    getAvailabilityMessage(forum: AddonModForumData, getDueDateMessage = true): string | null {
         if (this.isCutoffDateReached(forum)) {
             return Translate.instant('addon.mod_forum.cutoffdatereached');
         }
 
-        if (this.isDueDateReached(forum)) {
-            const dueDate = CoreTimeUtils.userDate(forum.duedate * 1000);
+        if (getDueDateMessage) {
+            if (this.isDueDateReached(forum)) {
+                const dueDate = CoreTimeUtils.userDate(forum.duedate * 1000);
 
-            return Translate.instant('addon.mod_forum.thisforumisdue', { $a: dueDate });
-        }
+                return Translate.instant('addon.mod_forum.thisforumisdue', { $a: dueDate });
+            }
 
-        if ((forum.duedate ?? 0) > 0) {
-            const dueDate = CoreTimeUtils.userDate(forum.duedate! * 1000);
+            if (forum.duedate && forum.duedate > 0) {
+                const dueDate = CoreTimeUtils.userDate(forum.duedate * 1000);
 
-            return Translate.instant('addon.mod_forum.thisforumhasduedate', { $a: dueDate });
+                return Translate.instant('addon.mod_forum.thisforumhasduedate', { $a: dueDate });
+            }
         }
 
         return null;
@@ -305,7 +312,7 @@ export class AddonModForumHelperProvider {
      * @param cmId Forum cmid
      * @param discussionId Discussion ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the discussion data.
+     * @returns Promise resolved with the discussion data.
      */
     getDiscussionById(forumId: number, cmId: number, discussionId: number, siteId?: string): Promise<AddonModForumDiscussion> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -342,7 +349,7 @@ export class AddonModForumHelperProvider {
      * @param forumId Forum ID.
      * @param timecreated The time the discussion was created.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the files.
+     * @returns Promise resolved with the files.
      */
     async getNewDiscussionStoredFiles(forumId: number, timecreated: number, siteId?: string): Promise<FileEntry[]> {
         const folderPath = await AddonModForumOffline.getNewDiscussionFolder(forumId, timecreated, siteId);
@@ -357,7 +364,7 @@ export class AddonModForumHelperProvider {
      * @param postId ID of the post being replied.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User the reply belongs to. If not defined, current user in site.
-     * @return Promise resolved with the files.
+     * @returns Promise resolved with the files.
      */
     async getReplyStoredFiles(forumId: number, postId: number, siteId?: string, userId?: number): Promise<FileEntry[]> {
         const folderPath = await AddonModForumOffline.getReplyFolder(forumId, postId, siteId, userId);
@@ -370,7 +377,7 @@ export class AddonModForumHelperProvider {
      *
      * @param reply Current data.
      * @param original Original ata.
-     * @return True if data has changed, false otherwise.
+     * @returns True if data has changed, false otherwise.
      */
     hasPostDataChanged(reply: AddonModForumPostData, original?: AddonModForumPostData): boolean {
         if (!original || original.subject == null) {
@@ -393,6 +400,7 @@ export class AddonModForumHelperProvider {
      * Is the cutoff date for the forum reached?
      *
      * @param forum Forum instance.
+     * @returns If cut off date has been reached.
      */
     isCutoffDateReached(forum: AddonModForumData): boolean {
         const now = Date.now() / 1000;
@@ -404,6 +412,7 @@ export class AddonModForumHelperProvider {
      * Is the due date for the forum reached?
      *
      * @param forum Forum instance.
+     * @returns If due date has been reached.
      */
     isDueDateReached(forum: AddonModForumData): forum is AddonModForumData & { duedate: number } {
         const now = Date.now() / 1000;
@@ -420,7 +429,7 @@ export class AddonModForumHelperProvider {
      * @param timecreated The time the discussion was created.
      * @param files List of files.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if success, rejected otherwise.
+     * @returns Promise resolved if success, rejected otherwise.
      */
     async storeNewDiscussionFiles(
         forumId: number,
@@ -443,7 +452,7 @@ export class AddonModForumHelperProvider {
      * @param files List of files.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User the reply belongs to. If not defined, current user in site.
-     * @return Promise resolved if success, rejected otherwise.
+     * @returns Promise resolved if success, rejected otherwise.
      */
     async storeReplyFiles(
         forumId: number,
@@ -466,7 +475,7 @@ export class AddonModForumHelperProvider {
      * @param files List of files.
      * @param offline True if files sould be stored for offline, false to upload them.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if success.
+     * @returns Promise resolved if success.
      */
     uploadOrStoreNewDiscussionFiles(
         forumId: number,
@@ -505,7 +514,7 @@ export class AddonModForumHelperProvider {
      * @param offline True if files sould be stored for offline, false to upload them.
      * @param siteId Site ID. If not defined, current site.
      * @param userId User the reply belongs to. If not defined, current user in site.
-     * @return Promise resolved if success.
+     * @returns Promise resolved if success.
      */
     async uploadOrStoreReplyFiles(
         forumId: number,

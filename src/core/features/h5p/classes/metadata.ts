@@ -24,7 +24,7 @@ export class CoreH5PMetadata {
      * Here we are converting these to booleans, and also doing JSON encoding.
      *
      * @param metadataSettings Settings.
-     * @return Stringified settings.
+     * @returns Stringified settings.
      */
     static boolifyAndEncodeSettings(metadataSettings: CoreH5PLibraryMetadataSettings | string): string {
         if (typeof metadataSettings == 'string') {
@@ -32,10 +32,10 @@ export class CoreH5PMetadata {
         }
 
         // Convert metadataSettings values to boolean.
-        if (typeof metadataSettings.disable != 'undefined') {
+        if (metadataSettings.disable !== undefined) {
             metadataSettings.disable = metadataSettings.disable === 1;
         }
-        if (typeof metadataSettings.disableExtraTitleField != 'undefined') {
+        if (metadataSettings.disableExtraTitleField !== undefined) {
             metadataSettings.disableExtraTitleField = metadataSettings.disableExtraTitleField === 1;
         }
 

@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, Input, Output, OnInit, EventEmitter, ChangeDetectorRef, Type } from '@angular/core';
+import { Component, Input, Output, OnInit, EventEmitter, ChangeDetectorRef, Type, ElementRef } from '@angular/core';
+import { AsyncDirective } from '@classes/async-directive';
+import { CorePromisedValue } from '@classes/promised-value';
 import { CoreQuestionBehaviourDelegate } from '@features/question/services/behaviour-delegate';
 import { CoreQuestionDelegate } from '@features/question/services/question-delegate';
 
@@ -20,6 +22,7 @@ import { CoreQuestionBehaviourButton, CoreQuestionHelper, CoreQuestionQuestion }
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 import { Translate } from '@singletons';
+import { CoreDirectivesRegistry } from '@singletons/directives-registry';
 import { CoreLogger } from '@singletons/logger';
 
 /**
@@ -30,7 +33,7 @@ import { CoreLogger } from '@singletons/logger';
     templateUrl: 'core-question.html',
     styleUrls: ['../../question.scss'],
 })
-export class CoreQuestionComponent implements OnInit {
+export class CoreQuestionComponent implements OnInit, AsyncDirective {
 
     @Input() question?: CoreQuestionQuestion; // The question to render.
     @Input() component?: string; // The component the question belongs to.
@@ -50,26 +53,35 @@ export class CoreQuestionComponent implements OnInit {
     data: Record<string, unknown> = {}; // Data to pass to the component.
     seqCheck?: { name: string; value: string }; // Sequenche check name and value (if any).
     behaviourComponents?: Type<unknown>[] = []; // Components to render the question behaviour.
-    loaded = false;
+    promisedReady: CorePromisedValue<void>;
+
     validationError?: string;
 
     protected logger: CoreLogger;
 
-    constructor(
-        protected changeDetector: ChangeDetectorRef,
-    ) {
+    get loaded(): boolean {
+        return this.promisedReady.isResolved();
+    }
+
+    constructor(protected changeDetector: ChangeDetectorRef, private element: ElementRef) {
         this.logger = CoreLogger.getInstance('CoreQuestionComponent');
+        this.promisedReady = new CorePromisedValue();
+        CoreDirectivesRegistry.register(this.element.nativeElement, this);
+    }
+
+    async ready(): Promise<void> {
+        await this.promisedReady;
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         this.offlineEnabled = CoreUtils.isTrueOrOne(this.offlineEnabled);
 
         if (!this.question || (this.question.type != 'random' &&
                 !CoreQuestionDelegate.isQuestionSupported(this.question.type))) {
-            this.loaded = true;
+            this.promisedReady.resolve();
 
             return;
         }
@@ -80,7 +92,7 @@ export class CoreQuestionComponent implements OnInit {
         );
 
         if (!this.componentClass) {
-            this.loaded = true;
+            this.promisedReady.resolve();
 
             return;
         }
@@ -163,7 +175,7 @@ export class CoreQuestionComponent implements OnInit {
             );
         } finally {
             this.question.html = CoreDomUtils.removeElementFromHtml(this.question.html, '.im-controls');
-            this.loaded = true;
+            this.promisedReady.resolve();
         }
     }
 

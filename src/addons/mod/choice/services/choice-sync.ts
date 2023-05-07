@@ -15,9 +15,10 @@
 import { Injectable } from '@angular/core';
 import { CoreNetworkError } from '@classes/errors/network-error';
 import { CoreCourseActivitySyncBaseProvider } from '@features/course/classes/activity-sync';
+import { CoreSyncResult } from '@services/sync';
 import { CoreCourse } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreSites } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
@@ -45,7 +46,7 @@ export class AddonModChoiceSyncProvider extends CoreCourseActivitySyncBaseProvid
      *
      * @param choiceId Choice ID.
      * @param userId User the responses belong to.
-     * @return Sync ID.
+     * @returns Sync ID.
      */
     protected getSyncId(choiceId: number, userId: number): string {
         return choiceId + '#' + userId;
@@ -56,10 +57,10 @@ export class AddonModChoiceSyncProvider extends CoreCourseActivitySyncBaseProvid
      *
      * @param siteId Site ID to sync. If not defined, sync all sites.
      * @param force Wether to force sync not depending on last execution.
-     * @return Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     syncAllChoices(siteId?: string, force?: boolean): Promise<void> {
-        return this.syncOnSites('all choices', this.syncAllChoicesFunc.bind(this, !!force), siteId);
+        return this.syncOnSites('all choices', (siteId) => this.syncAllChoicesFunc(!!force, siteId), siteId);
     }
 
     /**
@@ -67,7 +68,7 @@ export class AddonModChoiceSyncProvider extends CoreCourseActivitySyncBaseProvid
      *
      * @param force Wether to force sync not depending on last execution.
      * @param siteId Site ID to sync.
-     * @return Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     protected async syncAllChoicesFunc(force: boolean, siteId: string): Promise<void> {
         const responses = await AddonModChoiceOffline.getResponses(siteId);
@@ -95,7 +96,7 @@ export class AddonModChoiceSyncProvider extends CoreCourseActivitySyncBaseProvid
      * @param choiceId Choice ID to be synced.
      * @param userId User the answers belong to.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the choice is synced or it doesn't need to be synced.
+     * @returns Promise resolved when the choice is synced or it doesn't need to be synced.
      */
     async syncChoiceIfNeeded(choiceId: number, userId: number, siteId?: string): Promise<AddonModChoiceSyncResult | undefined> {
         const syncId = this.getSyncId(choiceId, userId);
@@ -113,7 +114,7 @@ export class AddonModChoiceSyncProvider extends CoreCourseActivitySyncBaseProvid
      * @param choiceId Choice ID to be synced.
      * @param userId User the answers belong to.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if sync is successful, rejected otherwise.
+     * @returns Promise resolved if sync is successful, rejected otherwise.
      */
     async syncChoice(choiceId: number, userId?: number, siteId?: string): Promise<AddonModChoiceSyncResult> {
         const site = await CoreSites.getSite(siteId);
@@ -122,9 +123,10 @@ export class AddonModChoiceSyncProvider extends CoreCourseActivitySyncBaseProvid
         siteId = site.getId();
 
         const syncId = this.getSyncId(choiceId, userId);
-        if (this.isSyncing(syncId, siteId)) {
+        const currentSyncPromise = this.getOngoingSync(syncId, siteId);
+        if (currentSyncPromise) {
             // There's already a sync ongoing for this discussion, return the promise.
-            return this.getOngoingSync(syncId, siteId)!;
+            return currentSyncPromise;
         }
 
         this.logger.debug(`Try to sync choice '${choiceId}' for user '${userId}'`);
@@ -138,7 +140,7 @@ export class AddonModChoiceSyncProvider extends CoreCourseActivitySyncBaseProvid
      * @param choiceId Choice ID to be synced.
      * @param userId User the answers belong to.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if sync is successful, rejected otherwise.
+     * @returns Promise resolved if sync is successful, rejected otherwise.
      */
     protected async performSync(choiceId: number, userId: number, siteId?: string): Promise<AddonModChoiceSyncResult> {
         const syncId = this.getSyncId(choiceId, userId);
@@ -159,7 +161,7 @@ export class AddonModChoiceSyncProvider extends CoreCourseActivitySyncBaseProvid
             return result;
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // Cannot sync in offline.
             throw new CoreNetworkError();
         }
@@ -196,7 +198,7 @@ export class AddonModChoiceSyncProvider extends CoreCourseActivitySyncBaseProvid
 
         // Data has been sent to server, prefetch choice if needed.
         try {
-            const module = await CoreCourse.getModuleBasicInfoByInstance(choiceId, 'choice', siteId);
+            const module = await CoreCourse.getModuleBasicInfoByInstance(choiceId, 'choice', { siteId });
 
             await this.prefetchAfterUpdate(AddonModChoicePrefetchHandler.instance, module, courseId, undefined, siteId);
         } catch {
@@ -216,10 +218,7 @@ export const AddonModChoiceSync = makeSingleton(AddonModChoiceSyncProvider);
 /**
  * Data returned by a choice sync.
  */
-export type AddonModChoiceSyncResult = {
-    warnings: string[]; // List of warnings.
-    updated: boolean; // Whether some data was sent to the server or offline data was updated.
-};
+export type AddonModChoiceSyncResult = CoreSyncResult;
 
 /**
  * Data passed to AUTO_SYNCED event.

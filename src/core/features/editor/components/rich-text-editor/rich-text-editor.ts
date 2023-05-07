@@ -20,7 +20,6 @@ import {
     ViewChild,
     ElementRef,
     OnInit,
-    AfterContentInit,
     OnDestroy,
     Optional,
     AfterViewInit,
@@ -29,15 +28,20 @@ import { FormControl } from '@angular/forms';
 import { IonTextarea, IonContent, IonSlides } from '@ionic/angular';
 import { Subscription } from 'rxjs';
 
-import { CoreApp } from '@services/app';
 import { CoreSites } from '@services/sites';
 import { CoreFilepool } from '@services/filepool';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUrlUtils } from '@services/utils/url';
 import { CoreUtils } from '@services/utils/utils';
-import { Platform, Translate } from '@singletons';
+import { Translate } from '@singletons';
 import { CoreEventFormActionData, CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreEditorOffline } from '../../services/editor-offline';
+import { CoreDirectivesRegistry } from '@singletons/directives-registry';
+import { CoreLoadingComponent } from '@components/loading/loading';
+import { CoreScreen } from '@services/screen';
+import { CoreCancellablePromise } from '@classes/cancellable-promise';
+import { CoreDom } from '@singletons/dom';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Component to display a rich text editor if enabled.
@@ -52,12 +56,12 @@ import { CoreEditorOffline } from '../../services/editor-offline';
     templateUrl: 'core-editor-rich-text-editor.html',
     styleUrls: ['rich-text-editor.scss'],
 })
-export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentInit, AfterViewInit, OnDestroy {
+export class CoreEditorRichTextEditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Based on: https://github.com/judgewest2000/Ionic3RichText/
-    // @todo: Anchor button, fullscreen...
-    // @todo: Textarea height is not being updated when editor is resized. Height is calculated if any css is changed.
-    // @todo: Implement ControlValueAccessor https://angular.io/api/forms/ControlValueAccessor.
+    // @todo Anchor button, fullscreen...
+    // @todo Textarea height is not being updated when editor is resized. Height is calculated if any css is changed.
+    // @todo Implement ControlValueAccessor https://angular.io/api/forms/ControlValueAccessor.
 
     @Input() placeholder = ''; // Placeholder to set in textarea.
     @Input() control?: FormControl; // Form control.
@@ -101,7 +105,9 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
     protected resizeFunction?: () => Promise<number>;
     protected selectionChangeFunction?: () => void;
     protected languageChangedSubscription?: Subscription;
-    protected resizeObserver?: IntersectionObserver;
+    protected resizeListener?: CoreEventObserver;
+    protected domPromise?: CoreCancellablePromise<void>;
+    protected buttonsDomPromise?: CoreCancellablePromise<void>;
 
     rteEnabled = false;
     isPhone = false;
@@ -140,54 +146,41 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
         this.contentChanged = new EventEmitter<string>();
         this.element = elementRef.nativeElement as HTMLDivElement;
         this.pageInstance = 'app_' + Date.now(); // Generate a "unique" ID based on timestamp.
-
-        if ('IntersectionObserver' in window) {
-            this.resizeObserver = new IntersectionObserver((observerEntry: IntersectionObserverEntry[]) => {
-                if (observerEntry[0].boundingClientRect.width > 0) {
-                    this.updateToolbarButtons();
-                }
-            });
-        }
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     ngOnInit(): void {
         this.canScanQR = CoreUtils.canScanQR();
-        this.isPhone = Platform.is('mobile') && !Platform.is('tablet');
+        this.isPhone = CoreScreen.isMobile;
         this.toolbarHidden = this.isPhone;
-        this.direction = Platform.isRTL ? 'rtl' : 'ltr';
+        this.direction = CorePlatform.isRTL ? 'rtl' : 'ltr';
     }
 
     /**
-     * Init editor.
+     * @inheritdoc
      */
-    async ngAfterContentInit(): Promise<void> {
+    async ngAfterViewInit(): Promise<void> {
         this.rteEnabled = await CoreDomUtils.isRichTextEditorEnabled();
+
+        await this.waitLoadingsDone();
 
         // Setup the editor.
         this.editorElement = this.editor?.nativeElement as HTMLDivElement;
         this.setContent(this.control?.value);
         this.originalContent = this.control?.value;
         this.lastDraft = this.control?.value;
-        this.editorElement.onchange = this.onChange.bind(this);
-        this.editorElement.onkeyup = this.onChange.bind(this);
-        this.editorElement.onpaste = this.onChange.bind(this);
-        this.editorElement.oninput = this.onChange.bind(this);
-        this.editorElement.onkeydown = this.moveCursor.bind(this);
+        this.editorElement.onchange = () => this.onChange();
+        this.editorElement.onkeyup = () => this.onChange();
+        this.editorElement.onpaste = () => this.onChange();
+        this.editorElement.oninput = () => this.onChange();
+        this.editorElement.onkeydown = event => this.moveCursor(event);
 
         // Use paragraph on enter.
         document.execCommand('DefaultParagraphSeparator', false, 'p');
 
-        let i = 0;
-        this.initHeightInterval = window.setInterval(async () => {
-            const height = await this.maximizeEditorSize();
-            if (i >= 5 || height != 0) {
-                clearInterval(this.initHeightInterval);
-            }
-            i++;
-        }, 750);
+        this.maximizeEditorSize();
 
         this.setListeners();
         this.updateToolbarButtons();
@@ -209,20 +202,25 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
 
             this.deleteDraftOnSubmitOrCancel();
         }
-    }
 
-    /**
-     * @inheritdoc
-     */
-    async ngAfterViewInit(): Promise<void> {
-        const label = this.element.closest('ion-item')?.querySelector('ion-label');
+        const ionItem = this.element.closest<HTMLIonItemElement>('ion-item');
+        if (!ionItem) {
+            return;
+        }
+        ionItem.classList.add('item-rte');
+
+        const label = ionItem.querySelector('ion-label');
 
         if (!label) {
             return;
         }
 
-        this.labelObserver = new MutationObserver(() => this.ariaLabelledBy = label.getAttribute('id') ?? undefined);
+        const updateArialabelledBy = () => this.ariaLabelledBy = label.getAttribute('id') ?? undefined;
+
+        this.labelObserver = new MutationObserver(updateArialabelledBy);
         this.labelObserver.observe(label, { attributes: true, attributeFilter: ['id'] });
+
+        updateArialabelledBy();
     }
 
     /**
@@ -256,14 +254,11 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
             );
         });
 
-        this.resizeFunction = this.windowResized.bind(this);
-        window.addEventListener('resize', this.resizeFunction!);
+        this.resizeListener = CoreDom.onWindowResize(() => {
+            this.windowResized();
+        }, 50);
 
-        // Start observing the target node for configured mutations
-        this.resizeObserver?.observe(this.element);
-
-        this.selectionChangeFunction = this.updateToolbarStyles.bind(this);
-        document.addEventListener('selectionchange', this.selectionChangeFunction!);
+        document.addEventListener('selectionchange', this.selectionChangeFunction = () => this.updateToolbarStyles());
 
         this.keyboardObserver = CoreEvents.on(CoreEvents.KEYBOARD_CHANGE, () => {
             // Opening or closing the keyboard also calls the resize function, but sometimes the resize is called too soon.
@@ -274,72 +269,69 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
         // Change the side when the language changes.
         this.languageChangedSubscription = Translate.onLangChange.subscribe(() => {
             setTimeout(() => {
-                this.direction = Platform.isRTL ? 'rtl' : 'ltr';
+                this.direction = CorePlatform.isRTL ? 'rtl' : 'ltr';
             });
         });
     }
 
     /**
      * Resize editor to maximize the space occupied.
-     *
-     * @return Resolved with calculated editor size.
      */
-    protected async maximizeEditorSize(): Promise<number> {
-        const contentVisibleHeight = await CoreDomUtils.getContentHeight(this.content);
-
-        if (contentVisibleHeight <= 0) {
-            return 0;
-        }
-
-        await CoreUtils.wait(100);
-
+    protected async maximizeEditorSize(): Promise<void> {
         // Editor is ready, adjust Height if needed.
-        const contentHeight = await CoreDomUtils.getContentHeight(this.content);
-        const height = contentHeight - this.getSurroundingHeight(this.element);
+        const blankHeight = await this.getBlankHeightInContent();
+        const newHeight = blankHeight + this.element.getBoundingClientRect().height;
 
-        if (height > this.minHeight) {
-            this.element.style.height = CoreDomUtils.formatPixelsSize(height - 1);
+        if (newHeight > this.minHeight) {
+            this.element.style.setProperty('--core-rte-height', (newHeight - 1)  + 'px');
         } else {
-            this.element.style.height = '';
+            this.element.style.removeProperty('--core-rte-height');
         }
-
-        return height;
     }
 
     /**
-     * Get the height of the surrounding elements from the current to the top element.
+     * Wait until all <core-loading> children inside the page.
      *
-     * @param element Directive DOM element to get surroundings elements from.
-     * @return Surrounding height in px.
+     * @returns Promise resolved when loadings are done.
      */
-    protected getSurroundingHeight(element: HTMLElement): number {
-        let height = 0;
+    protected async waitLoadingsDone(): Promise<void> {
+        this.domPromise = CoreDom.waitToBeInDOM(this.element);
 
-        while (element.parentElement?.tagName != 'ION-CONTENT') {
-            const parent = element.parentElement!;
-            if (element.tagName && element.tagName != 'CORE-LOADING') {
-                for (let x = 0; x < parent.children.length; x++) {
-                    const child = <HTMLElement> parent.children[x];
-                    if (child.tagName && child != element) {
-                        height += CoreDomUtils.getElementHeight(child, false, true, true);
-                    }
-                }
-            }
-            element = parent;
+        await this.domPromise;
+
+        const page = this.element.closest('.ion-page');
+        if (!page) {
+            return;
         }
 
-        const computedStyle = getComputedStyle(element);
-        height += CoreDomUtils.getComputedStyleMeasure(computedStyle, 'paddingTop') +
-            CoreDomUtils.getComputedStyleMeasure(computedStyle, 'paddingBottom');
+        await CoreDirectivesRegistry.waitDirectivesReady(page, 'core-loading', CoreLoadingComponent);
+    }
 
-        if (element.parentElement?.tagName == 'ION-CONTENT') {
-            const cs2 = getComputedStyle(element);
+    /**
+     * Get the height of the space in blank at the end of the page.
+     *
+     * @returns Blank height in px. Will be negative if no blank space.
+     */
+    protected async getBlankHeightInContent(): Promise<number> {
+        await CoreUtils.nextTicks(5); // Ensure content is completely loaded in the DOM.
 
-            height -= CoreDomUtils.getComputedStyleMeasure(cs2, 'paddingTop') +
-                CoreDomUtils.getComputedStyleMeasure(cs2, 'paddingBottom');
+        let content: Element | null = this.element.closest('ion-content');
+        const contentHeight = await CoreDomUtils.getContentHeight(this.content);
+
+        // Get first children with content, not fixed.
+        let scrollContentHeight = 0;
+        while (scrollContentHeight == 0 && content?.children) {
+            const children = Array.from(content.children)
+                .filter((element) => element.slot !== 'fixed' && !element.classList.contains('core-loading-container'));
+
+            scrollContentHeight = children
+                .map((element) => element.getBoundingClientRect().height)
+                .reduce((a,b) => a + b, 0);
+
+            content = children[0];
         }
 
-        return height;
+        return contentHeight - scrollContentHeight;
     }
 
     /**
@@ -351,7 +343,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
                 return;
             }
 
-            if (this.isNullOrWhiteSpace(this.editorElement.innerText)) {
+            if (this.isNullOrWhiteSpace(this.editorElement.textContent)) {
                 this.clearText();
             } else {
                 // The textarea and the form control must receive the original URLs.
@@ -399,7 +391,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
 
         this.stopBubble(event);
 
-        const move = event.key == 'ArrowLeft' ? -1 : +1;
+        const move = event.key === 'ArrowLeft' ? -1 : +1;
         const cursor = this.getCurrentCursorPosition(this.editorElement);
 
         this.setCurrentCursorPosition(this.editorElement, cursor + move);
@@ -409,7 +401,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
      * Returns the number of chars from the beggining where is placed the cursor.
      *
      * @param parent Parent where to get the position from.
-     * @return Position in chars.
+     * @returns Position in chars.
      */
     protected getCurrentCursorPosition(parent: Node): number {
         const selection = window.getSelection();
@@ -454,7 +446,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
          * @param node Node where to start.
          * @param range Previous calculated range.
          * @param chars Object with counting of characters (input-output param).
-         * @return Selection range.
+         * @returns Selection range.
          */
         const setRange = (node: Node, range: Range, chars: { count: number }): Range => {
             if (chars.count === 0) {
@@ -471,7 +463,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
                     }
                 } else if ((node.textContent || '').length < chars.count) {
                     // Jump this node.
-                    // @todo: empty nodes will be omitted.
+                    // @todo empty nodes will be omitted.
                     chars.count -= (node.textContent || '').length;
                 } else {
                     // The cursor will be placed in this element.
@@ -484,7 +476,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
         };
 
         let range = document.createRange();
-        if (typeof chars === 'undefined') {
+        if (chars === undefined) {
             // Select all so it will go to the end.
             range.selectNode(parent);
             range.selectNodeContents(parent);
@@ -550,8 +542,9 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
         }
 
         const elements = Array.from(this.editorElement.querySelectorAll('img'));
+        const site = CoreSites.getCurrentSite();
         const siteId = CoreSites.getCurrentSiteId();
-        const canDownloadFiles = CoreSites.getCurrentSite()!.canDownloadFiles();
+        const canDownloadFiles = !site || site.canDownloadFiles();
         elements.forEach(async (el) => {
             if (el.getAttribute('data-original-src')) {
                 // Already treated.
@@ -560,8 +553,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
 
             const url = el.src;
 
-            if (!url || !CoreUrlUtils.isDownloadableUrl(url) ||
-                    (!canDownloadFiles && CoreUrlUtils.isPluginFileUrl(url))) {
+            if (!url || !CoreUrlUtils.isDownloadableUrl(url) || (!canDownloadFiles && site?.isSitePluginFileUrl(url))) {
                 // Nothing to treat.
                 return;
             }
@@ -599,9 +591,10 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
      * Check if text is empty.
      *
      * @param value text
+     * @returns If value is null only a white space.
      */
     protected isNullOrWhiteSpace(value: string | null): boolean {
-        if (value == null || typeof value == 'undefined') {
+        if (value == null || value === undefined) {
             return true;
         }
 
@@ -625,7 +618,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
             this.editorElement.innerHTML = '<p></p>';
             this.textarea.value = '';
         } else {
-            this.editorElement.innerHTML = value!;
+            this.editorElement.innerHTML = value || '';
             this.textarea.value = value;
             this.treatExternalContent();
         }
@@ -730,8 +723,17 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
 
     /**
      * Hide the toolbar in phone mode.
+     *
+     * @param event Event.
+     * @param force If true it will not check the target of the event.
      */
-    hideToolbar(event: Event): void {
+    hideToolbar(event: Event, force = false): void {
+        if (!force && event.target && this.element.contains(event.target as HTMLElement)) {
+            // Do not hide if clicked inside the editor area, except forced.
+
+            return;
+        }
+
         if (event.type == 'keyup' && !this.isValidKeyboardKey(<KeyboardEvent>event)) {
             return;
         }
@@ -752,17 +754,14 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
      * @returns Wether space or enter have been pressed.
      */
     protected isValidKeyboardKey(event: KeyboardEvent): boolean {
-        return event.key == ' ' || event.key == 'Enter';
+        return event.key === ' ' || event.key === 'Enter';
     }
 
     /**
      * Show the toolbar.
      */
     showToolbar(event: Event): void {
-        if (!('IntersectionObserver' in window)) {
-            // Fallback if IntersectionObserver is not supported.
-            this.updateToolbarButtons();
-        }
+        this.updateToolbarButtons();
 
         this.element.classList.add('ion-touched');
         this.element.classList.remove('ion-untouched');
@@ -780,7 +779,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
      * @param event Event.
      */
     stopBubble(event: Event): void {
-        if (event.type != 'touchend' &&event.type != 'mouseup' && event.type != 'keyup') {
+        if (event.type != 'touchend' && event.type != 'mouseup' && event.type != 'keyup') {
             event.preventDefault();
         }
         event.stopPropagation();
@@ -799,7 +798,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
         const selection = window.getSelection()?.toString();
 
         // When RTE is focused with a whole paragraph in desktop the stopBubble will not fire click.
-        if (CoreApp.isMobile() || !this.rteEnabled || document.activeElement != this.editorElement || selection == '') {
+        if (CorePlatform.isMobile() || !this.rteEnabled || document.activeElement != this.editorElement || selection == '') {
             this.stopBubble(event);
         }
     }
@@ -851,14 +850,12 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
 
         const length = await this.toolbarSlides.length();
 
-        const width = CoreDomUtils.getElementWidth(this.toolbar.nativeElement);
+        // Cancel previous one, if any.
+        this.buttonsDomPromise?.cancel();
+        this.buttonsDomPromise = CoreDom.waitToBeInDOM(this.toolbar.nativeElement);
+        await this.buttonsDomPromise;
 
-        if (!width) {
-            // Width is not available yet, try later.
-            setTimeout(this.updateToolbarButtons.bind(this), 100);
-
-            return;
-        }
+        const width = this.toolbar.nativeElement.getBoundingClientRect().width;
 
         if (length > 0 && width > length * this.toolbarButtonWidth) {
             this.slidesOpts = { ...this.slidesOpts, slidesPerView: length };
@@ -922,20 +919,20 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
     /**
      * Check if should auto save drafts.
      *
-     * @return {boolean} Whether it should auto save drafts.
+     * @returns {boolean} Whether it should auto save drafts.
      */
     protected shouldAutoSaveDrafts(): boolean {
         return !!CoreSites.getCurrentSite() &&
-                (typeof this.autoSave == 'undefined' || CoreUtils.isTrueOrOne(this.autoSave)) &&
-                typeof this.contextLevel != 'undefined' &&
-                typeof this.contextInstanceId != 'undefined' &&
-                typeof this.elementId != 'undefined';
+                (this.autoSave === undefined || CoreUtils.isTrueOrOne(this.autoSave)) &&
+                this.contextLevel !== undefined &&
+                this.contextInstanceId !== undefined &&
+                this.elementId !== undefined;
     }
 
     /**
      * Restore a draft if there is any.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async restoreDraft(): Promise<void> {
         try {
@@ -948,7 +945,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
                 this.originalContent,
             );
 
-            if (typeof entry == 'undefined') {
+            if (entry === undefined) {
                 // No draft found.
                 return;
             }
@@ -977,7 +974,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
                     this.showMessage('core.editor.textrecovered', this.RESTORE_MESSAGE_CLEAR_TIME);
                 }
             }
-        } catch (error) {
+        } catch {
             // Ignore errors, shouldn't happen.
         }
     }
@@ -1061,7 +1058,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
      * Scan a QR code and put its text in the editor.
      *
      * @param event Event data
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async scanQR(event: Event): Promise<void> {
         this.stopBubble(event);
@@ -1080,6 +1077,7 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
      */
     protected async windowResized(): Promise<void> {
         await CoreDomUtils.waitForResizeDone();
+        this.isPhone = CoreScreen.isMobile;
 
         this.maximizeEditorSize();
         this.updateToolbarButtons();
@@ -1102,20 +1100,21 @@ export class CoreEditorRichTextEditorComponent implements OnInit, AfterContentIn
     }
 
     /**
-     * Component being destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.valueChangeSubscription?.unsubscribe();
         this.languageChangedSubscription?.unsubscribe();
-        window.removeEventListener('resize', this.resizeFunction!);
-        document.removeEventListener('selectionchange', this.selectionChangeFunction!);
+        this.selectionChangeFunction && document.removeEventListener('selectionchange', this.selectionChangeFunction);
         clearInterval(this.initHeightInterval);
         clearInterval(this.autoSaveInterval);
         clearTimeout(this.hideMessageTimeout);
-        this.resizeObserver?.disconnect();
         this.resetObserver?.off();
         this.keyboardObserver?.off();
         this.labelObserver?.disconnect();
+        this.resizeListener?.off();
+        this.domPromise?.cancel();
+        this.buttonsDomPromise?.cancel();
     }
 
 }

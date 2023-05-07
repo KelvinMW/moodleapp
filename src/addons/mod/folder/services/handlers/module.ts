@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { CoreConstants } from '@/core/constants';
+import { CoreConstants, ModPurpose } from '@/core/constants';
 import { Injectable, Type } from '@angular/core';
-import { CoreCourse, CoreCourseAnyModuleData } from '@features/course/services/course';
-import { CoreCourseModule } from '@features/course/services/course-helper';
+import { CoreModuleHandlerBase } from '@features/course/classes/module-base-handler';
+import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@features/course/services/module-delegate';
-import { CoreNavigationOptions, CoreNavigator } from '@services/navigator';
+import { CoreNavigator } from '@services/navigator';
+import { CoreDomUtils } from '@services/utils/dom';
 import { makeSingleton } from '@singletons';
 import { AddonModFolderIndexComponent } from '../../components/index';
 
@@ -25,12 +26,13 @@ import { AddonModFolderIndexComponent } from '../../components/index';
  * Handler to support folder modules.
  */
 @Injectable({ providedIn: 'root' })
-export class AddonModFolderModuleHandlerService implements CoreCourseModuleHandler {
+export class AddonModFolderModuleHandlerService extends CoreModuleHandlerBase implements CoreCourseModuleHandler {
 
     static readonly PAGE_NAME = 'mod_folder';
 
     name = 'AddonModFolder';
     modName = 'folder';
+    protected pageName = AddonModFolderModuleHandlerService.PAGE_NAME;
 
     supportedFeatures = {
         [CoreConstants.FEATURE_MOD_ARCHETYPE]: CoreConstants.MOD_ARCHETYPE_RESOURCE,
@@ -42,33 +44,42 @@ export class AddonModFolderModuleHandlerService implements CoreCourseModuleHandl
         [CoreConstants.FEATURE_GRADE_OUTCOMES]: false,
         [CoreConstants.FEATURE_BACKUP_MOODLE2]: true,
         [CoreConstants.FEATURE_SHOW_DESCRIPTION]: true,
+        [CoreConstants.FEATURE_MOD_PURPOSE]: ModPurpose.MOD_PURPOSE_CONTENT,
     };
 
     /**
      * @inheritdoc
      */
-    async isEnabled(): Promise<boolean> {
-        return true;
-    }
+    async getData(
+        module: CoreCourseModuleData,
+        courseId: number,
+        sectionId?: number,
+        forCoursePage?: boolean,
+    ): Promise<CoreCourseModuleHandlerData> {
+        const data = await super.getData(module, courseId, sectionId, forCoursePage);
 
-    /**
-     * @inheritdoc
-     */
-    getData(module: CoreCourseAnyModuleData): CoreCourseModuleHandlerData {
-        return {
-            icon: CoreCourse.getModuleIconSrc(this.modName, 'modicon' in module ? module.modicon : undefined),
-            title: module.name,
-            class: 'addon-mod_folder-handler',
-            showDownloadButton: true,
-            action(event: Event, module: CoreCourseModule, courseId: number, options?: CoreNavigationOptions): void {
-                options = options || {};
-                options.params = options.params || {};
-                Object.assign(options.params, { module });
-                const routeParams = '/' + courseId + '/' + module.id;
+        if (module.description) {
+            // Module description can contain the folder contents if it's inline, remove it.
+            const descriptionElement = CoreDomUtils.convertToElement(module.description);
 
-                CoreNavigator.navigateToSitePath(AddonModFolderModuleHandlerService.PAGE_NAME + routeParams, options);
-            },
+            Array.from(descriptionElement.querySelectorAll('.foldertree, .folderbuttons, .tertiary-navigation'))
+                .forEach(element => element.remove());
+
+            module.description = descriptionElement.innerHTML;
+        }
+
+        // @todo Temporary fix to open inline folders. We should use a more generic solution.
+        data.action = async (event, module, courseId, options): Promise<void> => {
+            options = options || {};
+            options.params = options.params || {};
+            Object.assign(options.params, { module });
+
+            const routeParams = '/' + courseId + '/' + module.id;
+
+            await CoreNavigator.navigateToSitePath(this.pageName + routeParams, options);
         };
+
+        return data;
     }
 
     /**

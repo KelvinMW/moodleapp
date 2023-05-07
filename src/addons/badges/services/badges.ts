@@ -34,12 +34,12 @@ export class AddonBadgesProvider {
      * check, we should not be calling WS from here.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with true if enabled, false otherwise.
+     * @returns Promise resolved with true if enabled, false otherwise.
      */
     async isPluginEnabled(siteId?: string): Promise<boolean> {
         const site = await CoreSites.getSite(siteId);
 
-        return site.canUseAdvancedFeature('enablebadges') && site.wsAvailable('core_course_get_user_navigation_options');
+        return site.canUseAdvancedFeature('enablebadges');
     }
 
     /**
@@ -47,7 +47,7 @@ export class AddonBadgesProvider {
      *
      * @param courseId ID of the course to get the badges from.
      * @param userId ID of the user to get the badges from.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getBadgesCacheKey(courseId: number, userId: number): string {
         return ROOT_CACHE_KEY + 'badges:' + courseId + ':' + userId;
@@ -59,7 +59,7 @@ export class AddonBadgesProvider {
      * @param courseId ID of the course to get the badges from.
      * @param userId ID of the user to get the badges from.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise to be resolved when the badges are retrieved.
+     * @returns Promise to be resolved when the badges are retrieved.
      */
     async getUserBadges(courseId: number, userId: number, siteId?: string): Promise<AddonBadgesUserBadge[]> {
 
@@ -83,7 +83,7 @@ export class AddonBadgesProvider {
             badge.alignment = badge.alignment || badge.competencies;
 
             // Check that the alignment is valid, they were broken in 3.7.
-            if (badge.alignment && badge.alignment[0] && typeof badge.alignment[0].targetname == 'undefined') {
+            if (badge.alignment && badge.alignment[0] && badge.alignment[0].targetname === undefined) {
                 // If any badge lacks targetname it means they are affected by the Moodle bug, don't display them.
                 delete badge.alignment;
             }
@@ -98,7 +98,7 @@ export class AddonBadgesProvider {
      * @param courseId Course ID.
      * @param userId ID of the user to get the badges from.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when data is invalidated.
+     * @returns Promise resolved when data is invalidated.
      */
     async invalidateUserBadges(courseId: number, userId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -194,7 +194,7 @@ export type AddonBadgesUserBadge = {
         targetframework?: string; // Target framework.
         targetcode?: string; // Target code.
     }[];
-    competencies?: { // @deprecated from 3.7. @since 3.6. In 3.7 it was renamed to alignment.
+    competencies?: { // @deprecatedonmoodle from 3.7. @since 3.6. In 3.7 it was renamed to alignment.
         id?: number; // Alignment id.
         badgeid?: number; // Badge id.
         targetname?: string; // Target name.

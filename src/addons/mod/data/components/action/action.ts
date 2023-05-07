@@ -14,7 +14,6 @@
 
 import { Component, OnInit, Input } from '@angular/core';
 import { Params } from '@angular/router';
-import { CoreCourseModule } from '@features/course/services/course-helper';
 import { CoreTag } from '@features/tag/services/tag';
 import { CoreUser } from '@features/user/services/user';
 import { CoreNavigator } from '@services/navigator';
@@ -24,12 +23,15 @@ import {
     AddonModDataAction,
     AddonModDataData,
     AddonModDataEntry,
+    AddonModDataGetDataAccessInformationWSResponse,
     AddonModDataProvider,
     AddonModDataTemplateMode,
 } from '../../services/data';
 import { AddonModDataHelper } from '../../services/data-helper';
 import { AddonModDataOffline } from '../../services/data-offline';
 import { AddonModDataModuleHandlerService } from '../../services/handlers/module';
+import { CoreDomUtils } from '@services/utils/dom';
+import { AddonModDataActionsMenuComponent, AddonModDataActionsMenuItem } from '../actionsmenu/actionsmenu';
 
 /**
  * Component that displays a database action.
@@ -40,13 +42,16 @@ import { AddonModDataModuleHandlerService } from '../../services/handlers/module
 })
 export class AddonModDataActionComponent implements OnInit {
 
+    @Input() access?: AddonModDataGetDataAccessInformationWSResponse; // Access info.
     @Input() mode!: AddonModDataTemplateMode; // The render mode.
     @Input() action!: AddonModDataAction; // The field to render.
     @Input() entry!: AddonModDataEntry; // The value of the field.
     @Input() database!: AddonModDataData; // Database object.
-    @Input() module!: CoreCourseModule; // Module object.
-    @Input() group = 0; // Module object.
+    @Input() title = ''; // Name of the module.
+    @Input() group = 0; // Module group.
     @Input() offset?: number; // Offset of the entry.
+    @Input() sortBy?: string | number; // Sort by used to calculate the offset.
+    @Input() sortDirection?: string; // Sort direction used to calculate the offset.
 
     siteId: string;
     userPicture?: string;
@@ -58,7 +63,7 @@ export class AddonModDataActionComponent implements OnInit {
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         if (this.action == AddonModDataAction.USERPICTURE) {
@@ -92,13 +97,13 @@ export class AddonModDataActionComponent implements OnInit {
      * Go to the edit page of the entry.
      */
     editEntry(): void {
-        const params = {
-            courseId: this.database.course,
-            module: this.module,
+        const params: Params = {
+            title: this.title,
         };
 
+        const basePath = AddonModDataModuleHandlerService.PAGE_NAME;
         CoreNavigator.navigateToSitePath(
-            `${AddonModDataModuleHandlerService.PAGE_NAME}/${this.module.course}/${this.module.id}/edit/${this.entry.id}`,
+            `${basePath}/${this.database.course}/${this.database.coursemodule}/edit/${this.entry.id}`,
             { params },
         );
     }
@@ -108,15 +113,16 @@ export class AddonModDataActionComponent implements OnInit {
      */
     viewEntry(): void {
         const params: Params = {
-            courseId: this.database.course,
-            module: this.module,
-            entryId: this.entry.id,
+            title: this.title,
             group: this.group,
             offset: this.offset,
+            sortBy: this.sortBy,
+            sortDirection: this.sortDirection,
         };
 
+        const basePath = AddonModDataModuleHandlerService.PAGE_NAME;
         CoreNavigator.navigateToSitePath(
-            `${AddonModDataModuleHandlerService.PAGE_NAME}/${this.module.course}/${this.module.id}/${this.entry.id}`,
+            `${basePath}/${this.database.course}/${this.database.coursemodule}/${this.entry.id}`,
             { params },
         );
     }
@@ -124,7 +130,7 @@ export class AddonModDataActionComponent implements OnInit {
     /**
      * Undo delete action.
      *
-     * @return Solved when done.
+     * @returns Solved when done.
      */
     async undoDelete(): Promise<void> {
         const dataId = this.database.id;
@@ -135,6 +141,68 @@ export class AddonModDataActionComponent implements OnInit {
         // Found. Just delete the action.
         await AddonModDataOffline.deleteEntry(dataId, entryId, AddonModDataAction.DELETE, this.siteId);
         CoreEvents.trigger(AddonModDataProvider.ENTRY_CHANGED, { dataId: dataId, entryId: entryId }, this.siteId);
+    }
+
+    /**
+     * Open actions menu popover.
+     */
+    async actionsMenu(): Promise<void> {
+        const items: AddonModDataActionsMenuItem[] = [];
+
+        if (this.entry.canmanageentry) {
+            items.push(
+                this.entry.deleted
+                    ? {
+                        action: () => this.undoDelete(),
+                        text: 'core.restore',
+                        icon: 'fas-rotate-left',
+                    }
+                    : {
+                        action: () => this.deleteEntry(),
+                        text: 'core.delete',
+                        icon: 'fas-trash',
+                    },
+            );
+
+            if (!this.entry.deleted) {
+                items.unshift({
+                    action: () => this.editEntry(),
+                    text: 'core.edit',
+                    icon: 'fas-pen',
+                });
+            }
+        }
+
+        if (this.database.approval && this.access?.canapprove && !this.entry.deleted) {
+            items.push(
+                !this.entry.approved
+                    ? {
+                        action: () => this.approveEntry(),
+                        text: 'addon.mod_data.approve',
+                        icon: 'fas-thumbs-up',
+                    }
+                    : {
+                        action: () => this.disapproveEntry(),
+                        text: 'addon.mod_data.disapprove',
+                        icon: 'far-thumbs-down',
+                    },
+            );
+        }
+
+        if (this.mode === AddonModDataTemplateMode.LIST) {
+            items.unshift({
+                action: () => this.viewEntry(),
+                text: 'addon.mod_data.showmore',
+                icon: 'fas-magnifying-glass-plus',
+            });
+        }
+
+        await CoreDomUtils.openPopover({
+            component: AddonModDataActionsMenuComponent,
+            componentProps: { items },
+            showBackdrop: true,
+            id: 'actionsmenu-popover',
+        });
     }
 
 }

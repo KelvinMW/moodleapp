@@ -18,9 +18,10 @@ import { Md5 } from 'ts-md5';
 
 import { CoreSiteWSPreSets } from '@classes/site';
 import { CoreCompileHtmlComponent } from '@features/compile/components/compile-html/compile-html';
-import { CoreSitePlugins, CoreSitePluginsContent } from '@features/siteplugins/services/siteplugins';
+import { CoreSitePlugins, CoreSitePluginsContent, CoreSitePluginsProvider } from '@features/siteplugins/services/siteplugins';
 import { CoreNavigator } from '@services/navigator';
 import { CoreDomUtils } from '@services/utils/dom';
+import { CoreEvents } from '@singletons/events';
 
 /**
  * Component to render a site plugin content.
@@ -42,7 +43,7 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
     @Input() data?: Record<string, unknown>; // Data to pass to the component.
     @Input() preSets?: CoreSiteWSPreSets; // The preSets for the WS call.
     @Input() pageTitle?: string; // Current page title. It can be used by the "new-content" directives.
-    @Output() onContentLoaded = new EventEmitter<boolean>(); // Emits an event when the content is loaded.
+    @Output() onContentLoaded = new EventEmitter<CoreSitePluginsPluginContentLoadedData>(); // Emits event when content is loaded.
     @Output() onLoadingContent = new EventEmitter<boolean>(); // Emits an event when starts to load the content.
 
     content?: string; // Content.
@@ -60,7 +61,7 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     ngOnInit(): void {
         this.fetchContent();
@@ -85,7 +86,7 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
      * Fetches the content to render.
      *
      * @param refresh Whether the user is refreshing.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async fetchContent(refresh?: boolean): Promise<void> {
         this.onLoadingContent.emit(refresh);
@@ -107,16 +108,19 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
             this.jsData = Object.assign(this.data, CoreSitePlugins.createDataForJS(this.initResult, result));
 
             // Pass some methods as jsData so they can be called from the template too.
-            this.jsData.fetchContent = this.fetchContent.bind(this);
-            this.jsData.openContent = this.openContent.bind(this);
-            this.jsData.refreshContent = this.refreshContent.bind(this);
-            this.jsData.updateContent = this.updateContent.bind(this);
+            this.jsData.fetchContent = refresh => this.fetchContent(refresh);
+            this.jsData.openContent = (title, args, component, method, jsData, preSets, ptrEnabled) =>
+                this.openContent(title, args, component, method, jsData, preSets, ptrEnabled);
+            this.jsData.refreshContent = showSpinner => this.refreshContent(showSpinner);
+            this.jsData.updateContent = (args, component, method, jsData, preSets) =>
+                this.updateContent(args, component, method, jsData, preSets);
+            this.jsData.updateModuleCourseContent = (cmId, alreadyFetched) => this.updateModuleCourseContent(cmId, alreadyFetched);
 
-            this.onContentLoaded.emit(refresh);
+            this.onContentLoaded.emit({ refresh: !!refresh, success: true });
         } catch (error) {
             // Make it think it's loaded - otherwise it sticks on 'loading' and stops navigation working.
             this.content = '<div></div>';
-            this.onContentLoaded.emit(refresh);
+            this.onContentLoaded.emit({ refresh: !!refresh, success: false });
 
             CoreDomUtils.showErrorModalDefault(error, 'core.errorloadingcontent', true);
         } finally {
@@ -218,10 +222,25 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
      *
      * @param name Name of the function to call.
      * @param params List of params to send to the function.
-     * @return Result of the call. Undefined if no component instance or the function doesn't exist.
+     * @returns Result of the call. Undefined if no component instance or the function doesn't exist.
      */
     callComponentFunction(name: string, params?: unknown[]): unknown | undefined {
         return this.compileComponent?.callComponentFunction(name, params);
     }
 
+    /**
+     * Function only for module plugins using coursepagemethod. Update module data in course page content.
+     *
+     * @param cmId Module ID.
+     * @param alreadyFetched Whether course data has already been fetched (no need to fetch it again).
+     */
+    updateModuleCourseContent(cmId: number, alreadyFetched?: boolean): void {
+        CoreEvents.trigger(CoreSitePluginsProvider.UPDATE_COURSE_CONTENT, { cmId, alreadyFetched });
+    }
+
 }
+
+export type CoreSitePluginsPluginContentLoadedData = {
+    refresh: boolean;
+    success: boolean;
+};

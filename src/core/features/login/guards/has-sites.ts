@@ -40,6 +40,8 @@ export class CoreLoginHasSitesGuard implements CanActivate, CanLoad {
 
     /**
      * Check if the user has any sites stored.
+     *
+     * @returns Promise resolved with true if it's not redirected or the redirection route.
      */
     private async guard(): Promise<true | UrlTree> {
         const sites = await CoreUtils.ignoreErrors(CoreSites.getSites(), []);
@@ -48,7 +50,7 @@ export class CoreLoginHasSitesGuard implements CanActivate, CanLoad {
             return true;
         }
 
-        const [path, params] = CoreLoginHelper.getAddSiteRouteInfo();
+        const [path, params] = await CoreLoginHelper.getAddSiteRouteInfo();
         const route = Router.parseUrl(path);
 
         route.queryParams = params;

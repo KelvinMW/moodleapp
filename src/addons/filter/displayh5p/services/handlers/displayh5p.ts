@@ -18,6 +18,8 @@ import { CoreFilterDefaultHandler } from '@features/filter/services/handlers/def
 import { CoreFilterFilter, CoreFilterFormatTextOptions } from '@features/filter/services/filter';
 import { makeSingleton } from '@singletons';
 import { CoreH5PPlayerComponent } from '@features/h5p/components/h5p-player/h5p-player';
+import { CoreUrlUtils } from '@services/utils/url';
+import { CoreH5PHelper } from '@features/h5p/classes/helper';
 
 /**
  * Handler to support the Display H5P filter.
@@ -35,19 +37,10 @@ export class AddonFilterDisplayH5PHandlerService extends CoreFilterDefaultHandle
     }
 
     /**
-     * Filter some text.
-     *
-     * @param text The text to filter.
-     * @param filter The filter.
-     * @param options Options passed to the filters.
-     * @param siteId Site ID. If not defined, current site.
-     * @return Filtered text (or promise resolved with the filtered text).
+     * @inheritdoc
      */
     filter(
         text: string,
-        filter: CoreFilterFilter, // eslint-disable-line @typescript-eslint/no-unused-vars
-        options: CoreFilterFormatTextOptions, // eslint-disable-line @typescript-eslint/no-unused-vars
-        siteId?: string, // eslint-disable-line @typescript-eslint/no-unused-vars
     ): string | Promise<string> {
         this.template.innerHTML = text;
 
@@ -63,21 +56,29 @@ export class AddonFilterDisplayH5PHandlerService extends CoreFilterDefaultHandle
             iframe.parentElement?.replaceChild(placeholder, iframe);
         });
 
+        // Handle H5P iframes embedded using the embed HTML code.
+        const embeddedH5PIframes = <HTMLIFrameElement[]> Array.from(this.template.content.querySelectorAll('iframe.h5p-player'));
+
+        embeddedH5PIframes.forEach((iframe) => {
+            // Add the preventredirect param to allow authenticating if auto-login fails.
+            iframe.src = CoreUrlUtils.addParamsToUrl(iframe.src, { preventredirect: false });
+
+            // Add resizer script so the H5P has the right height.
+            CoreH5PHelper.addResizerScript();
+
+            // If the iframe has a small height, add some minimum initial height so it's seen if auto-login fails.
+            const styleHeight = Number(iframe.style.height);
+            const height = Number(iframe.getAttribute('height'));
+            if ((!height || height < 400) && (!styleHeight || styleHeight < 400)) {
+                iframe.style.height = '400px';
+            }
+        });
+
         return this.template.innerHTML;
     }
 
     /**
-     * Handle HTML. This function is called after "filter", and it will receive an HTMLElement containing the text that was
-     * filtered.
-     *
-     * @param container The HTML container to handle.
-     * @param filter The filter.
-     * @param options Options passed to the filters.
-     * @param viewContainerRef The ViewContainerRef where the container is.
-     * @param component Component.
-     * @param componentId Component ID.
-     * @param siteId Site ID. If not defined, current site.
-     * @return If async, promise resolved when done.
+     * @inheritdoc
      */
     handleHtml(
         container: HTMLElement,
@@ -86,7 +87,6 @@ export class AddonFilterDisplayH5PHandlerService extends CoreFilterDefaultHandle
         viewContainerRef: ViewContainerRef,
         component?: string,
         componentId?: string | number,
-        siteId?: string, // eslint-disable-line @typescript-eslint/no-unused-vars
     ): void | Promise<void> {
 
         const placeholders = <HTMLElement[]> Array.from(container.querySelectorAll('div.core-h5p-tmp-placeholder'));

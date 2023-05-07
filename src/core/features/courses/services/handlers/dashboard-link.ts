@@ -15,29 +15,36 @@
 import { Injectable } from '@angular/core';
 import { CoreContentLinksHandlerBase } from '@features/contentlinks/classes/base-handler';
 import { CoreContentLinksAction } from '@features/contentlinks/services/contentlinks-delegate';
+import { CoreMainMenuHomeHandlerService } from '@features/mainmenu/services/handlers/mainmenu';
 import { CoreNavigator } from '@services/navigator';
 import { makeSingleton } from '@singletons';
 import { CoreDashboardHomeHandler, CoreDashboardHomeHandlerService } from './dashboard-home';
 
 /**
- * Handler to treat links to my overview.
+ * Handler to treat links to dashboard.
  */
 @Injectable({ providedIn: 'root' })
 export class CoreCoursesDashboardLinkHandlerService extends CoreContentLinksHandlerBase {
 
-    name = 'CoreCoursesMyOverviewLinkHandler';
+    name = 'CoreCoursesDashboardLinkHandler';
     pattern = /\/my\/?$/;
 
     /**
      * Get the list of actions for a link (url).
      *
-     * @return List of (or promise resolved with list of) actions.
+     * @returns List of (or promise resolved with list of) actions.
      */
     getActions(): CoreContentLinksAction[] | Promise<CoreContentLinksAction[]> {
         return [{
             action: (siteId): void => {
                 // Use redirect to select the tab.
-                CoreNavigator.navigateToSitePath(CoreDashboardHomeHandlerService.PAGE_NAME, { siteId });
+                CoreNavigator.navigateToSitePath(
+                    `/${CoreMainMenuHomeHandlerService.PAGE_NAME}/${CoreDashboardHomeHandlerService.PAGE_NAME}`,
+                    {
+                        siteId,
+                        preferCurrentTab: false,
+                    },
+                );
             },
         }];
     }
@@ -46,7 +53,7 @@ export class CoreCoursesDashboardLinkHandlerService extends CoreContentLinksHand
      * Check if the handler is enabled for a certain site (site + user) and a URL.
      *
      * @param siteId The site ID.
-     * @return Whether the handler is enabled for the URL and site.
+     * @returns Whether the handler is enabled for the URL and site.
      */
     async isEnabled(siteId: string): Promise<boolean> {
         return CoreDashboardHomeHandler.isEnabledForSite(siteId);

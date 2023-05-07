@@ -1,6 +1,8 @@
 os: linux
 dist: trusty
-node_js: 12
+node_js: 14
+jdk:
+  - oraclejdk11
 
 git:
   depth: 3
@@ -18,12 +20,11 @@ cache:
     - $HOME/.android/build-cache
 
 before_install:
-  - nvm install 12
+  - nvm install
   - node --version
   - npm --version
   - nvm --version
   - npm ci
-  - npm install npm@^6 -g
 
 before_script:
   - npx gulp
@@ -46,31 +47,29 @@ jobs:
       - extra-google-google_play_services
       - extra-google-m2repository
       - extra-android-m2repository
+    before_install:
+      - nvm install
+      - node --version
+      - npm --version
+      - nvm --version
+      - npm ci
+      - export JAVA_HOME_COPY=$JAVA_HOME
+      - export JAVA_HOME=/usr/lib/jvm/java-8-oracle
+      - yes | sdkmanager "build-tools;32.0.0"
+      - export JAVA_HOME=$JAVA_HOME_COPY
     addons:
       apt:
         packages:
         - libsecret-1-dev
+        - php5-cli
+        - php5-common
   - stage: build
     name: "Build iOS"
     language: node_js
     if: env(BUILD_IOS) = 1 AND (env(DEPLOY) = 1 OR (env(DEPLOY) = 2 AND tag IS NOT blank))
     os: osx
-    osx_image: xcode12.5
-  - stage: test
-    name: "End to end tests (mod_forum and mod_messages)"
-    services:
-    - docker
-    if: type = cron
-    script: scripts/test_e2e.sh "@app&&@mod_forum" "@app&&@mod_messages"
-  - stage: test
-    name: "End to end tests (mod_course, core_course and mod_courses)"
-    services:
-    - docker
-    if: type = cron
-    script: scripts/test_e2e.sh "@app&&@mod_course" "@app&&@core_course" "@app&&@mod_courses"
-  - stage: test
-    name: "End to end tests (others)"
-    services:
-    - docker
-    if: type = cron
-    script: scripts/test_e2e.sh "@app&&~@mod_forum&&~@mod_messages&&~@mod_course&&~@core_course&&~@mod_courses"
+    osx_image: xcode13.1
+    addons:
+      homebrew:
+        packages:
+        - jq

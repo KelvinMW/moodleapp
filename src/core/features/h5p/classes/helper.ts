@@ -17,13 +17,11 @@ import { FileEntry } from '@ionic-native/file/ngx';
 import { CoreFile, CoreFileProvider } from '@services/file';
 import { CoreSites } from '@services/sites';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
-import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
-import { CoreUser } from '@features/user/services/user';
 import { CoreH5P } from '../services/h5p';
-import { CoreH5PCore, CoreH5PDisplayOptions } from './core';
-import { Translate } from '@singletons';
+import { CoreH5PCore, CoreH5PDisplayOptions, CoreH5PLocalization } from './core';
 import { CoreError } from '@classes/errors/error';
+import { CorePath } from '@singletons/path';
 
 /**
  * Equivalent to Moodle's H5P helper class.
@@ -31,10 +29,26 @@ import { CoreError } from '@classes/errors/error';
 export class CoreH5PHelper {
 
     /**
+     * Add the resizer script if it hasn't been added already.
+     */
+    static addResizerScript(): void {
+        if (document.head.querySelector('#core-h5p-resizer-script') != null) {
+            // Script already added, don't add it again.
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.id = 'core-h5p-resizer-script';
+        script.type = 'text/javascript';
+        script.src = CoreH5P.h5pPlayer.getResizerScriptUrl();
+        document.head.appendChild(script);
+    }
+
+    /**
      * Convert the number representation of display options into an object.
      *
      * @param displayOptions Number representing display options.
-     * @return Object with display options.
+     * @returns Object with display options.
      */
     static decodeDisplayOptions(displayOptions: number): CoreH5PDisplayOptions {
         const displayOptionsObject = CoreH5P.h5pCore.getDisplayOptionsAsObject(displayOptions);
@@ -56,7 +70,7 @@ export class CoreH5PHelper {
     /**
      * Get the core H5P assets, including all core H5P JavaScript and CSS.
      *
-     * @return Array core H5P assets.
+     * @returns Array core H5P assets.
      */
     static async getCoreAssets(
         siteId?: string,
@@ -95,53 +109,54 @@ export class CoreH5PHelper {
      * Get the settings needed by the H5P library.
      *
      * @param siteId The site ID. If not defined, current site.
-     * @return Promise resolved with the settings.
+     * @returns Promise resolved with the settings.
      */
     static async getCoreSettings(siteId?: string): Promise<CoreH5PCoreSettings> {
 
         const site = await CoreSites.getSite(siteId);
 
-        const userId = site.getUserId();
-        const user = await CoreUtils.ignoreErrors(CoreUser.getProfile(userId, undefined, false, siteId));
+        const info = site.getInfo();
 
-        if (!user || !user.email) {
-            throw new CoreError(Translate.instant('core.h5p.errorgetemail'));
+        if (!info) {
+            // Shouldn't happen for authenticated sites.
+            throw new CoreError('Site info could not be fetched.');
         }
 
+        // H5P doesn't currently support xAPI State. It implements a mechanism in contentUserDataAjax() in h5p.js to update user
+        // data. However, in our case, we're overriding this method to call the xAPI State web services.
         const basePath = CoreFile.getBasePathInstant();
         const ajaxPaths = {
-            xAPIResult: '',
             contentUserData: '',
         };
 
         return {
             baseUrl: CoreFile.getWWWPath(),
             url: CoreFile.convertFileSrc(
-                CoreTextUtils.concatenatePaths(
+                CorePath.concatenatePaths(
                     basePath,
                     CoreH5P.h5pCore.h5pFS.getExternalH5PFolderPath(site.getId()),
                 ),
             ),
             urlLibraries: CoreFile.convertFileSrc(
-                CoreTextUtils.concatenatePaths(
+                CorePath.concatenatePaths(
                     basePath,
                     CoreH5P.h5pCore.h5pFS.getLibrariesFolderPath(site.getId()),
                 ),
             ),
             postUserStatistics: false,
             ajax: ajaxPaths,
-            saveFreq: false,
+            saveFreq: false, // saveFreq will be overridden in params.js.
             siteUrl: site.getURL(),
             l10n: {
                 H5P: CoreH5P.h5pCore.getLocalization(), // eslint-disable-line @typescript-eslint/naming-convention
             },
-            user: { name: site.getInfo()!.fullname, mail: user.email },
+            user: { name: info.username, id: info.userid },
             hubIsEnabled: false,
             reportingIsEnabled: false,
             crossorigin: null,
             libraryConfig: null,
             pluginCacheBuster: '',
-            libraryUrl: CoreTextUtils.concatenatePaths(CoreH5P.h5pCore.h5pFS.getCoreH5PPath(), 'js'),
+            libraryUrl: CorePath.concatenatePaths(CoreH5P.h5pCore.h5pFS.getCoreH5PPath(), 'js'),
         };
     }
 
@@ -153,7 +168,7 @@ export class CoreH5PHelper {
      * @param file The file entry of the downloaded file.
      * @param siteId Site ID. If not defined, current site.
      * @param onProgress Function to call on progress.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     static async saveH5P(fileUrl: string, file: FileEntry, siteId?: string, onProgress?: CoreH5PSaveOnProgress): Promise<void> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -173,7 +188,7 @@ export class CoreH5PHelper {
      * @param file The file entry of the downloaded file.
      * @param siteId Site ID. If not defined, current site.
      * @param onProgress Function to call on progress.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected static async performSave(
         fileUrl: string,
@@ -183,7 +198,7 @@ export class CoreH5PHelper {
     ): Promise<void> {
 
         const folderName = CoreMimetypeUtils.removeExtension(file.name);
-        const destFolder = CoreTextUtils.concatenatePaths(CoreFileProvider.TMPFOLDER, 'h5p/' + folderName);
+        const destFolder = CorePath.concatenatePaths(CoreFileProvider.TMPFOLDER, 'h5p/' + folderName);
 
         // Unzip the file.
         await CoreFile.unzipFile(file.toURL(), destFolder, onProgress);
@@ -195,7 +210,7 @@ export class CoreH5PHelper {
             // Read the contents of the unzipped dir, process them and store them.
             const contents = await CoreFile.getDirectoryContents(destFolder);
 
-            const filesData = await CoreH5P.h5pValidator.processH5PFiles(destFolder, contents);
+            const filesData = await CoreH5P.h5pValidator.processH5PFiles(destFolder, contents, siteId);
 
             const content = await CoreH5P.h5pStorage.savePackage(filesData, folderName, fileUrl, false, siteId);
 
@@ -209,7 +224,7 @@ export class CoreH5PHelper {
             // Remove tmp folder.
             try {
                 await CoreFile.removeDir(destFolder);
-            } catch (error) {
+            } catch {
                 // Ignore errors, it will be deleted eventually.
             }
         }
@@ -226,17 +241,18 @@ export type CoreH5PCoreSettings = {
     urlLibraries: string;
     postUserStatistics: boolean;
     ajax: {
-        xAPIResult: string;
+        xAPIResult?: string;
         contentUserData: string;
     };
     saveFreq: boolean;
     siteUrl: string;
     l10n: {
-        H5P: {[name: string]: string}; // eslint-disable-line @typescript-eslint/naming-convention
+        H5P: CoreH5PLocalization; // eslint-disable-line @typescript-eslint/naming-convention
     };
     user: {
         name: string;
-        mail: string;
+        id?: number;
+        mail?: string;
     };
     hubIsEnabled: boolean;
     reportingIsEnabled: boolean;

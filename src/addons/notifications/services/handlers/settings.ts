@@ -14,10 +14,8 @@
 
 import { Injectable } from '@angular/core';
 
-import { CoreLocalNotifications } from '@services/local-notifications';
 import { makeSingleton } from '@singletons';
 import { CoreSettingsHandler, CoreSettingsHandlerData } from '@features/settings/services/settings-delegate';
-import { AddonNotifications } from '../notifications';
 
 /**
  * Notifications settings handler.
@@ -33,17 +31,16 @@ export class AddonNotificationsSettingsHandlerService implements CoreSettingsHan
     /**
      * Check if the handler is enabled on a site level.
      *
-     * @return Whether or not the handler is enabled on a site level.
+     * @returns Whether or not the handler is enabled on a site level.
      */
     async isEnabled(): Promise<boolean> {
-        // Preferences or notification sound setting available.
-        return CoreLocalNotifications.isAvailable() || AddonNotifications.isNotificationPreferencesEnabled();
+        return true;
     }
 
     /**
      * Returns the data needed to render the handler.
      *
-     * @return Data needed to render the handler.
+     * @returns Data needed to render the handler.
      */
     getDisplayData(): CoreSettingsHandlerData {
         return {

@@ -19,7 +19,7 @@ import { CoreFilepool } from '@services/filepool';
 import { CoreSites, CoreSitesCommonWSOptions } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreWSExternalFile, CoreWSExternalWarning } from '@services/ws';
-import { makeSingleton } from '@singletons';
+import { makeSingleton, Translate } from '@singletons';
 
 const ROOT_CACHE_KEY = 'mmaModLabel:';
 
@@ -35,7 +35,7 @@ export class AddonModLabelProvider {
      * Get cache key for label data WS calls.
      *
      * @param courseId Course ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getLabelDataCacheKey(courseId: number): string {
         return ROOT_CACHE_KEY + 'label:' + courseId;
@@ -48,7 +48,7 @@ export class AddonModLabelProvider {
      * @param key Name of the property to check.
      * @param value Value to search.
      * @param options Other options.
-     * @return Promise resolved when the label is retrieved.
+     * @returns Promise resolved when the label is retrieved.
      */
     protected async getLabelByField(
         courseId: number,
@@ -77,7 +77,7 @@ export class AddonModLabelProvider {
             return currentLabel;
         }
 
-        throw new CoreError('Label not found');
+        throw new CoreError(Translate.instant('core.course.modulenotfound'));
     }
 
     /**
@@ -86,7 +86,7 @@ export class AddonModLabelProvider {
      * @param courseId Course ID.
      * @param cmId Course module ID.
      * @param options Other options.
-     * @return Promise resolved when the label is retrieved.
+     * @returns Promise resolved when the label is retrieved.
      */
     getLabel(courseId: number, cmId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModLabelLabel> {
         return this.getLabelByField(courseId, 'coursemodule', cmId, options);
@@ -98,7 +98,7 @@ export class AddonModLabelProvider {
      * @param courseId Course ID.
      * @param labelId Label ID.
      * @param options Other options.
-     * @return Promise resolved when the label is retrieved.
+     * @returns Promise resolved when the label is retrieved.
      */
     getLabelById(courseId: number, labelId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModLabelLabel> {
         return this.getLabelByField(courseId, 'id', labelId, options);
@@ -109,7 +109,7 @@ export class AddonModLabelProvider {
      *
      * @param courseId Course ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateLabelData(courseId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -123,7 +123,7 @@ export class AddonModLabelProvider {
      * @param moduleId The module ID.
      * @param courseId Course ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when data is invalidated.
+     * @returns Promise resolved when data is invalidated.
      */
     async invalidateContent(moduleId: number, courseId: number, siteId?: string): Promise<void> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -134,32 +134,6 @@ export class AddonModLabelProvider {
         promises.push(CoreFilepool.invalidateFilesByComponent(siteId, AddonModLabelProvider.COMPONENT, moduleId, true));
 
         await CoreUtils.allPromises(promises);
-    }
-
-    /**
-     * Check if the site has the WS to get label data.
-     *
-     * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with boolean: whether it's available.
-     * @since 3.3
-     */
-    async isGetLabelAvailable(siteId?: string): Promise<boolean> {
-        const site = await CoreSites.getSite(siteId);
-
-        return site.wsAvailable('mod_label_get_labels_by_courses');
-    }
-
-    /**
-     * Check if the site has the WS to get label data.
-     *
-     * @param site Site. If not defined, current site.
-     * @return Whether it's available.
-     * @since 3.3
-     */
-    isGetLabelAvailableForSite(site?: CoreSite): boolean {
-        site = site || CoreSites.getCurrentSite();
-
-        return !!site?.wsAvailable('mod_label_get_labels_by_courses');
     }
 
 }

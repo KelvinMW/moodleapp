@@ -3,27 +3,14 @@
   "compilerOptions": {
     "outDir": "./out-tsc/app",
     "types": [
-      "cordova-plugin-file-transfer",
-      "cordova-plugin-inappbrowser",
+      "@moodlehq/cordova-plugin-file-transfer",
+      "@moodlehq/cordova-plugin-inappbrowser",
       "cordova",
       "dom-mediacapture-record",
       "node",
       "resize-observer-browser",
       "webpack-env"
-    ],
-    "paths": {
-      "@addons/*": ["addons/*"],
-      "@classes/*": ["core/classes/*"],
-      "@components/*": ["core/components/*"],
-      "@directives/*": ["core/directives/*"],
-      "@features/*": ["core/features/*"],
-      "@guards/*": ["core/guards/*"],
-      "@pipes/*": ["core/pipes/*"],
-      "@services/*": ["core/services/*"],
-      "@singletons": ["core/singletons/index"],
-      "@singletons/*": ["core/singletons/*"],
-      "@/*": ["*"]
-    }
+    ]
   },
   "files": [
     "src/main.ts",
@@ -34,8 +21,11 @@
     "src/**/*.d.ts"
   ],
   "exclude": [
-    "src/**/*.test.ts",
+    "src/**/tests/**",
+    "src/**/stories/**",
     "src/testing/**",
-    "src/**/tests/**"
+    "src/storybook/**",
+    "src/**/*.test.ts",
+    "src/**/*.stories.*"
   ]
 }

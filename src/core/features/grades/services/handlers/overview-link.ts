@@ -18,6 +18,7 @@ import { CoreContentLinksAction } from '@features/contentlinks/services/contentl
 import { CoreNavigator } from '@services/navigator';
 import { makeSingleton } from '@singletons';
 import { CoreGrades } from '../grades';
+import { GRADES_PAGE_NAME } from '../grades-helper';
 
 /**
  * Handler to treat links to overview courses grades.
@@ -31,15 +32,12 @@ export class CoreGradesOverviewLinkHandlerService extends CoreContentLinksHandle
     /**
      * Get the list of actions for a link (url).
      *
-     * @return List of (or promise resolved with list of) actions.
+     * @returns List of (or promise resolved with list of) actions.
      */
     getActions(): CoreContentLinksAction[] | Promise<CoreContentLinksAction[]> {
         return [{
             action: siteId => {
-                CoreNavigator.navigateToSitePath('/grades', {
-                    siteId,
-                    preferCurrentTab: false,
-                });
+                CoreNavigator.navigateToSitePath(GRADES_PAGE_NAME, { siteId });
             },
         }];
     }
@@ -49,7 +47,7 @@ export class CoreGradesOverviewLinkHandlerService extends CoreContentLinksHandle
      * If not defined, defaults to true.
      *
      * @param siteId The site ID.
-     * @return Whether the handler is enabled for the URL and site.
+     * @returns Whether the handler is enabled for the URL and site.
      */
     async isEnabled(siteId: string): Promise<boolean> {
         return CoreGrades.isCourseGradesEnabled(siteId);

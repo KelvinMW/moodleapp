@@ -18,6 +18,8 @@ import { CoreSites } from '@services/sites';
 import { CoreUrlUtils } from '@services/utils/url';
 import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
+import { CoreText } from '@singletons/text';
+import { CoreUrl } from '@singletons/url';
 
 /**
  * Interface that all handlers must implement.
@@ -49,11 +51,11 @@ export interface CoreContentLinksHandler {
      * Get the list of actions for a link (url).
      *
      * @param siteIds List of sites the URL belongs to.
-     * @param url The URL to treat.
+     * @param url The URL to treat.  It's a relative URL, it won't include the site URL.
      * @param params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
      * @param courseId Course ID related to the URL. Optional but recommended.
      * @param data Extra data to handle the URL.
-     * @return List of (or promise resolved with list of) actions.
+     * @returns List of (or promise resolved with list of) actions.
      */
     getActions(
         siteIds: string[],
@@ -66,8 +68,8 @@ export interface CoreContentLinksHandler {
     /**
      * Check if a URL is handled by this handler.
      *
-     * @param url The URL to check.
-     * @return Whether the URL is handled by this handler
+     * @param url The URL to check. It's a relative URL, it won't include the site URL.
+     * @returns Whether the URL is handled by this handler
      */
     handles(url: string): boolean;
 
@@ -75,7 +77,7 @@ export interface CoreContentLinksHandler {
      * If the URL is handled by this handler, return the site URL.
      *
      * @param url The URL to check.
-     * @return Site URL if it is handled, undefined otherwise.
+     * @returns Site URL if it is handled, undefined otherwise.
      */
     getSiteUrl(url: string): string | undefined;
 
@@ -84,10 +86,10 @@ export interface CoreContentLinksHandler {
      * If not defined, defaults to true.
      *
      * @param siteId The site ID.
-     * @param url The URL to treat.
+     * @param url The URL to treat.  It's a relative URL, it won't include the site URL.
      * @param params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
      * @param courseId Course ID related to the URL. Optional but recommended.
-     * @return Whether the handler is enabled for the URL and site.
+     * @returns Whether the handler is enabled for the URL and site.
      */
     isEnabled?(siteId: string, url: string, params: Record<string, string>, courseId?: number): Promise<boolean>;
 }
@@ -154,7 +156,7 @@ export class CoreContentLinksDelegateService {
      * @param courseId Course ID related to the URL. Optional but recommended.
      * @param username Username to use to filter sites.
      * @param data Extra data to handle the URL.
-     * @return Promise resolved with the actions.
+     * @returns Promise resolved with the actions.
      */
     async getActionsFor(url: string, courseId?: number, username?: string, data?: unknown): Promise<CoreContentLinksAction[]> {
         if (!url) {
@@ -163,15 +165,24 @@ export class CoreContentLinksDelegateService {
 
         // Get the list of sites the URL belongs to.
         const siteIds = await CoreSites.getSiteIdsFromUrl(url, true, username);
+        if (!siteIds.length) {
+            // No sites, no actions.
+            return [];
+        }
+
+        const site = await CoreSites.getSite(siteIds[0]);
+
         const linkActions: CoreContentLinksHandlerActions[] = [];
         const promises: Promise<void>[] = [];
         const params = CoreUrlUtils.extractUrlParams(url);
+        const relativeUrl = CoreText.addStartingSlash(CoreUrl.toRelativeURL(site.getURL(), url));
+
         for (const name in this.handlers) {
             const handler = this.handlers[name];
             const checkAll = handler.checkAllUsers;
-            const isEnabledFn = this.isHandlerEnabled.bind(this, handler, url, params, courseId);
+            const isEnabledFn = (siteId: string) => this.isHandlerEnabled(handler, relativeUrl, params, courseId, siteId);
 
-            if (!handler.handles(url)) {
+            if (!handler.handles(relativeUrl)) {
                 // Invalid handler or it doesn't handle the URL. Stop.
                 continue;
             }
@@ -183,7 +194,7 @@ export class CoreContentLinksDelegateService {
                     return;
                 }
 
-                const actions = await handler.getActions(siteIds, url, params, courseId, data);
+                const actions = await handler.getActions(siteIds, relativeUrl, params, courseId, data);
 
                 if (actions && actions.length) {
                     // Set default values if any value isn't supplied.
@@ -191,6 +202,29 @@ export class CoreContentLinksDelegateService {
                         action.message = action.message || 'core.view';
                         action.icon = action.icon || 'fas-eye';
                         action.sites = action.sites || siteIds;
+
+                        // Wrap the action function in our own function to treat logged out sites.
+                        const actionFunction = action.action;
+                        action.action = async (siteId) => {
+                            const site = await CoreSites.getSite(siteId);
+
+                            if (!site.isLoggedOut()) {
+                                // Call the action now.
+                                return actionFunction(siteId);
+                            }
+
+                            // Site is logged out, authenticate first before treating the URL.
+                            const willReload = await CoreSites.logoutForRedirect(siteId, {
+                                urlToOpen: url,
+                            });
+
+                            if (!willReload) {
+                                // Load the site with the redirect data.
+                                await CoreSites.loadSite(siteId, {
+                                    urlToOpen: url,
+                                });
+                            }
+                        };
                     });
 
                     // Add them to the list.
@@ -217,7 +251,7 @@ export class CoreContentLinksDelegateService {
      * Get the site URL if the URL is supported by any handler.
      *
      * @param url URL to handle.
-     * @return Site URL if the URL is supported by any handler, undefined otherwise.
+     * @returns Site URL if the URL is supported by any handler, undefined otherwise.
      */
     getSiteUrl(url: string): string | void {
         if (!url) {
@@ -239,17 +273,17 @@ export class CoreContentLinksDelegateService {
      * Check if a handler is enabled for a certain site and URL.
      *
      * @param handler Handler to check.
-     * @param url The URL to check.
+     * @param url The URL to check.  It's a relative URL, it won't include the site URL.
      * @param params The params of the URL
      * @param courseId Course ID the URL belongs to (can be undefined).
      * @param siteId The site ID to check.
-     * @return Promise resolved with boolean: whether the handler is enabled.
+     * @returns Promise resolved with boolean: whether the handler is enabled.
      */
     protected async isHandlerEnabled(
         handler: CoreContentLinksHandler,
         url: string,
         params: Record<string, string>,
-        courseId: number,
+        courseId: number | undefined,
         siteId: string,
     ): Promise<boolean> {
 
@@ -268,17 +302,17 @@ export class CoreContentLinksDelegateService {
             return true;
         }
 
-        return await handler.isEnabled(siteId, url, params, courseId);
+        return handler.isEnabled(siteId, url, params, courseId);
     }
 
     /**
      * Register a handler.
      *
      * @param handler The handler to register.
-     * @return True if registered successfully, false otherwise.
+     * @returns True if registered successfully, false otherwise.
      */
     registerHandler(handler: CoreContentLinksHandler): boolean {
-        if (typeof this.handlers[handler.name] !== 'undefined') {
+        if (this.handlers[handler.name] !== undefined) {
             this.logger.log(`Addon '${handler.name}' already registered`);
 
             return false;
@@ -293,7 +327,7 @@ export class CoreContentLinksDelegateService {
      * Sort actions by priority.
      *
      * @param actions Actions to sort.
-     * @return Sorted actions.
+     * @returns Sorted actions.
      */
     protected sortActionsByPriority(actions: CoreContentLinksHandlerActions[]): CoreContentLinksAction[] {
         let sorted: CoreContentLinksAction[] = [];

@@ -26,7 +26,7 @@ export class CoreBlockHelperProvider {
     /**
      * Return if it get course blocks options is enabled for the current site.
      *
-     * @return true if enabled, false otherwise.
+     * @returns true if enabled, false otherwise.
      */
     canGetCourseBlocks(): boolean {
         return CoreCourse.canGetCourseBlocks() && !CoreBlockDelegate.areBlocksDisabledInCourses();
@@ -36,7 +36,7 @@ export class CoreBlockHelperProvider {
      * Returns the list of blocks for the selected course.
      *
      * @param courseId Course ID.
-     * @return List of supported blocks.
+     * @returns List of supported blocks.
      */
     async getCourseBlocks(courseId: number): Promise<CoreCourseBlock[]> {
         const canGetBlocks = this.canGetCourseBlocks();
@@ -52,6 +52,22 @@ export class CoreBlockHelperProvider {
         }
 
         return blocks;
+    }
+
+    /**
+     * Returns if the course has any block.
+     *
+     * @param courseId Course ID.
+     * @returns Wether course has blocks.
+     */
+    async hasCourseBlocks(courseId: number): Promise<boolean> {
+        try {
+            const blocks = await this.getCourseBlocks(courseId);
+
+            return blocks.length > 0;
+        } catch {
+            return false;
+        }
     }
 
 }

@@ -19,7 +19,7 @@ import { CoreCourses } from '@features/courses/services/courses';
 import { AddonBlockTimelineComponent } from '@addons/block/timeline/components/timeline/timeline';
 import { CoreBlockBaseHandler } from '@features/block/classes/base-block-handler';
 import { makeSingleton } from '@singletons';
-import { AddonBlockTimeline } from './timeline';
+import { CoreCoursesDashboard } from '@features/courses/services/dashboard';
 
 /**
  * Block handler.
@@ -33,10 +33,10 @@ export class AddonBlockTimelineHandlerService extends CoreBlockBaseHandler {
     /**
      * Check if the handler is enabled on a site level.
      *
-     * @return Whether or not the handler is enabled on a site level.
+     * @returns Whether or not the handler is enabled on a site level.
      */
     async isEnabled(): Promise<boolean> {
-        const enabled = await AddonBlockTimeline.isAvailable();
+        const enabled = !CoreCoursesDashboard.isDisabledInSite();
         const currentSite = CoreSites.getCurrentSite();
 
         return enabled && ((currentSite && currentSite.isVersionGreaterEqualThan('3.6')) ||
@@ -46,7 +46,7 @@ export class AddonBlockTimelineHandlerService extends CoreBlockBaseHandler {
     /**
      * Returns the data needed to render the block.
      *
-     * @return Data or promise resolved with the data.
+     * @returns Data or promise resolved with the data.
      */
     getDisplayData(): CoreBlockHandlerData {
 

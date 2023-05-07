@@ -16,6 +16,7 @@ import { Injectable } from '@angular/core';
 import { CoreComments } from '@features/comments/services/comments';
 import { CoreCourseActivityPrefetchHandlerBase } from '@features/course/classes/activity-prefetch-handler';
 import { CoreCourseCommonModWSOptions, CoreCourse, CoreCourseAnyModuleData } from '@features/course/services/course';
+import { CoreCourses } from '@features/courses/services/courses';
 import { CoreFilepool } from '@services/filepool';
 import { CoreGroup, CoreGroups } from '@services/groups';
 import { CoreSitesCommonWSOptions, CoreSites, CoreSitesReadingStrategy } from '@services/sites';
@@ -43,7 +44,7 @@ export class AddonModDataPrefetchHandlerService extends CoreCourseActivityPrefet
      * @param dataId Database Id.
      * @param groups Array of groups in the activity.
      * @param options Other options.
-     * @return All unique entries.
+     * @returns All unique entries.
      */
     protected async getAllUniqueEntries(
         dataId: number,
@@ -75,7 +76,7 @@ export class AddonModDataPrefetchHandlerService extends CoreCourseActivityPrefet
      * @param courseId Course ID the module belongs to.
      * @param omitFail True to always return even if fails. Default false.
      * @param options Other options.
-     * @return Promise resolved with the info fetched.
+     * @returns Promise resolved with the info fetched.
      */
     protected async getDatabaseInfoHelper(
         module: CoreCourseAnyModuleData,
@@ -129,7 +130,7 @@ export class AddonModDataPrefetchHandlerService extends CoreCourseActivityPrefet
      * Returns the file contained in the entries.
      *
      * @param entries List of entries to get files from.
-     * @return List of files.
+     * @returns List of files.
      */
     protected getEntriesFiles(entries: AddonModDataEntry[]): CoreWSFile[] {
         let files: CoreWSFile[] = [];
@@ -172,7 +173,7 @@ export class AddonModDataPrefetchHandlerService extends CoreCourseActivityPrefet
     async invalidateModule(module: CoreCourseAnyModuleData, courseId: number): Promise<void> {
         const promises: Promise<void>[] = [];
         promises.push(AddonModData.invalidateDatabaseData(courseId));
-        promises.push(AddonModData.invalidateDatabaseAccessInformationData(module.instance!));
+        promises.push(AddonModData.invalidateDatabaseAccessInformationData(module.instance));
 
         await Promise.all(promises);
     }
@@ -205,15 +206,8 @@ export class AddonModDataPrefetchHandlerService extends CoreCourseActivityPrefet
     /**
      * @inheritdoc
      */
-    async isEnabled(): Promise<boolean> {
-        return AddonModData.isPluginEnabled();
-    }
-
-    /**
-     * @inheritdoc
-     */
     prefetch(module: CoreCourseAnyModuleData, courseId: number): Promise<void> {
-        return this.prefetchPackage(module, courseId, this.prefetchDatabase.bind(this, module, courseId));
+        return this.prefetchPackage(module, courseId, (siteId) => this.prefetchDatabase(module, courseId, siteId));
     }
 
     /**
@@ -222,7 +216,7 @@ export class AddonModDataPrefetchHandlerService extends CoreCourseActivityPrefet
      * @param module Module.
      * @param courseId Course ID the module belongs to.
      * @param siteId Site ID.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async prefetchDatabase(module: CoreCourseAnyModuleData, courseId: number, siteId: string): Promise<void> {
         const options = {
@@ -267,7 +261,10 @@ export class AddonModDataPrefetchHandlerService extends CoreCourseActivityPrefet
         });
 
         // Add Basic Info to manage links.
-        promises.push(CoreCourse.getModuleBasicInfoByInstance(database.id, 'data', siteId));
+        promises.push(CoreCourse.getModuleBasicInfoByInstance(database.id, 'data', { siteId }));
+
+        // Get course data, needed to determine upload max size if it's configured to be course limit.
+        promises.push(CoreUtils.ignoreErrors(CoreCourses.getCourseByField('id', courseId, siteId)));
 
         await Promise.all(promises);
     }
@@ -278,11 +275,11 @@ export class AddonModDataPrefetchHandlerService extends CoreCourseActivityPrefet
      * @param module Module.
      * @param courseId Course ID the module belongs to
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async sync(module: CoreCourseAnyModuleData, courseId: number, siteId?: string): Promise<AddonModDataSyncResult> {
         const promises = [
-            AddonModDataSync.syncDatabase(module.instance!, siteId),
+            AddonModDataSync.syncDatabase(module.instance, siteId),
             AddonModDataSync.syncRatings(module.id, true, siteId),
         ];
 

@@ -23,11 +23,11 @@ import { CoreSites } from '@services/sites';
 import { CoreEvents } from '@singletons/events';
 import { CoreUtils } from '@services/utils/utils';
 import {
-    CorePushNotifications,
     CorePushNotificationsNotificationBasicData,
 } from '@features/pushnotifications/services/pushnotifications';
 import { CorePushNotificationsDelegate } from '@features/pushnotifications/services/push-delegate';
 import { makeSingleton } from '@singletons';
+import { CoreMainMenuProvider } from '@features/mainmenu/services/mainmenu';
 
 /**
  * Handler to inject an option into main menu.
@@ -38,14 +38,14 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
     static readonly PAGE_NAME = 'messages';
 
     name = 'AddonMessages';
-    priority = 800;
+    priority = 700;
 
     protected handler: CoreMainMenuHandlerToDisplay = {
         icon: 'fas-comments',
         title: 'addon.messages.messages',
         page: AddonMessagesMainMenuHandlerService.PAGE_NAME,
         class: 'addon-messages-handler',
-        showBadge: true, // Do not check isMessageCountEnabled because we'll use fallback it not enabled.
+        showBadge: true,
         badge: '',
         badgeA11yText: 'addon.messages.unreadconversations',
         loading: true,
@@ -54,18 +54,21 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
     protected unreadCount = 0;
     protected contactRequestsCount = 0;
     protected orMore = false;
+    protected badgeCount?: number;
 
     constructor() {
 
         CoreEvents.on(AddonMessagesProvider.UNREAD_CONVERSATION_COUNTS_EVENT, (data) => {
             this.unreadCount = data.favourites + data.individual + data.group + data.self;
             this.orMore = !!data.orMore;
-            this.updateBadge(data.siteId!);
+
+            data.siteId && this.updateBadge(data.siteId);
         });
 
         CoreEvents.on(AddonMessagesProvider.CONTACT_REQUESTS_COUNT_EVENT, (data) => {
             this.contactRequestsCount = data.count;
-            this.updateBadge(data.siteId!);
+
+            data.siteId && this.updateBadge(data.siteId);
         });
 
         // Reset info on logout.
@@ -90,13 +93,13 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
         );
 
         // Register Badge counter.
-        CorePushNotificationsDelegate.registerCounterHandler('AddonMessages');
+        CorePushNotificationsDelegate.registerCounterHandler(AddonMessagesMainMenuHandlerService.name);
     }
 
     /**
      * Check if the handler is enabled on a site level.
      *
-     * @return Whether or not the handler is enabled on a site level.
+     * @returns Whether or not the handler is enabled on a site level.
      */
     isEnabled(): Promise<boolean> {
         return AddonMessages.isPluginEnabled();
@@ -105,7 +108,7 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
     /**
      * Returns the data needed to render the handler.
      *
-     * @return Data needed to render the handler.
+     * @returns Data needed to render the handler.
      */
     getDisplayData(): CoreMainMenuHandlerToDisplay {
         if (this.handler.loading) {
@@ -120,30 +123,31 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
      *
      * @param siteId Site ID or current Site if undefined.
      * @param unreadOnly If true only the unread conversations count is refreshed.
-     * @return Resolve when done.
+     * @returns Resolve when done.
      */
     async refreshBadge(siteId?: string, unreadOnly?: boolean): Promise<void> {
-        siteId = siteId || CoreSites.getCurrentSiteId();
-        if (!siteId) {
+        const badgeSiteId = siteId || CoreSites.getCurrentSiteId();
+
+        if (!badgeSiteId) {
             return;
         }
 
         const promises: Promise<unknown>[] = [];
 
-        promises.push(AddonMessages.refreshUnreadConversationCounts(siteId).catch(() => {
+        promises.push(AddonMessages.refreshUnreadConversationCounts(badgeSiteId).catch(() => {
             this.unreadCount = 0;
             this.orMore = false;
         }));
 
         // Refresh the number of contact requests in 3.6+ sites.
         if (!unreadOnly && AddonMessages.isGroupMessagingEnabled()) {
-            promises.push(AddonMessages.refreshContactRequestsCount(siteId).catch(() => {
+            promises.push(AddonMessages.refreshContactRequestsCount(badgeSiteId).catch(() => {
                 this.contactRequestsCount = 0;
             }));
         }
 
         await Promise.all(promises).finally(() => {
-            this.updateBadge(siteId!);
+            this.updateBadge(badgeSiteId);
             this.handler.loading = false;
         });
     }
@@ -155,6 +159,13 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
      */
     updateBadge(siteId: string): void {
         const totalCount = this.unreadCount + (this.contactRequestsCount || 0);
+
+        if (this.badgeCount === totalCount) {
+            return;
+        }
+
+        this.badgeCount = totalCount;
+
         if (totalCount > 0) {
             this.handler.badge = totalCount + (this.orMore ? '+' : '');
         } else {
@@ -162,7 +173,14 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
         }
 
         // Update push notifications badge.
-        CorePushNotifications.updateAddonCounter('AddonMessages', totalCount, siteId);
+        CoreEvents.trigger(
+            CoreMainMenuProvider.MAIN_MENU_HANDLER_BADGE_UPDATED,
+            {
+                handler: AddonMessagesMainMenuHandlerService.name,
+                value: totalCount,
+            },
+            siteId,
+        );
     }
 
     /**
@@ -170,7 +188,7 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
      * Receives the ID of the site affected, undefined for all sites.
      *
      * @param siteId ID of the site affected, undefined for all sites.
-     * @return Promise resolved when done, rejected if failure.
+     * @returns Promise resolved when done, rejected if failure.
      */
     async execute(siteId?: string): Promise<void> {
         if (!CoreSites.isCurrentSite(siteId)) {
@@ -183,7 +201,7 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
     /**
      * Get the time between consecutive executions.
      *
-     * @return Time between consecutive executions (in ms).
+     * @returns Time between consecutive executions (in ms).
      */
     getInterval(): number {
         if (!this.isSync()) {
@@ -196,17 +214,16 @@ export class AddonMessagesMainMenuHandlerService implements CoreMainMenuHandler,
     /**
      * Whether it's a synchronization process or not.
      *
-     * @return True if is a sync process, false otherwise.
+     * @returns True if is a sync process, false otherwise.
      */
     isSync(): boolean {
-        // This is done to use only wifi if using the fallback function.
-        return !AddonMessages.isMessageCountEnabled() && !AddonMessages.isGroupMessagingEnabled();
+        return false;
     }
 
     /**
      * Whether the process should be executed during a manual sync.
      *
-     * @return True if is a manual sync process, false otherwise.
+     * @returns True if is a manual sync process, false otherwise.
      */
     canManualSync(): boolean {
         return true;

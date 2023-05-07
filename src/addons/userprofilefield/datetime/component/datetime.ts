@@ -22,6 +22,7 @@ import { CoreUserProfileField } from '@features/user/services/user';
 import { Translate } from '@singletons';
 import { CoreUserProfileFieldBaseComponent } from '@features/user/classes/base-profilefield-component';
 import { CoreLang } from '@services/lang';
+import { CoreAppProvider } from '@services/app';
 
 /**
  * Directive to render a datetime user profile field.
@@ -35,8 +36,10 @@ export class AddonUserProfileFieldDatetimeComponent extends CoreUserProfileField
     format?: string;
     min?: string;
     max?: string;
-    valueNumber = 0;
+    valueNumber?: number;
+    displayValue?: string;
     monthNames?: string[];
+    displayTimezone?: string;
 
     /**
      * Init the data when the field is meant to be displayed without editing.
@@ -44,6 +47,12 @@ export class AddonUserProfileFieldDatetimeComponent extends CoreUserProfileField
      * @param field Field to render.
      */
     protected initForNonEdit(field: CoreUserProfileField): void {
+        if (field.displayvalue) {
+            this.displayValue = field.displayvalue;
+
+            return;
+        }
+
         this.valueNumber = Number(field.value);
     }
 
@@ -56,6 +65,7 @@ export class AddonUserProfileFieldDatetimeComponent extends CoreUserProfileField
         super.initForEdit(field);
 
         this.monthNames = CoreLang.getMonthNames();
+        this.displayTimezone = CoreAppProvider.getForcedTimezone();
 
         // Check if it's only date or it has time too.
         const hasTime = CoreUtils.isTrueOrOne(field.param3);
@@ -75,14 +85,14 @@ export class AddonUserProfileFieldDatetimeComponent extends CoreUserProfileField
             this.max = field.param2;
         }
 
-        this.max = this.max || CoreTimeUtils.getDatetimeDefaultMin();
+        this.min = this.min || CoreTimeUtils.getDatetimeDefaultMin();
         this.max = this.max || CoreTimeUtils.getDatetimeDefaultMax();
     }
 
     /**
      * Create the Form control.
      *
-     * @return Form control.
+     * @returns Form control.
      */
     protected createFormControl(field: AuthEmailSignupProfileField): FormControl {
         const formData = {

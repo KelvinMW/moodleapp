@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { CoreConstants } from '@/core/constants';
 import { Injectable } from '@angular/core';
 
 import { CoreCourseActivityPrefetchHandlerBase } from '@features/course/classes/activity-prefetch-handler';
@@ -19,11 +20,21 @@ import { CoreCourseAnyModuleData } from '@features/course/services/course';
 import { CoreH5PHelper } from '@features/h5p/classes/helper';
 import { CoreH5P } from '@features/h5p/services/h5p';
 import { CoreUser } from '@features/user/services/user';
+import { CoreXAPIOffline } from '@features/xapi/services/offline';
+import { CoreXAPI } from '@features/xapi/services/xapi';
+import { CoreFileHelper } from '@services/file-helper';
 import { CoreFilepool } from '@services/filepool';
 import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
+import { CoreUtils } from '@services/utils/utils';
 import { CoreWSFile } from '@services/ws';
 import { makeSingleton } from '@singletons';
-import { AddonModH5PActivity, AddonModH5PActivityData, AddonModH5PActivityProvider } from '../h5pactivity';
+import {
+    AddonModH5PActivity,
+    AddonModH5PActivityAccessInfo,
+    AddonModH5PActivityData,
+    AddonModH5PActivityProvider,
+    MOD_H5PACTIVITY_STATE_ID,
+} from '../h5pactivity';
 
 /**
  * Handler to prefetch h5p activity.
@@ -77,7 +88,7 @@ export class AddonModH5PActivityPrefetchHandlerService extends CoreCourseActivit
      * @inheritdoc
      */
     prefetch(module: CoreCourseAnyModuleData, courseId: number): Promise<void> {
-        return this.prefetchPackage(module, courseId, this.prefetchActivity.bind(this, module, courseId));
+        return this.prefetchPackage(module, courseId, (siteId) => this.prefetchActivity(module, courseId, siteId));
     }
 
     /**
@@ -86,7 +97,7 @@ export class AddonModH5PActivityPrefetchHandlerService extends CoreCourseActivit
      * @param module Module.
      * @param courseId Course ID the module belongs to.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async prefetchActivity(
         module: CoreCourseAnyModuleData,
@@ -113,7 +124,7 @@ export class AddonModH5PActivityPrefetchHandlerService extends CoreCourseActivit
      * @param module Module.
      * @param h5pActivity Activity instance.
      * @param siteId Site ID.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async prefetchMainFile(
         module: CoreCourseAnyModuleData,
@@ -129,6 +140,18 @@ export class AddonModH5PActivityPrefetchHandlerService extends CoreCourseActivit
             siteId: siteId,
         });
 
+        if (AddonModH5PActivity.isSaveStateEnabled(h5pActivity)) {
+            // If the file needs to be downloaded, delete the states because it means the package has changed or user deleted it.
+            const fileState = await CoreFilepool.getFileStateByUrl(siteId, CoreFileHelper.getFileUrl(deployedFile));
+
+            if (fileState !== CoreConstants.DOWNLOADED) {
+                await CoreUtils.ignoreErrors(CoreXAPIOffline.deleteStates(AddonModH5PActivityProvider.TRACK_COMPONENT, {
+                    itemId: h5pActivity.context,
+                    siteId,
+                }));
+            }
+        }
+
         await CoreFilepool.addFilesToQueue(siteId, [deployedFile], AddonModH5PActivityProvider.COMPONENT, module.id);
     }
 
@@ -137,31 +160,94 @@ export class AddonModH5PActivityPrefetchHandlerService extends CoreCourseActivit
      *
      * @param h5pActivity Activity instance.
      * @param siteId Site ID.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async prefetchWSData(h5pActivity: AddonModH5PActivityData, siteId: string): Promise<void> {
-
         const accessInfo = await AddonModH5PActivity.getAccessInformation(h5pActivity.id, {
             cmId: h5pActivity.coursemodule,
             readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE,
             siteId,
         });
 
+        await Promise.all([
+            this.prefetchAttempts(h5pActivity, accessInfo, siteId),
+            this.prefetchState(h5pActivity, accessInfo, siteId),
+        ]);
+    }
+
+    /**
+     * Prefetch attempts.
+     *
+     * @param h5pActivity Activity instance.
+     * @param accessInfo Access info.
+     * @param siteId Site ID.
+     * @returns Promise resolved when done.
+     */
+    protected async prefetchAttempts(
+        h5pActivity: AddonModH5PActivityData,
+        accessInfo: AddonModH5PActivityAccessInfo,
+        siteId: string,
+    ): Promise<void> {
+        const options = {
+            cmId: h5pActivity.coursemodule,
+            readingStrategy: CoreSitesReadingStrategy.ONLY_NETWORK,
+            siteId: siteId,
+        };
+
         if (!accessInfo.canreviewattempts) {
+            if (!h5pActivity.enabletracking) {
+                return;
+            }
+
             // Not a teacher, prefetch user attempts and the current user profile.
             const site = await CoreSites.getSite(siteId);
-
-            const options = {
-                cmId: h5pActivity.coursemodule,
-                readingStrategy: CoreSitesReadingStrategy.ONLY_NETWORK,
-                siteId: siteId,
-            };
 
             await Promise.all([
                 AddonModH5PActivity.getAllAttemptsResults(h5pActivity.id, options),
                 CoreUser.prefetchProfiles([site.getUserId()], h5pActivity.course, siteId),
             ]);
+        } else {
+            // It's a teacher, get all attempts if possible.
+            const canGetUsers = await AddonModH5PActivity.canGetUsersAttempts(siteId);
+            if (!canGetUsers) {
+                return;
+            }
+
+            const users = await AddonModH5PActivity.getAllUsersAttempts(h5pActivity.id, options);
+
+            const userIds = users.map(user => user.userid);
+            await CoreUser.prefetchProfiles(userIds, h5pActivity.course, siteId);
         }
+    }
+
+    /**
+     * Prefetch state.
+     *
+     * @param h5pActivity Activity instance.
+     * @param accessInfo Access info.
+     * @param siteId Site ID.
+     * @returns Promise resolved when done.
+     */
+    protected async prefetchState(
+        h5pActivity: AddonModH5PActivityData,
+        accessInfo: AddonModH5PActivityAccessInfo,
+        siteId: string,
+    ): Promise<void> {
+        if (!AddonModH5PActivity.isSaveStateEnabled(h5pActivity, accessInfo)) {
+            return;
+        }
+
+        await CoreXAPI.getStateFromServer(
+            AddonModH5PActivityProvider.TRACK_COMPONENT,
+            h5pActivity.context,
+            MOD_H5PACTIVITY_STATE_ID,
+            {
+                appComponent: AddonModH5PActivityProvider.COMPONENT,
+                appComponentId: h5pActivity.coursemodule,
+                readingStrategy: CoreSitesReadingStrategy.ONLY_NETWORK,
+                siteId,
+            },
+        );
     }
 
 }

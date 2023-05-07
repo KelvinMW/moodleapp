@@ -15,6 +15,7 @@
 import { APP_INITIALIZER, NgModule, Type } from '@angular/core';
 import { Routes } from '@angular/router';
 import { CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
+import { CoreCourseHelper } from '@features/course/services/course-helper';
 import { CoreCourseModuleDelegate } from '@features/course/services/module-delegate';
 import { CoreCourseModulePrefetchDelegate } from '@features/course/services/module-prefetch-delegate';
 import { CoreMainMenuTabRoutingModule } from '@features/mainmenu/mainmenu-tab-routing.module';
@@ -65,13 +66,14 @@ const routes: Routes = [
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
-            useFactory: () => () => {
+            useValue: () => {
                 CoreCourseModuleDelegate.registerHandler(AddonModWorkshopModuleHandler.instance);
                 CoreCourseModulePrefetchDelegate.registerHandler(AddonModWorkshopPrefetchHandler.instance);
                 CoreCronDelegate.register(AddonModWorkshopSyncCronHandler.instance);
                 CoreContentLinksDelegate.registerHandler(AddonModWorkshopIndexLinkHandler.instance);
                 CoreContentLinksDelegate.registerHandler(AddonModWorkshopListLinkHandler.instance);
+
+                CoreCourseHelper.registerModuleReminderClick(AddonModWorkshopProvider.COMPONENT);
             },
         },
     ],

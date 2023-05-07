@@ -12,47 +12,72 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
+import { CoreSharedModule } from '@/core/shared.module';
+import { Injector, NgModule } from '@angular/core';
+import { RouterModule, ROUTES, Routes } from '@angular/router';
+import { CoreCoursesComponentsModule } from '@features/courses/components/components.module';
+import { CoreCoursesCategoriesPage } from '@features/courses/pages/categories/categories';
+import { CoreCoursesListPage } from '@features/courses/pages/list/list';
+import { CoreMainMenuComponentsModule } from '@features/mainmenu/components/components.module';
+import { buildTabMainRoutes } from '@features/mainmenu/mainmenu-tab-routing.module';
+import { CoreSearchComponentsModule } from '@features/search/components/components.module';
+import { CoreCoursesHelper } from './services/courses-helper';
+import { CoreCoursesMyCoursesMainMenuHandlerService } from './services/handlers/my-courses-mainmenu';
 
-const routes: Routes = [
-    {
-        path: '',
-        redirectTo: 'my',
-        pathMatch: 'full',
-    },
-    {
-        path: 'categories',
-        redirectTo: 'categories/root', // Fake "id".
-        pathMatch: 'full',
-    },
-    {
-        path: 'categories/:id',
-        loadChildren: () =>
-            import('./pages/categories/categories.module')
-                .then(m => m.CoreCoursesCategoriesPageModule),
-    },
-    {
-        path: 'all',
-        loadChildren: () =>
-            import('./pages/available-courses/available-courses.module')
-                .then(m => m.CoreCoursesAvailableCoursesPageModule),
-    },
-    {
-        path: 'search',
-        loadChildren: () =>
-            import('./pages/search/search.module')
-                .then(m => m.CoreCoursesSearchPageModule),
-    },
-    {
-        path: 'my',
-        loadChildren: () =>
-            import('./pages/my-courses/my-courses.module')
-                .then(m => m.CoreCoursesMyCoursesPageModule),
-    },
-];
+/**
+ * Build module routes.
+ *
+ * @param injector Injector.
+ * @returns Routes.
+ */
+function buildRoutes(injector: Injector): Routes {
+    return [
+        {
+            path: 'my',
+            data: {
+                mainMenuTabRoot: CoreCoursesMyCoursesMainMenuHandlerService.PAGE_NAME,
+            },
+            loadChildren: () => CoreCoursesHelper.getMyRouteModule(),
+        },
+        {
+            path: 'categories',
+            redirectTo: 'categories/root', // Fake "id".
+            pathMatch: 'full',
+        },
+        {
+            path: 'categories/:id',
+            component: CoreCoursesCategoriesPage,
+        },
+        {
+            path: 'list',
+            component: CoreCoursesListPage,
+        },
+        ...buildTabMainRoutes(injector, {
+            redirectTo: 'my',
+            pathMatch: 'full',
+        }),
+    ];
+}
 
 @NgModule({
-    imports: [RouterModule.forChild(routes)],
+    imports: [
+        CoreSharedModule,
+        CoreCoursesComponentsModule,
+        CoreMainMenuComponentsModule,
+        CoreSearchComponentsModule,
+    ],
+    declarations: [
+        CoreCoursesCategoriesPage,
+        CoreCoursesListPage,
+    ],
+    exports: [RouterModule],
+    providers: [
+        {
+            provide: ROUTES,
+            multi: true,
+            deps: [Injector],
+            useFactory: buildRoutes,
+        },
+    ],
 })
 export class CoreCoursesLazyModule {}

@@ -15,6 +15,7 @@
 import { Input, OnInit, ElementRef, Directive } from '@angular/core';
 
 import { CoreDomUtils } from '@services/utils/dom';
+import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
 import { Translate } from '@singletons';
 import { CoreSitePluginsPluginContentComponent } from '../components/plugin-content/plugin-content';
@@ -48,7 +49,7 @@ export class CoreSitePluginsCallWSOnClickBaseDirective extends CoreSitePluginsCa
             ev.preventDefault();
             ev.stopPropagation();
 
-            if (typeof this.confirmMessage != 'undefined') {
+            if (this.confirmMessage !== undefined) {
                 // Ask for confirm.
                 try {
                     await CoreDomUtils.showConfirm(this.confirmMessage || Translate.instant('core.areyousure'));
@@ -71,8 +72,13 @@ export class CoreSitePluginsCallWSOnClickBaseDirective extends CoreSitePluginsCa
         try {
             await super.callWS();
         } catch (error) {
-            if (typeof this.showError == 'undefined' || CoreUtils.isTrueOrOne(this.showError)) {
-                CoreDomUtils.showErrorModalDefault(error, 'core.serverconnection', true);
+            if (this.showError === undefined || CoreUtils.isTrueOrOne(this.showError)) {
+                CoreDomUtils.showErrorModalDefault(
+                    error,
+                    Translate.instant('core.serverconnection', {
+                        details: CoreTextUtils.getErrorMessageFromError(error) ?? 'Unknown error',
+                    }),
+                );
             }
         } finally {
             modal.dismiss();

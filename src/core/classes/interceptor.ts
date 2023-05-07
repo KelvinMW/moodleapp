@@ -28,7 +28,7 @@ export class CoreInterceptor implements HttpInterceptor {
      *
      * @param obj Object to serialize.
      * @param addNull Add null values to the serialized as empty parameters.
-     * @return Serialization of the object.
+     * @returns Serialization of the object.
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static serialize(obj: any, addNull?: boolean): string {
@@ -53,12 +53,12 @@ export class CoreInterceptor implements HttpInterceptor {
                     innerObj[fullSubName] = subValue;
                     query += this.serialize(innerObj) + '&';
                 }
-            } else if (addNull || (typeof value != 'undefined' && value !== null)) {
+            } else if (addNull || (value !== undefined && value !== null)) {
                 query += encodeURIComponent(name) + '=' + encodeURIComponent(value) + '&';
             }
         }
 
-        return query.length ? query.substr(0, query.length - 1) : query;
+        return query.length ? query.substring(0, query.length - 1) : query;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

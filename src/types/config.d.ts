@@ -14,9 +14,11 @@
 
 import { CoreColorScheme, CoreZoomLevel } from '@features/settings/services/settings-helper';
 import { CoreMainMenuLocalizedCustomItem } from '@features/mainmenu/services/mainmenu';
-import { CoreSitesDemoSiteData } from '@services/sites';
+import { CoreLoginSiteInfo, CoreSitesDemoSiteData } from '@services/sites';
 import { OpenFileAction } from '@services/utils/utils';
-import { CoreLoginSiteSelectorListMethod } from '@features/login/services/login-helper';
+import { CoreLoginSiteFinderSettings, CoreLoginSiteSelectorListMethod } from '@features/login/services/login-helper';
+import { CoreDatabaseConfiguration } from '@classes/database/database-table';
+import { ToastDuration } from '@services/utils/dom';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 
@@ -31,15 +33,18 @@ export interface EnvironmentConfig {
     cache_update_frequency_rarely: number;
     default_lang: string;
     languages: Record<string, string>;
+    databaseOptimizations?: Partial<CoreDatabaseConfiguration>;
+    databaseTableOptimizations?: Record<string, Partial<CoreDatabaseConfiguration>>;
+    disableUserTours?: boolean;
+    disabledUserTours?: string[];
     wsservice: string;
-    wsextservice: string;
     demo_sites: Record<string, CoreSitesDemoSiteData>;
     zoomlevels: Record<CoreZoomLevel, number>;
+    defaultZoomLevel?: CoreZoomLevel; // Set the default zoom level of the app.
     customurlscheme: string;
-    siteurl: string;
-    sitename: string;
+    sites: CoreLoginSiteInfo[];
     multisitesdisplay: CoreLoginSiteSelectorListMethod;
-    sitefindersettings: Record<string, unknown>;
+    sitefindersettings: Partial<CoreLoginSiteFinderSettings>;
     onlyallowlistedsites: boolean;
     skipssoconfirmation: boolean;
     forcedefaultlanguage: boolean;
@@ -57,4 +62,15 @@ export interface EnvironmentConfig {
     iOSDefaultOpenFileAction?: OpenFileAction;
     customMainMenuItems?: CoreMainMenuLocalizedCustomItem[];
     feedbackFormUrl?: string | false;
+    a11yStatement?: string | false;
+    iabToolbarColors?: 'auto' | { background: string; text?: string } | null;
+    wsrequestqueuelimit: number; // Maximum number of requests allowed in the queue.
+    wsrequestqueuedelay: number; // Maximum number of miliseconds to wait before processing the queue.
+    calendarreminderdefaultvalue: number; // Initial value for default reminders (in seconds). User can change it later.
+    removeaccountonlogout?: boolean; // True to remove the account when the user clicks logout. Doesn't affect switch account.
+    uselegacycompletion?: boolean; // Whether to use legacy completion by default in all course formats.
+    toastDurations: Record<ToastDuration, number>;
+    disableCallWSInBackground?: boolean; // If true, disable calling WS in background.
+    callWSInBackgroundExpirationTime?: number; // Ms to consider an entry expired when calling WS in background. Default: 1 week.
+    disableTokenFile: boolean; // Disable the use of tokenpluginfile.php for downloading files (so it fallbacks to pluginfile.php)
 }

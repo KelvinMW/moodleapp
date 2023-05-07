@@ -20,6 +20,7 @@ import { CoreSites } from '@services/sites';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
 import { makeSingleton } from '@singletons';
+import { CorePath } from '@singletons/path';
 import { AddonModAssignOutcomes, AddonModAssignSavePluginData } from './assign';
 import {
     AddonModAssignSubmissionsDBRecord,
@@ -40,7 +41,7 @@ export class AddonModAssignOfflineProvider {
      * @param assignId Assignment ID.
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if deleted, rejected if failure.
+     * @returns Promise resolved if deleted, rejected if failure.
      */
     async deleteSubmission(assignId: number, userId?: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -58,7 +59,7 @@ export class AddonModAssignOfflineProvider {
      * @param assignId Assignment ID.
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if deleted, rejected if failure.
+     * @returns Promise resolved if deleted, rejected if failure.
      */
     async deleteSubmissionGrade(assignId: number, userId?: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -74,7 +75,7 @@ export class AddonModAssignOfflineProvider {
      * Get all the assignments ids that have something to be synced.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with assignments id that have something to be synced.
+     * @returns Promise resolved with assignments id that have something to be synced.
      */
     async getAllAssigns(siteId?: string): Promise<number[]> {
         const promises:
@@ -100,7 +101,7 @@ export class AddonModAssignOfflineProvider {
      * Get all the stored submissions from all the assignments.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with submissions.
+     * @returns Promise resolved with submissions.
      */
     protected async getAllSubmissions(siteId?: string): Promise<AddonModAssignSubmissionsDBRecordFormatted[]> {
         return this.getAssignSubmissionsFormatted(undefined, siteId);
@@ -111,7 +112,7 @@ export class AddonModAssignOfflineProvider {
      *
      * @param assignId Assignment ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with submissions.
+     * @returns Promise resolved with submissions.
      */
     async getAssignSubmissions(assignId: number, siteId?: string): Promise<AddonModAssignSubmissionsDBRecordFormatted[]> {
         return this.getAssignSubmissionsFormatted({ assignid: assignId }, siteId);
@@ -122,7 +123,7 @@ export class AddonModAssignOfflineProvider {
      *
      * @param conditions Query conditions.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with submissions.
+     * @returns Promise resolved with submissions.
      */
     protected async getAssignSubmissionsFormatted(
         conditions: SQLiteDBRecordValues = {},
@@ -150,7 +151,7 @@ export class AddonModAssignOfflineProvider {
      * Get all the stored submissions grades from all the assignments.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with submissions grades.
+     * @returns Promise resolved with submissions grades.
      */
     protected async getAllSubmissionsGrade(siteId?: string): Promise<AddonModAssignSubmissionsGradingDBRecordFormatted[]> {
         return this.getAssignSubmissionsGradeFormatted(undefined, siteId);
@@ -161,7 +162,7 @@ export class AddonModAssignOfflineProvider {
      *
      * @param assignId Assignment ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with submissions grades.
+     * @returns Promise resolved with submissions grades.
      */
     async getAssignSubmissionsGrade(
         assignId: number,
@@ -175,7 +176,7 @@ export class AddonModAssignOfflineProvider {
      *
      * @param conditions Query conditions.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with submissions grades.
+     * @returns Promise resolved with submissions grades.
      */
     protected async getAssignSubmissionsGradeFormatted(
         conditions: SQLiteDBRecordValues = {},
@@ -207,7 +208,7 @@ export class AddonModAssignOfflineProvider {
      * @param assignId Assignment ID.
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with submission.
+     * @returns Promise resolved with submission.
      */
     async getSubmission(assignId: number, userId?: number, siteId?: string): Promise<AddonModAssignSubmissionsDBRecordFormatted> {
         userId = userId || CoreSites.getCurrentSiteUserId();
@@ -227,7 +228,7 @@ export class AddonModAssignOfflineProvider {
      * @param assignId Assignment ID.
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the path.
+     * @returns Promise resolved with the path.
      */
     async getSubmissionFolder(assignId: number, userId?: number, siteId?: string): Promise<string> {
         const site = await CoreSites.getSite(siteId);
@@ -236,7 +237,7 @@ export class AddonModAssignOfflineProvider {
         const siteFolderPath = CoreFile.getSiteFolder(site.getId());
         const submissionFolderPath = 'offlineassign/' + assignId + '/' + userId;
 
-        return CoreTextUtils.concatenatePaths(siteFolderPath, submissionFolderPath);
+        return CorePath.concatenatePaths(siteFolderPath, submissionFolderPath);
     }
 
     /**
@@ -246,7 +247,7 @@ export class AddonModAssignOfflineProvider {
      * @param assignId Assignment ID.
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with submission grade.
+     * @returns Promise resolved with submission grade.
      */
     async getSubmissionGrade(
         assignId: number,
@@ -271,12 +272,12 @@ export class AddonModAssignOfflineProvider {
      * @param pluginName Name of the plugin. Must be unique (both in submission and feedback plugins).
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the path.
+     * @returns Promise resolved with the path.
      */
     async getSubmissionPluginFolder(assignId: number, pluginName: string, userId?: number, siteId?: string): Promise<string> {
         const folderPath = await this.getSubmissionFolder(assignId, userId, siteId);
 
-        return CoreTextUtils.concatenatePaths(folderPath, pluginName);
+        return CorePath.concatenatePaths(folderPath, pluginName);
     }
 
     /**
@@ -284,7 +285,7 @@ export class AddonModAssignOfflineProvider {
      *
      * @param assignId Assignment ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with boolean: whether the assignment has something to be synced.
+     * @returns Promise resolved with boolean: whether the assignment has something to be synced.
      */
     async hasAssignOfflineData(assignId: number, siteId?: string): Promise<boolean> {
         const promises:
@@ -313,7 +314,7 @@ export class AddonModAssignOfflineProvider {
      * @param timemodified The time the submission was last modified in online.
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if marked, rejected if failure.
+     * @returns Promise resolved if marked, rejected if failure.
      */
     async markSubmitted(
         assignId: number,
@@ -352,7 +353,7 @@ export class AddonModAssignOfflineProvider {
             };
         }
 
-        return await site.getDb().insertRecord(SUBMISSIONS_TABLE, submission);
+        return site.getDb().insertRecord(SUBMISSIONS_TABLE, submission);
     }
 
     /**
@@ -365,7 +366,7 @@ export class AddonModAssignOfflineProvider {
      * @param submitted True if submission has been submitted, false otherwise.
      * @param userId User ID. If not defined, site's current user.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if stored, rejected if failure.
+     * @returns Promise resolved if stored, rejected if failure.
      */
     async saveSubmission(
         assignId: number,
@@ -392,7 +393,7 @@ export class AddonModAssignOfflineProvider {
             onlinetimemodified: timemodified,
         };
 
-        return await site.getDb().insertRecord(SUBMISSIONS_TABLE, entry);
+        return site.getDb().insertRecord(SUBMISSIONS_TABLE, entry);
     }
 
     /**
@@ -409,7 +410,7 @@ export class AddonModAssignOfflineProvider {
      * @param outcomes Object including all outcomes values. If empty, any of them will be sent.
      * @param pluginData Plugin data to save.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if stored, rejected if failure.
+     * @returns Promise resolved if stored, rejected if failure.
      */
     async submitGradingForm(
         assignId: number,
@@ -441,7 +442,7 @@ export class AddonModAssignOfflineProvider {
             timemodified: now,
         };
 
-        return await site.getDb().insertRecord(SUBMISSIONS_GRADES_TABLE, entry);
+        return site.getDb().insertRecord(SUBMISSIONS_GRADES_TABLE, entry);
     }
 
 }

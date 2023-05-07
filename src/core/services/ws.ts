@@ -13,30 +13,35 @@
 // limitations under the License.
 
 import { Injectable } from '@angular/core';
-import { HttpResponse, HttpParams } from '@angular/common/http';
+import { HttpResponse, HttpParams, HttpErrorResponse } from '@angular/common/http';
 
 import { FileEntry } from '@ionic-native/file/ngx';
-import { FileUploadOptions } from '@ionic-native/file-transfer/ngx';
+import { FileUploadOptions, FileUploadResult } from '@ionic-native/file-transfer/ngx';
 import { Md5 } from 'ts-md5/dist/md5';
 import { Observable } from 'rxjs';
 import { timeout } from 'rxjs/operators';
 
 import { CoreNativeToAngularHttpResponse } from '@classes/native-to-angular-http';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFile, CoreFileFormat } from '@services/file';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
-import { CoreTextUtils } from '@services/utils/text';
-import { CoreUtils, PromiseDefer } from '@services/utils/utils';
+import { CoreTextErrorObject, CoreTextUtils } from '@services/utils/text';
 import { CoreConstants } from '@/core/constants';
 import { CoreError } from '@classes/errors/error';
 import { CoreInterceptor } from '@classes/interceptor';
 import { makeSingleton, Translate, FileTransfer, Http, NativeHttp } from '@singletons';
-import { CoreArray } from '@singletons/array';
 import { CoreLogger } from '@singletons/logger';
 import { CoreWSError } from '@classes/errors/wserror';
 import { CoreAjaxError } from '@classes/errors/ajaxerror';
 import { CoreAjaxWSError } from '@classes/errors/ajaxwserror';
 import { CoreNetworkError } from '@classes/errors/network-error';
+import { CoreSite } from '@classes/site';
+import { CoreHttpError } from '@classes/errors/httperror';
+import { CorePromisedValue } from '@classes/promised-value';
+import { CorePlatform } from '@services/platform';
+import { CoreSiteError, CoreSiteErrorOptions } from '@classes/errors/siteerror';
+import { CoreUserGuestSupportConfig } from '@features/user/classes/support/guest-support-config';
+import { CoreSites } from '@services/sites';
 
 /**
  * This service allows performing WS calls and download/upload files.
@@ -62,7 +67,7 @@ export class CoreWSProvider {
      * @param siteUrl Complete site url to perform the call.
      * @param data Arguments to pass to the method.
      * @param preSets Extra settings and information.
-     * @return Deferred promise resolved with the response data in success and rejected with the error if it fails.
+     * @returns Deferred promise resolved with the response data in success and rejected with the error if it fails.
      */
     protected addToRetryQueue<T = unknown>(
         method: string,
@@ -75,12 +80,12 @@ export class CoreWSProvider {
             siteUrl,
             data,
             preSets,
-            deferred: CoreUtils.promiseDefer<T>(),
+            deferred: new CorePromisedValue<T>(),
         };
 
         this.retryCalls.push(call);
 
-        return call.deferred.promise;
+        return call.deferred;
     }
 
     /**
@@ -89,17 +94,17 @@ export class CoreWSProvider {
      * @param method The WebService method to be called.
      * @param data Arguments to pass to the method. It's recommended to call convertValuesToString before passing the data.
      * @param preSets Extra settings and information.
-     * @return Promise resolved with the response data in success and rejected if it fails.
+     * @returns Promise resolved with the response data in success and rejected if it fails.
      */
     call<T = unknown>(method: string, data: Record<string, unknown>, preSets: CoreWSPreSets): Promise<T> {
         if (!preSets) {
             throw new CoreError(Translate.instant('core.unexpectederror'));
-        } else if (!CoreApp.isOnline()) {
+        } else if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
         preSets.typeExpected = preSets.typeExpected || 'object';
-        if (typeof preSets.responseExpected == 'undefined') {
+        if (preSets.responseExpected === undefined) {
             preSets.responseExpected = true;
         }
 
@@ -125,7 +130,7 @@ export class CoreWSProvider {
      * @param method The WebService method to be called.
      * @param data Arguments to pass to the method.
      * @param preSets Extra settings and information. Only some
-     * @return Promise resolved with the response data in success and rejected with CoreAjaxError.
+     * @returns Promise resolved with the response data in success and rejected with CoreAjaxError.
      */
     callAjax<T = unknown>(method: string, data: Record<string, unknown>, preSets: CoreWSAjaxPreSets): Promise<T> {
         const cacheParams = {
@@ -149,7 +154,7 @@ export class CoreWSProvider {
      *
      * @param data The data that needs all the non-object values set to strings.
      * @param stripUnicode If Unicode long chars need to be stripped.
-     * @return The cleaned object or null if some strings becomes empty after stripping Unicode.
+     * @returns The cleaned object or null if some strings becomes empty after stripping Unicode.
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     convertValuesToString(data: any, stripUnicode?: boolean): any {
@@ -208,7 +213,7 @@ export class CoreWSProvider {
      * @param message The message to include in the error.
      * @param needsTranslate If the message needs to be translated.
      * @param translateParams Translation params, if needed.
-     * @return Fake WS error.
+     * @returns Fake WS error.
      * @deprecated since 3.9.5. Just create the error directly.
      */
     createFakeWSError(message: string, needsTranslate?: boolean, translateParams?: {[name: string]: string}): CoreError {
@@ -242,7 +247,7 @@ export class CoreWSProvider {
      * @param path Local path to store the file.
      * @param addExtension True if extension need to be added to the final path.
      * @param onProgress Function to call on progress.
-     * @return Promise resolved with the downloaded file.
+     * @returns Promise resolved with the downloaded file.
      */
     async downloadFile(
         url: string,
@@ -252,7 +257,7 @@ export class CoreWSProvider {
     ): Promise<CoreWSDownloadedFileEntry> {
         this.logger.debug('Downloading file', url, path, addExtension);
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
@@ -268,7 +273,11 @@ export class CoreWSProvider {
             onProgress && transfer.onProgress(onProgress);
 
             // Download the file in the tmp file.
-            await transfer.download(url, fileEntry.toURL(), true);
+            await transfer.download(url, fileEntry.toURL(), true, {
+                headers: {
+                    'User-Agent': navigator.userAgent, // eslint-disable-line @typescript-eslint/naming-convention
+                },
+            });
 
             let extension = '';
 
@@ -276,7 +285,7 @@ export class CoreWSProvider {
                 extension = CoreMimetypeUtils.getFileExtension(path) || '';
 
                 // Google Drive extensions will be considered invalid since Moodle usually converts them.
-                if (!extension || CoreArray.contains(['gdoc', 'gsheet', 'gslides', 'gdraw', 'php'], extension)) {
+                if (!extension || ['gdoc', 'gsheet', 'gslides', 'gdraw', 'php'].includes(extension)) {
                     // Not valid, get the file's mimetype.
                     const mimetype = await this.getRemoteFileMimeType(url);
 
@@ -319,10 +328,11 @@ export class CoreWSProvider {
      * @param method Method of the HTTP request.
      * @param url Base URL of the HTTP request.
      * @param params Params of the HTTP request.
+     * @returns the on going call if any.
      */
     protected getPromiseHttp<T = unknown>(method: string, url: string, params?: Record<string, unknown>): Promise<T> | undefined {
         const queueItemId = this.getQueueItemId(method, url, params);
-        if (typeof this.ongoingCalls[queueItemId] != 'undefined') {
+        if (this.ongoingCalls[queueItemId] !== undefined) {
             return this.ongoingCalls[queueItemId];
         }
     }
@@ -332,11 +342,12 @@ export class CoreWSProvider {
      *
      * @param url File URL.
      * @param ignoreCache True to ignore cache, false otherwise.
-     * @return Promise resolved with the mimetype or '' if failure.
+     * @returns Promise resolved with the mimetype or '' if failure.
      */
     async getRemoteFileMimeType(url: string, ignoreCache?: boolean): Promise<string> {
-        if (this.mimeTypeCache[url] && !ignoreCache) {
-            return this.mimeTypeCache[url]!;
+        const cachedMimeType = this.mimeTypeCache[url];
+        if (cachedMimeType && !ignoreCache) {
+            return cachedMimeType;
         }
 
         try {
@@ -360,7 +371,7 @@ export class CoreWSProvider {
      * Perform a HEAD request to get the size of a remote file.
      *
      * @param url File URL.
-     * @return Promise resolved with the size or -1 if failure.
+     * @returns Promise resolved with the size or -1 if failure.
      */
     getRemoteFileSize(url: string): Promise<number> {
         return this.performHead(url).then((response) => {
@@ -378,10 +389,10 @@ export class CoreWSProvider {
     /**
      * Get a request timeout based on the network connection.
      *
-     * @return Timeout in ms.
+     * @returns Timeout in ms.
      */
     getRequestTimeout(): number {
-        return CoreApp.isNetworkAccessLimited() ? CoreConstants.WS_TIMEOUT : CoreConstants.WS_TIMEOUT_WIFI;
+        return CoreNetwork.isNetworkAccessLimited() ? CoreConstants.WS_TIMEOUT : CoreConstants.WS_TIMEOUT_WIFI;
     }
 
     /**
@@ -390,7 +401,7 @@ export class CoreWSProvider {
      * @param method Method of the HTTP request.
      * @param url Base URL of the HTTP request.
      * @param params Params of the HTTP request.
-     * @return Queue item ID.
+     * @returns Queue item ID.
      */
     protected getQueueItemId(method: string, url: string, params?: Record<string, unknown>): string {
         if (params) {
@@ -406,19 +417,19 @@ export class CoreWSProvider {
      * @param method The WebService method to be called.
      * @param data Arguments to pass to the method.
      * @param preSets Extra settings and information. Only some
-     * @return Promise resolved with the response data in success and rejected with CoreAjaxError.
+     * @returns Promise resolved with the response data in success and rejected with CoreAjaxError.
      */
     protected performAjax<T = unknown>(method: string, data: Record<string, unknown>, preSets: CoreWSAjaxPreSets): Promise<T> {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let promise: Promise<HttpResponse<any>>;
 
-        if (typeof preSets.siteUrl == 'undefined') {
+        if (preSets.siteUrl === undefined) {
             throw new CoreAjaxError(Translate.instant('core.unexpectederror'));
-        } else if (!CoreApp.isOnline()) {
+        } else if (!CoreNetwork.isOnline()) {
             throw new CoreAjaxError(Translate.instant('core.networkerrormsg'));
         }
 
-        if (typeof preSets.responseExpected == 'undefined') {
+        if (preSets.responseExpected === undefined) {
             preSets.responseExpected = true;
         }
 
@@ -449,7 +460,7 @@ export class CoreWSProvider {
             });
         }
 
-        return promise.then((response) => {
+        return promise.then(async (response) => {
             let data = response.body;
 
             // Some moodle web services return null.
@@ -460,7 +471,18 @@ export class CoreWSProvider {
 
             // Check if error. Ajax layer should always return an object (if error) or an array (if success).
             if (!data || typeof data != 'object') {
-                throw new CoreAjaxError(Translate.instant('core.serverconnection'));
+                const message = CoreSites.isLoggedIn()
+                    ? Translate.instant('core.siteunavailablehelp', { site: CoreSites.getCurrentSite()?.siteUrl })
+                    : Translate.instant('core.sitenotfoundhelp');
+
+                throw new CoreAjaxError({
+                    message,
+                    supportConfig: await CoreUserGuestSupportConfig.forSite(preSets.siteUrl),
+                    errorcode: 'invalidresponse',
+                    errorDetails: Translate.instant('core.serverconnection', {
+                        details: Translate.instant('core.errorinvalidresponse', { method }),
+                    }),
+                });
             } else if (data.error) {
                 throw new CoreAjaxWSError(data);
             }
@@ -473,10 +495,36 @@ export class CoreWSProvider {
             }
 
             return data.data;
-        }, (data) => {
-            const available = data.status == 404 ? -1 : 0;
+        }, async (data: HttpErrorResponse) => {
+            const message = CoreSites.isLoggedIn()
+                ? Translate.instant('core.siteunavailablehelp', { site: CoreSites.getCurrentSite()?.siteUrl })
+                : Translate.instant('core.sitenotfoundhelp');
 
-            throw new CoreAjaxError(Translate.instant('core.serverconnection'), available);
+            const options: CoreSiteErrorOptions = {
+                message,
+                supportConfig: await CoreUserGuestSupportConfig.forSite(preSets.siteUrl),
+            };
+
+            switch (data.status) {
+                case -2: // Certificate error.
+                    options.errorcode = 'invalidcertificate';
+                    options.errorDetails = Translate.instant('core.certificaterror', {
+                        details: CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Unknown error',
+                    });
+                    break;
+                case 404: // AJAX endpoint not found.
+                    options.errorcode = 'endpointnotfound';
+                    options.errorDetails = Translate.instant('core.ajaxendpointnotfound', { $a: CoreSite.MINIMUM_MOODLE_VERSION });
+                    break;
+                default:
+                    options.errorcode = 'serverconnectionajax';
+                    options.errorDetails = Translate.instant('core.serverconnection', {
+                        details: CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Unknown error',
+                    });
+                    break;
+            }
+
+            throw new CoreAjaxError(options, 1, data.status);
         });
     }
 
@@ -484,7 +532,7 @@ export class CoreWSProvider {
      * Perform a HEAD request and save the promise while waiting to be resolved.
      *
      * @param url URL to perform the request.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      */
     performHead<T = unknown>(url: string): Promise<HttpResponse<T>> {
         let promise = this.getPromiseHttp<HttpResponse<T>>('head', url);
@@ -508,7 +556,7 @@ export class CoreWSProvider {
      * @param siteUrl Complete site url to perform the call.
      * @param ajaxData Arguments to pass to the method.
      * @param preSets Extra settings and information.
-     * @return Promise resolved with the response data in success and rejected with CoreWSError if it fails.
+     * @returns Promise resolved with the response data in success and rejected with CoreWSError if it fails.
      */
     async performPost<T = unknown>(
         method: string,
@@ -557,7 +605,7 @@ export class CoreWSProvider {
      *
      * @param object1 First object.
      * @param object2 Second object.
-     * @return First object with items added.
+     * @returns First object with items added.
      */
     protected combineObjectsArrays<T>(object1: T, object2: T): T {
         for (const name in object2) {
@@ -579,7 +627,7 @@ export class CoreWSProvider {
      * @param ajaxData Arguments to pass to the method.
      * @param preSets Extra settings and information.
      * @param options Request options.
-     * @return Promise resolved with the response data in success and rejected with CoreWSError if it fails.
+     * @returns Promise resolved with the response data in success and rejected with CoreWSError if it fails.
      */
     protected performSinglePost<T>(
         method: string,
@@ -598,48 +646,66 @@ export class CoreWSProvider {
         const promise = Http.post(requestUrl, ajaxData, options).pipe(timeout(this.getRequestTimeout())).toPromise();
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return promise.then((data: any) => {
-            // Some moodle web services return null.
-            // If the responseExpected value is set to false, we create a blank object if the response is null.
-            if (!data && !preSets.responseExpected) {
-                data = {};
+        return promise.then(async (data: any) => {
+            // Some moodle web services always return null, and some others can return a primitive type or null.
+            if (data === null && (!preSets.responseExpected || preSets.typeExpected !== 'object')) {
+                return null;
             }
 
+            const typeExpected = preSets.typeExpected === 'jsonstring' ? 'string' : preSets.typeExpected;
+
             if (!data) {
-                throw new CoreError(Translate.instant('core.serverconnection'));
-            } else if (typeof data != preSets.typeExpected) {
+                throw await this.createCannotConnectSiteError(preSets.siteUrl, {
+                    errorcode: 'serverconnectionpost',
+                    errorDetails: Translate.instant('core.serverconnection', {
+                        details: Translate.instant('core.errorinvalidresponse', { method }),
+                    }),
+                });
+            } else if (typeof data !== typeExpected) {
                 // If responseType is text an string will be returned, parse before returning.
                 if (typeof data == 'string') {
-                    if (preSets.typeExpected == 'number') {
+                    if (typeExpected === 'number') {
                         data = Number(data);
                         if (isNaN(data)) {
-                            this.logger.warn(`Response expected type "${preSets.typeExpected}" cannot be parsed to number`);
+                            this.logger.warn(`Response expected type "${typeExpected}" cannot be parsed to number`);
 
-                            throw new CoreError(Translate.instant('core.errorinvalidresponse'));
+                            throw await this.createCannotConnectSiteError(preSets.siteUrl, {
+                                errorcode: 'invalidresponse',
+                                errorDetails: Translate.instant('core.errorinvalidresponse', { method }),
+                            });
                         }
-                    } else if (preSets.typeExpected == 'boolean') {
+                    } else if (typeExpected === 'boolean') {
                         if (data === 'true') {
                             data = true;
                         } else if (data === 'false') {
                             data = false;
                         } else {
-                            this.logger.warn(`Response expected type "${preSets.typeExpected}" is not true or false`);
+                            this.logger.warn(`Response expected type "${typeExpected}" is not true or false`);
 
-                            throw new CoreError(Translate.instant('core.errorinvalidresponse'));
+                            throw await this.createCannotConnectSiteError(preSets.siteUrl, {
+                                errorcode: 'invalidresponse',
+                                errorDetails: Translate.instant('core.errorinvalidresponse', { method }),
+                            });
                         }
                     } else {
-                        this.logger.warn('Response of type "' + typeof data + `" received, expecting "${preSets.typeExpected}"`);
+                        this.logger.warn('Response of type "' + typeof data + `" received, expecting "${typeExpected}"`);
 
-                        throw new CoreError(Translate.instant('core.errorinvalidresponse'));
+                        throw await this.createCannotConnectSiteError(preSets.siteUrl, {
+                            errorcode: 'invalidresponse',
+                            errorDetails: Translate.instant('core.errorinvalidresponse', { method }),
+                        });
                     }
                 } else {
-                    this.logger.warn('Response of type "' + typeof data + `" received, expecting "${preSets.typeExpected}"`);
+                    this.logger.warn('Response of type "' + typeof data + `" received, expecting "${typeExpected}"`);
 
-                    throw new CoreError(Translate.instant('core.errorinvalidresponse'));
+                    throw await this.createCannotConnectSiteError(preSets.siteUrl, {
+                        errorcode: 'invalidresponse',
+                        errorDetails: Translate.instant('core.errorinvalidresponse', { method }),
+                    });
                 }
             }
 
-            if (typeof data.exception !== 'undefined') {
+            if (data.exception !== undefined) {
                 // Special debugging for site plugins, otherwise it's hard to debug errors if the data is cached.
                 if (method == 'tool_mobile_get_content') {
                     this.logger.error('Error calling WS', method, data);
@@ -648,12 +714,12 @@ export class CoreWSProvider {
                 throw new CoreWSError(data);
             }
 
-            if (typeof data.debuginfo != 'undefined') {
+            if (data.debuginfo !== undefined) {
                 throw new CoreError('Error. ' + data.message);
             }
 
             return data;
-        }, (error) => {
+        }, async (error) => {
             // If server has heavy load, retry after some seconds.
             if (error.status == 429) {
                 const retryPromise = this.addToRetryQueue<T>(method, siteUrl, ajaxData, preSets);
@@ -675,9 +741,20 @@ export class CoreWSProvider {
                 }
 
                 return retryPromise;
+            } else if (error.status === -2) {
+                throw await this.createCannotConnectSiteError(preSets.siteUrl, {
+                    errorcode: 'invalidcertificate',
+                    errorDetails: Translate.instant('core.certificaterror', {
+                        details: CoreTextUtils.getErrorMessageFromError(error) ?? 'Unknown error',
+                    }),
+                });
+            } else if (error.status > 0) {
+                throw this.createHttpError(error, error.status);
             }
 
-            throw new CoreError(Translate.instant('core.serverconnection'));
+            throw new CoreError(Translate.instant('core.serverconnection', {
+                details: CoreTextUtils.getErrorMessageFromError(error) ?? 'Unknown error',
+            }));
         });
     }
 
@@ -687,10 +764,12 @@ export class CoreWSProvider {
      */
     protected processRetryQueue(): void {
         if (this.retryCalls.length > 0 && this.retryTimeout == 0) {
-            const call = this.retryCalls.shift();
+            const call = this.retryCalls[0];
+            this.retryCalls.shift();
+
             // Add a delay between calls.
             setTimeout(() => {
-                call!.deferred.resolve(this.performPost(call!.method, call!.siteUrl, call!.data, call!.preSets));
+                call.deferred.resolve(this.performPost(call.method, call.siteUrl, call.data, call.preSets));
                 this.processRetryQueue();
             }, 200);
         } else {
@@ -705,7 +784,7 @@ export class CoreWSProvider {
      * @param method Method of the HTTP request.
      * @param url Base URL of the HTTP request.
      * @param params Params of the HTTP request.
-     * @return The promise saved.
+     * @returns The promise saved.
      */
     protected setPromiseHttp<T = unknown>(
         promise: Promise<T>,
@@ -737,19 +816,18 @@ export class CoreWSProvider {
      * @param method The WebService method to be called.
      * @param data Arguments to pass to the method.
      * @param preSets Extra settings and information.
-     * @return Promise resolved with the response data in success and rejected with the error message if it fails.
-     * @return Request response.
+     * @returns Promise resolved with the response data in success and rejected with the error message if it fails.
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     syncCall<T = unknown>(method: string, data: any, preSets: CoreWSPreSets): T {
         if (!preSets) {
             throw new CoreError(Translate.instant('core.unexpectederror'));
-        } else if (!CoreApp.isOnline()) {
+        } else if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
         preSets.typeExpected = preSets.typeExpected || 'object';
-        if (typeof preSets.responseExpected == 'undefined') {
+        if (preSets.responseExpected === undefined) {
             preSets.responseExpected = true;
         }
 
@@ -794,13 +872,15 @@ export class CoreWSProvider {
         }
 
         if (!data) {
-            throw new CoreError(Translate.instant('core.serverconnection'));
+            throw new CoreError(Translate.instant('core.serverconnection', {
+                details: Translate.instant('core.errorinvalidresponse', { method }),
+            }));
         } else if (typeof data != preSets.typeExpected) {
             this.logger.warn('Response of type "' + typeof data + '" received, expecting "' + preSets.typeExpected + '"');
-            throw new CoreError(Translate.instant('core.errorinvalidresponse'));
+            throw new CoreError(Translate.instant('core.errorinvalidresponse', { method }));
         }
 
-        if (typeof data.exception != 'undefined' || typeof data.debuginfo != 'undefined') {
+        if (data.exception !== undefined || data.debuginfo !== undefined) {
             throw new CoreWSError(data);
         }
 
@@ -814,7 +894,7 @@ export class CoreWSProvider {
      * @param options File upload options.
      * @param preSets Must contain siteUrl and wsToken.
      * @param onProgress Function to call on progress.
-     * @return Promise resolved when uploaded.
+     * @returns Promise resolved when uploaded.
      */
     async uploadFile(
         filePath: string,
@@ -828,7 +908,7 @@ export class CoreWSProvider {
             throw new CoreError('Invalid options passed to upload file.');
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
@@ -844,61 +924,94 @@ export class CoreWSProvider {
             itemid: options.itemId || 0,
         };
         options.chunkedMode = false;
-        options.headers = {};
+        options.headers = {
+            'User-Agent': navigator.userAgent, // eslint-disable-line @typescript-eslint/naming-convention
+        };
         options['Connection'] = 'close';
 
+        let success: FileUploadResult;
+
         try {
-            const success = await transfer.upload(filePath, uploadUrl, options, true);
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const data = CoreTextUtils.parseJSON<any>(
-                success.response,
-                null,
-                this.logger.error.bind(this.logger, 'Error parsing response from upload', success.response),
-            );
-
-            if (data === null) {
-                throw new CoreError(Translate.instant('core.errorinvalidresponse'));
-            }
-
-            if (!data) {
-                throw new CoreError(Translate.instant('core.serverconnection'));
-            } else if (typeof data != 'object') {
-                this.logger.warn('Upload file: Response of type "' + typeof data + '" received, expecting "object"');
-
-                throw new CoreError(Translate.instant('core.errorinvalidresponse'));
-            }
-
-            if (typeof data.exception !== 'undefined') {
-                throw new CoreWSError(data);
-            } else if (typeof data.error !== 'undefined') {
-                throw new CoreWSError({
-                    errorcode: data.errortype,
-                    message: data.error,
-                });
-            } else if (data[0] && typeof data[0].error !== 'undefined') {
-                throw new CoreWSError({
-                    errorcode: data[0].errortype,
-                    message: data[0].error,
-                });
-            }
-
-            // We uploaded only 1 file, so we only return the first file returned.
-            this.logger.debug('Successfully uploaded file', filePath);
-
-            return data[0];
+            success = await transfer.upload(filePath, uploadUrl, options, true);
         } catch (error) {
             this.logger.error('Error while uploading file', filePath, error);
 
-            throw new CoreError(Translate.instant('core.errorinvalidresponse'));
+            throw this.createHttpError(error, error.http_status ?? 0);
         }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data = CoreTextUtils.parseJSON<any>(
+            success.response,
+            null,
+            error => this.logger.error('Error parsing response from upload', success.response, error),
+        );
+
+        if (data === null) {
+            throw await this.createCannotConnectSiteError(preSets.siteUrl, {
+                errorcode: 'invalidresponse',
+                errorDetails: Translate.instant('core.errorinvalidresponse', { method: 'upload.php' }),
+            });
+        }
+
+        if (!data) {
+            throw await this.createCannotConnectSiteError(preSets.siteUrl, {
+                errorcode: 'serverconnectionupload',
+                errorDetails: Translate.instant('core.serverconnection', {
+                    details: Translate.instant('core.errorinvalidresponse', { method: 'upload.php' }),
+                }),
+            });
+        } else if (typeof data != 'object') {
+            this.logger.warn('Upload file: Response of type "' + typeof data + '" received, expecting "object"');
+
+            throw await this.createCannotConnectSiteError(preSets.siteUrl, {
+                errorcode: 'invalidresponse',
+                errorDetails: Translate.instant('core.errorinvalidresponse', { method: 'upload.php' }),
+            });
+        }
+
+        if (data.exception !== undefined) {
+            throw new CoreWSError(data);
+        } else if (data.error !== undefined) {
+            throw new CoreWSError({
+                errorcode: data.errortype,
+                message: data.error,
+            });
+        } else if (data[0] && data[0].error !== undefined) {
+            throw new CoreWSError({
+                errorcode: data[0].errortype,
+                message: data[0].error,
+            });
+        }
+
+        // We uploaded only 1 file, so we only return the first file returned.
+        this.logger.debug('Successfully uploaded file', filePath);
+
+        return data[0];
+    }
+
+    /**
+     * Create a CoreHttpError based on a certain error.
+     *
+     * @param error Original error.
+     * @param status Status code (if any).
+     * @returns CoreHttpError.
+     */
+    protected createHttpError(error: CoreTextErrorObject, status: number): CoreHttpError {
+        const message = CoreTextUtils.buildSeveralParagraphsMessage([
+            CoreSites.isLoggedIn()
+                ? Translate.instant('core.siteunavailablehelp', { site: CoreSites.getCurrentSite()?.siteUrl })
+                : Translate.instant('core.sitenotfoundhelp'),
+            CoreTextUtils.getHTMLBodyContent(CoreTextUtils.getErrorMessageFromError(error) || ''),
+        ]);
+
+        return new CoreHttpError(message, status);
     }
 
     /**
      * Perform an HTTP request requesting for a text response.
      *
      * @param url Url to get.
-     * @return Resolved with the text when done.
+     * @returns Resolved with the text when done.
      */
     async getText(url: string): Promise<string> {
         // Fetch the URL content.
@@ -923,14 +1036,14 @@ export class CoreWSProvider {
      *
      * @param url URL of the request.
      * @param options Options for the request.
-     * @return Promise resolved with the response.
+     * @returns Promise resolved with the response.
      */
     async sendHTTPRequest<T = unknown>(url: string, options: HttpRequestOptions): Promise<HttpResponse<T>> {
         // Set default values.
         options.responseType = options.responseType || 'json';
-        options.timeout = typeof options.timeout == 'undefined' ? this.getRequestTimeout() : options.timeout;
+        options.timeout = options.timeout === undefined ? this.getRequestTimeout() : options.timeout;
 
-        if (CoreApp.isMobile()) {
+        if (CorePlatform.isMobile()) {
             // Use the cordova plugin.
             if (url.indexOf('file://') === 0) {
                 // We cannot load local files using the http native plugin. Use file provider instead.
@@ -1003,7 +1116,7 @@ export class CoreWSProvider {
      * Check if a URL works (it returns a 2XX status).
      *
      * @param url URL to check.
-     * @return Promise resolved with boolean: whether it works.
+     * @returns Promise resolved with boolean: whether it works.
      */
     async urlWorks(url: string): Promise<boolean> {
         try {
@@ -1013,6 +1126,26 @@ export class CoreWSProvider {
         } catch (error) {
             return false;
         }
+    }
+
+    /**
+     * Create an error to be thrown when it isn't possible to connect to a site.
+     *
+     * @param siteUrl Site url.
+     * @param options Error options.
+     * @returns Cannot connect error.
+     */
+    protected async createCannotConnectSiteError(
+        siteUrl: string,
+        options?: Partial<CoreSiteErrorOptions>,
+    ): Promise<CoreSiteError> {
+        return new CoreSiteError({
+            ...options,
+            supportConfig: await CoreUserGuestSupportConfig.forSite(siteUrl),
+            message: CoreSites.isLoggedIn()
+                ? Translate.instant('core.siteunavailablehelp', { site: CoreSites.getCurrentSite()?.siteUrl })
+                : Translate.instant('core.sitenotfoundhelp'),
+        });
     }
 
 }
@@ -1166,7 +1299,7 @@ export type CoreWSPreSets = {
     /**
      * Defaults to 'object'. Use it when you expect a type that's not an object|array.
      */
-    typeExpected?: string;
+    typeExpected?: CoreWSTypeExpected;
 
     /**
      * Defaults to false. Clean multibyte Unicode chars from data.
@@ -1179,6 +1312,8 @@ export type CoreWSPreSets = {
      */
     splitRequest?: CoreWSPreSetsSplitRequest;
 };
+
+export type CoreWSTypeExpected = 'boolean'|'number'|'string'|'jsonstring'|'object';
 
 /**
  * Options to split a request.
@@ -1299,7 +1434,7 @@ type RetryCall = {
     siteUrl: string;
     data: Record<string, unknown>;
     preSets: CoreWSPreSets;
-    deferred: PromiseDefer<unknown>;
+    deferred: CorePromisedValue;
 };
 
 /**

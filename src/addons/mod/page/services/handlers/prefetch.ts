@@ -14,7 +14,8 @@
 
 import { Injectable } from '@angular/core';
 import { CoreCourseResourcePrefetchHandlerBase } from '@features/course/classes/resource-prefetch-handler';
-import { CoreCourse, CoreCourseAnyModuleData, CoreCourseWSModule } from '@features/course/services/course';
+import { CoreCourse, CoreCourseAnyModuleData } from '@features/course/services/course';
+import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
 import { AddonModPage, AddonModPageProvider } from '../page';
@@ -36,16 +37,13 @@ export class AddonModPagePrefetchHandlerService extends CoreCourseResourcePrefet
      * @param module The module object returned by WS.
      * @param courseId Course ID.
      * @param prefetch True to prefetch, false to download right away.
-     * @return Promise resolved when all content is downloaded. Data returned is not reliable.
+     * @returns Promise resolved when all content is downloaded. Data returned is not reliable.
      */
-    async downloadOrPrefetch(module: CoreCourseWSModule, courseId: number, prefetch?: boolean): Promise<void> {
+    async downloadOrPrefetch(module: CoreCourseModuleData, courseId: number, prefetch?: boolean): Promise<void> {
         const promises: Promise<unknown>[] = [];
 
         promises.push(super.downloadOrPrefetch(module, courseId, prefetch));
-
-        if (AddonModPage.isGetPageWSAvailable()) {
-            promises.push(AddonModPage.getPageData(courseId, module.id));
-        }
+        promises.push(AddonModPage.getPageData(courseId, module.id));
 
         await Promise.all(promises);
     }
@@ -55,7 +53,7 @@ export class AddonModPagePrefetchHandlerService extends CoreCourseResourcePrefet
      *
      * @param moduleId The module ID.
      * @param courseId Course ID the module belongs to.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateContent(moduleId: number, courseId: number): Promise<void> {
         await AddonModPage.invalidateContent(moduleId, courseId);
@@ -66,7 +64,7 @@ export class AddonModPagePrefetchHandlerService extends CoreCourseResourcePrefet
      *
      * @param module Module.
      * @param courseId Course ID the module belongs to.
-     * @return Promise resolved when invalidated.
+     * @returns Promise resolved when invalidated.
      */
     async invalidateModule(module: CoreCourseAnyModuleData, courseId: number): Promise<void> {
         const promises: Promise<unknown>[] = [];
@@ -80,7 +78,7 @@ export class AddonModPagePrefetchHandlerService extends CoreCourseResourcePrefet
     /**
      * Whether or not the handler is enabled on a site level.
      *
-     * @return A boolean, or a promise resolved with a boolean, indicating if the handler is enabled.
+     * @returns A boolean, or a promise resolved with a boolean, indicating if the handler is enabled.
      */
     isEnabled(): Promise<boolean> {
         return AddonModPage.isPluginEnabled();

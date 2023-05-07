@@ -15,60 +15,75 @@
 import { APP_INITIALIZER, NgModule, Type } from '@angular/core';
 import { Routes } from '@angular/router';
 import { CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
-import { CoreCourseIndexRoutingModule } from '@features/course/pages/index/index-routing.module';
+import { COURSE_PAGE_NAME } from '@features/course/course.module';
+import { CoreCourseIndexRoutingModule } from '@features/course/course-routing.module';
 import { CoreCourseOptionsDelegate } from '@features/course/services/course-options-delegate';
-import { CoreMainMenuRoutingModule } from '@features/mainmenu/mainmenu-routing.module';
 import { CoreMainMenuTabRoutingModule } from '@features/mainmenu/mainmenu-tab-routing.module';
-import { CoreMainMenuDelegate } from '@features/mainmenu/services/mainmenu-delegate';
 import { CoreUserDelegate } from '@features/user/services/user-delegate';
+import { PARTICIPANTS_PAGE_NAME } from '@features/user/user.module';
 import { CoreGradesProvider } from './services/grades';
-import { CoreGradesHelperProvider } from './services/grades-helper';
+import { CoreGradesHelperProvider, GRADES_PAGE_NAME, GRADES_PARTICIPANTS_PAGE_NAME } from './services/grades-helper';
 import { CoreGradesCourseOptionHandler } from './services/handlers/course-option';
-import { CoreGradesMainMenuHandler, CoreGradesMainMenuHandlerService } from './services/handlers/mainmenu';
 import { CoreGradesOverviewLinkHandler } from './services/handlers/overview-link';
 import { CoreGradesUserHandler } from './services/handlers/user';
+import { CoreGradesReportLinkHandler } from './services/handlers/report-link';
 import { CoreGradesUserLinkHandler } from './services/handlers/user-link';
+import { CoreGradesCourseParticipantsOptionHandler } from '@features/grades/services/handlers/course-participants-option';
+import { conditionalRoutes } from '@/app/app-routing.module';
+import { COURSE_INDEX_PATH } from '@features/course/course-lazy.module';
+import { CoreScreen } from '@services/screen';
 
 export const CORE_GRADES_SERVICES: Type<unknown>[] = [
     CoreGradesProvider,
     CoreGradesHelperProvider,
 ];
 
-const routes: Routes = [
+const mainMenuChildrenRoutes: Routes = [
     {
-        path: CoreGradesMainMenuHandlerService.PAGE_NAME,
-        loadChildren: () => import('@features/grades/grades-lazy.module').then(m => m.CoreGradesLazyModule),
+        path: GRADES_PAGE_NAME,
+        loadChildren: () => import('./grades-courses-lazy.module').then(m => m.CoreGradesCoursesLazyModule),
+        data: { swipeManagerSource: 'courses' },
     },
     {
-        path: 'user-grades/:courseId',
-        loadChildren: () => import('@features/grades/grades-course-lazy.module').then(m => m.CoreGradesCourseLazyModule),
+        path: `${COURSE_PAGE_NAME}/:courseId/${PARTICIPANTS_PAGE_NAME}/:userId/${GRADES_PAGE_NAME}`,
+        loadChildren: () => import('./grades-course-lazy.module').then(m => m.CoreGradesCourseLazyModule),
     },
+    ...conditionalRoutes([
+        {
+            path: `${COURSE_PAGE_NAME}/${COURSE_INDEX_PATH}/${GRADES_PARTICIPANTS_PAGE_NAME}/:userId`,
+            loadChildren: () => import('./grades-course-lazy.module').then(m => m.CoreGradesCourseLazyModule),
+            data: { swipeManagerSource: 'participants' },
+        },
+    ], () => CoreScreen.isMobile),
 ];
 
 const courseIndexRoutes: Routes = [
     {
-        path: 'grades',
-        loadChildren: () => import('@features/grades/grades-course-lazy.module').then(m => m.CoreGradesCourseLazyModule),
+        path: GRADES_PAGE_NAME,
+        loadChildren: () => import('./grades-course-lazy.module').then(m => m.CoreGradesCourseLazyModule),
+    },
+    {
+        path: GRADES_PARTICIPANTS_PAGE_NAME,
+        loadChildren: () => import('./grades-course-participants-lazy.module').then(m => m.CoreGradesCourseParticipantsLazyModule),
     },
 ];
 
 @NgModule({
     imports: [
-        CoreMainMenuTabRoutingModule.forChild(routes),
-        CoreMainMenuRoutingModule.forChild({ children: routes }),
+        CoreMainMenuTabRoutingModule.forChild(mainMenuChildrenRoutes),
         CoreCourseIndexRoutingModule.forChild({ children: courseIndexRoutes }),
     ],
     providers: [
         {
             provide: APP_INITIALIZER,
             multi: true,
-            deps: [],
             useValue: () => {
-                CoreMainMenuDelegate.registerHandler(CoreGradesMainMenuHandler.instance);
                 CoreUserDelegate.registerHandler(CoreGradesUserHandler.instance);
+                CoreContentLinksDelegate.registerHandler(CoreGradesReportLinkHandler.instance);
                 CoreContentLinksDelegate.registerHandler(CoreGradesUserLinkHandler.instance);
                 CoreContentLinksDelegate.registerHandler(CoreGradesOverviewLinkHandler.instance);
                 CoreCourseOptionsDelegate.registerHandler(CoreGradesCourseOptionHandler.instance);
+                CoreCourseOptionsDelegate.registerHandler(CoreGradesCourseParticipantsOptionHandler.instance);
             },
         },
     ],

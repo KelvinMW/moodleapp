@@ -13,10 +13,10 @@
 // limitations under the License.
 
 import { Component, OnInit, Optional } from '@angular/core';
+import { CoreError } from '@classes/errors/error';
 import { CoreIonLoadingElement } from '@classes/ion-loading';
 import { CoreCourseModuleMainActivityComponent } from '@features/course/classes/main-activity-component';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
-import { CoreCourse } from '@features/course/services/course';
 import { IonContent } from '@ionic/angular';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
@@ -75,19 +75,12 @@ export class AddonModSurveyIndexComponent extends CoreCourseModuleMainActivityCo
         this.currentUserId = CoreSites.getCurrentSiteUserId();
 
         await this.loadContent(false, true);
-
-        try {
-            await AddonModSurvey.logView(this.survey!.id, this.survey!.name);
-            CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-        } catch {
-            // Ignore errors. Just don't check Module completion.
-        }
     }
 
     /**
      * Perform the invalidate content function.
      *
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async invalidateContent(): Promise<void> {
         const promises: Promise<void>[] = [];
@@ -104,7 +97,7 @@ export class AddonModSurveyIndexComponent extends CoreCourseModuleMainActivityCo
      * Compares sync event data with current data to check if refresh content is needed.
      *
      * @param syncEventData Data receiven on sync observer.
-     * @return True if refresh is needed, false otherwise.
+     * @returns True if refresh is needed, false otherwise.
      */
     protected isRefreshSyncNeeded(syncEventData: AddonModSurveyAutoSyncData): boolean {
         if (this.survey && syncEventData.surveyId == this.survey.id && syncEventData.userId == this.currentUserId) {
@@ -115,49 +108,41 @@ export class AddonModSurveyIndexComponent extends CoreCourseModuleMainActivityCo
     }
 
     /**
-     * Download survey contents.
-     *
-     * @param refresh If it's refreshing content.
-     * @param sync If it should try to sync.
-     * @param showErrors If show errors to the user of hide them.
-     * @return Promise resolved when done.
+     * @inheritdoc
      */
-    protected async fetchContent(refresh: boolean = false, sync: boolean = false, showErrors: boolean = false): Promise<void> {
-        try {
-            this.survey = await AddonModSurvey.getSurvey(this.courseId, this.module.id);
+    protected async fetchContent(refresh?: boolean, sync = false, showErrors = false): Promise<void> {
+        this.survey = await AddonModSurvey.getSurvey(this.courseId, this.module.id);
 
-            this.description = this.survey.intro;
-            this.dataRetrieved.emit(this.survey);
+        this.description = this.survey.intro;
+        this.dataRetrieved.emit(this.survey);
 
-            if (sync) {
-                // Try to synchronize the survey.
-                const answersSent = await this.syncActivity(showErrors);
-                if (answersSent) {
-                    // Answers were sent, update the survey.
-                    this.survey = await AddonModSurvey.getSurvey(this.courseId, this.module.id);
-                }
+        if (sync) {
+            // Try to synchronize the survey.
+            const updated = await this.syncActivity(showErrors);
+            if (updated) {
+                // Answers were sent, update the survey.
+                this.survey = await AddonModSurvey.getSurvey(this.courseId, this.module.id);
             }
+        }
 
-            // Check if there are answers stored in offline.
-            this.hasOffline = this.survey.surveydone
-                ? false
-                : await AddonModSurveyOffline.hasAnswers(this.survey.id);
+        // Check if there are answers stored in offline.
+        this.hasOffline = this.survey.surveydone
+            ? false
+            : await AddonModSurveyOffline.hasAnswers(this.survey.id);
 
-            if (!this.survey.surveydone && !this.hasOffline) {
-                await this.fetchQuestions();
-            }
-        } finally {
-            this.fillContextMenu(refresh);
+        if (!this.survey.surveydone && !this.hasOffline) {
+            await this.fetchQuestions(this.survey.id);
         }
     }
 
     /**
      * Convenience function to get survey questions.
      *
-     * @return Promise resolved when done.
+     * @param surveyId Survey Id.
+     * @returns Promise resolved when done.
      */
-    protected async fetchQuestions(): Promise<void> {
-        const questions = await AddonModSurvey.getQuestions(this.survey!.id, { cmId: this.module.id });
+    protected async fetchQuestions(surveyId: number): Promise<void> {
+        const questions = await AddonModSurvey.getQuestions(surveyId, { cmId: this.module.id });
 
         this.questions = AddonModSurveyHelper.formatQuestions(questions);
 
@@ -176,9 +161,20 @@ export class AddonModSurveyIndexComponent extends CoreCourseModuleMainActivityCo
     }
 
     /**
+     * @inheritdoc
+     */
+    protected async logActivity(): Promise<void> {
+        if (!this.survey) {
+            return; // Shouldn't happen.
+        }
+
+        await AddonModSurvey.logView(this.survey.id, this.survey.name);
+    }
+
+    /**
      * Check if answers are valid to be submitted.
      *
-     * @return If answers are valid
+     * @returns If answers are valid
      */
     isValidResponse(): boolean {
         return !this.questions.some((question) => question.required && question.name &&
@@ -189,6 +185,10 @@ export class AddonModSurveyIndexComponent extends CoreCourseModuleMainActivityCo
      * Save options selected.
      */
     async submit(): Promise<void> {
+        if (!this.survey) {
+            return;
+        }
+
         let modal: CoreIonLoadingElement | undefined;
 
         try {
@@ -204,28 +204,30 @@ export class AddonModSurveyIndexComponent extends CoreCourseModuleMainActivityCo
                 });
             }
 
-            const online = await AddonModSurvey.submitAnswers(this.survey!.id, this.survey!.name, this.courseId, answers);
+            const online = await AddonModSurvey.submitAnswers(this.survey.id, this.survey.name, this.courseId, answers);
 
             CoreEvents.trigger(CoreEvents.ACTIVITY_DATA_SENT, { module: this.moduleName });
 
             if (online && this.isPrefetched()) {
                 // The survey is downloaded, update the data.
                 try {
-                    await AddonModSurveySync.prefetchAfterUpdate(
+                    const prefetched = await AddonModSurveySync.prefetchAfterUpdate(
                         AddonModSurveyPrefetchHandler.instance,
                         this.module,
                         this.courseId,
                     );
 
                     // Update the view.
-                    this.showLoadingAndFetch(false, false);
+                    prefetched ?
+                        this.showLoadingAndFetch(false, false) :
+                        this.showLoadingAndRefresh(false);
                 } catch {
                     // Prefetch failed, refresh the data.
-                    await this.showLoadingAndRefresh(false);
+                    this.showLoadingAndRefresh(false);
                 }
             } else {
                 // Not downloaded, refresh the data.
-                await this.showLoadingAndRefresh(false);
+                this.showLoadingAndRefresh(false);
             }
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'addon.mod_survey.cannotsubmitsurvey', true);
@@ -235,22 +237,14 @@ export class AddonModSurveyIndexComponent extends CoreCourseModuleMainActivityCo
     }
 
     /**
-     * Performs the sync of the activity.
-     *
-     * @return Promise resolved when done.
+     * @inheritdoc
      */
-    protected sync(): Promise<AddonModSurveySyncResult> {
-        return AddonModSurveySync.syncSurvey(this.survey!.id, this.currentUserId);
-    }
+    protected async sync(): Promise<AddonModSurveySyncResult> {
+        if (!this.survey) {
+            throw new CoreError('Cannot sync without a survey.');
+        }
 
-    /**
-     * Checks if sync has succeed from result sync data.
-     *
-     * @param result Data returned on the sync function.
-     * @return If suceed or not.
-     */
-    protected hasSyncSucceed(result: AddonModSurveySyncResult): boolean {
-        return result.answersSent;
+        return AddonModSurveySync.syncSurvey(this.survey.id, this.currentUserId);
     }
 
 }

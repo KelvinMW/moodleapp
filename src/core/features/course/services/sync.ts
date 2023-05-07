@@ -17,7 +17,7 @@ import { Injectable } from '@angular/core';
 import { CoreSyncBaseProvider } from '@classes/base-sync';
 
 import { CoreSites } from '@services/sites';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreCourseOffline } from './course-offline';
@@ -28,6 +28,7 @@ import { CoreCourseManualCompletionDBRecord } from './database/course';
 import { CoreNetworkError } from '@classes/errors/network-error';
 import { makeSingleton, Translate } from '@singletons';
 import { CoreEvents } from '@singletons/events';
+import { CoreCourses } from '@features/courses/services/courses';
 
 /**
  * Service to sync course offline data. This only syncs the offline data of the course itself, not the offline data of
@@ -47,10 +48,10 @@ export class CoreCourseSyncProvider extends CoreSyncBaseProvider<CoreCourseSyncR
      *
      * @param siteId Site ID to sync. If not defined, sync all sites.
      * @param force Wether the execution is forced (manual sync).
-     * @return Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     syncAllCourses(siteId?: string, force?: boolean): Promise<void> {
-        return this.syncOnSites('courses', this.syncAllCoursesFunc.bind(this, !!force), siteId);
+        return this.syncOnSites('courses', (siteId) => this.syncAllCoursesFunc(!!force, siteId), siteId);
     }
 
     /**
@@ -58,7 +59,7 @@ export class CoreCourseSyncProvider extends CoreSyncBaseProvider<CoreCourseSyncR
      *
      * @param force Wether the execution is forced (manual sync).
      * @param siteId Site ID to sync.
-     * @return Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     protected async syncAllCoursesFunc(force: boolean, siteId: string): Promise<void> {
         await Promise.all([
@@ -72,15 +73,23 @@ export class CoreCourseSyncProvider extends CoreSyncBaseProvider<CoreCourseSyncR
      *
      * @param siteId Site ID to sync.
      * @param force Wether the execution is forced (manual sync).
-     * @return Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     protected async syncCoursesCompletion(siteId: string, force: boolean): Promise<void> {
         const completions = await CoreCourseOffline.getAllManualCompletions(siteId);
 
+        const courseNames: Record<number, string | undefined> = {};
+
         // Sync all courses.
         await Promise.all(completions.map(async (completion) => {
-            const result = await (force ? this.syncCourse(completion.courseid, siteId) :
-                this.syncCourseIfNeeded(completion.courseid, siteId));
+            if (courseNames[completion.courseid] === undefined) {
+                const course = await CoreUtils.ignoreErrors(CoreCourses.getUserCourse(completion.courseid, true, siteId));
+
+                courseNames[completion.courseid] = course?.displayname || course?.fullname;
+            }
+
+            const result = await (force ? this.syncCourse(completion.courseid, courseNames[completion.courseid], siteId) :
+                this.syncCourseIfNeeded(completion.courseid, courseNames[completion.courseid], siteId));
 
             if (!result || !result.updated) {
                 return;
@@ -98,43 +107,47 @@ export class CoreCourseSyncProvider extends CoreSyncBaseProvider<CoreCourseSyncR
      * Sync a course if it's needed.
      *
      * @param courseId Course ID to be synced.
+     * @param courseName Course Name to be synced.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the course is synced or it doesn't need to be synced.
+     * @returns Promise resolved when the course is synced or it doesn't need to be synced.
      */
-    syncCourseIfNeeded(courseId: number, siteId?: string): Promise<CoreCourseSyncResult> {
+    syncCourseIfNeeded(courseId: number, courseName?: string, siteId?: string): Promise<CoreCourseSyncResult> {
         // Usually we call isSyncNeeded to check if a certain time has passed.
         // However, since we barely send data for now just sync the course.
-        return this.syncCourse(courseId, siteId);
+        return this.syncCourse(courseId, courseName, siteId);
     }
 
     /**
      * Synchronize a course.
      *
      * @param courseId Course ID to be synced.
+     * @param courseName Course Name to be synced.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if sync is successful, rejected otherwise.
+     * @returns Promise resolved if sync is successful, rejected otherwise.
      */
-    async syncCourse(courseId: number, siteId?: string): Promise<CoreCourseSyncResult> {
+    async syncCourse(courseId: number, courseName?: string, siteId?: string): Promise<CoreCourseSyncResult> {
         siteId = siteId || CoreSites.getCurrentSiteId();
 
-        if (this.isSyncing(courseId, siteId)) {
+        const currentSyncPromise = this.getOngoingSync(courseId, siteId);
+        if (currentSyncPromise) {
             // There's already a sync ongoing for this discussion, return the promise.
-            return this.getOngoingSync(courseId, siteId)!;
+            return currentSyncPromise;
         }
 
         this.logger.debug(`Try to sync course '${courseId}'`);
 
-        return this.addOngoingSync(courseId, this.syncCourseCompletion(courseId, siteId), siteId);
+        return this.addOngoingSync(courseId, this.syncCourseCompletion(courseId, courseName, siteId), siteId);
     }
 
     /**
      * Sync course offline completion.
      *
      * @param courseId Course ID to be synced.
+     * @param courseName Course Name to be synced.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if sync is successful, rejected otherwise.
+     * @returns Promise resolved if sync is successful, rejected otherwise.
      */
-    protected async syncCourseCompletion(courseId: number, siteId?: string): Promise<CoreCourseSyncResult> {
+    protected async syncCourseCompletion(courseId: number, courseName?: string, siteId?: string): Promise<CoreCourseSyncResult> {
         const result: CoreCourseSyncResult = {
             warnings: [],
             updated: false,
@@ -154,7 +167,7 @@ export class CoreCourseSyncProvider extends CoreSyncBaseProvider<CoreCourseSyncR
             return result;
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // Cannot sync in offline.
             throw new CoreNetworkError();
         }
@@ -180,10 +193,13 @@ export class CoreCourseSyncProvider extends CoreSyncBaseProvider<CoreCourseSyncR
 
                 // Completion deleted, add a warning if the completion status doesn't match.
                 if (onlineComp.state != entry.completed) {
-                    result.warnings.push(Translate.instant('core.course.warningofflinemanualcompletiondeleted', {
-                        name: entry.coursename || courseId,
-                        error: Translate.instant('core.course.warningmanualcompletionmodified'),
-                    }));
+                    result.warnings.push({
+                        warningcode: 'apperror',
+                        message: Translate.instant('core.course.warningofflinemanualcompletiondeleted', {
+                            name: courseName || courseId,
+                            error: Translate.instant('core.course.warningmanualcompletionmodified'),
+                        }),
+                    });
                 }
 
                 return;
@@ -207,10 +223,13 @@ export class CoreCourseSyncProvider extends CoreSyncBaseProvider<CoreCourseSyncR
                 await CoreCourseOffline.deleteManualCompletion(entry.cmid, siteId);
 
                 // Completion deleted, add a warning.
-                result.warnings.push(Translate.instant('core.course.warningofflinemanualcompletiondeleted', {
-                    name: entry.coursename || courseId,
-                    error: CoreTextUtils.getErrorMessageFromError(error),
-                }));
+                result.warnings.push({
+                    warningcode: 'apperror',
+                    message: Translate.instant('core.course.warningofflinemanualcompletiondeleted', {
+                        name: courseName || courseId,
+                        error: CoreTextUtils.getErrorMessageFromError(error),
+                    }),
+                });
             }
         }));
 

@@ -16,15 +16,16 @@ import { Injectable } from '@angular/core';
 import { CoreError } from '@classes/errors/error';
 import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
 import { CoreCourse, CoreCourseModuleContentFile } from '@features/course/services/course';
-import { CoreCourseModule } from '@features/course/services/course-helper';
+import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFilepool } from '@services/filepool';
 import { CoreSitesCommonWSOptions, CoreSites } from '@services/sites';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreWSExternalFile, CoreWSExternalWarning } from '@services/ws';
-import { makeSingleton } from '@singletons';
+import { makeSingleton, Translate } from '@singletons';
+import { CorePath } from '@singletons/path';
 
 const ROOT_CACHE_KEY = 'mmaModImscp:';
 
@@ -40,7 +41,7 @@ export class AddonModImscpProvider {
      * Get the IMSCP toc as an array.
      *
      * @param contents The module contents.
-     * @return The toc.
+     * @returns The toc.
      */
     protected getToc(contents: CoreCourseModuleContentFile[]): AddonModImscpTocItemTree[] {
         if (!contents || !contents.length) {
@@ -54,7 +55,7 @@ export class AddonModImscpProvider {
      * Get the imscp toc as an array of items (not nested) to build the navigation tree.
      *
      * @param contents The module contents.
-     * @return The toc as a list.
+     * @returns The toc as a list.
      */
     createItemList(contents: CoreCourseModuleContentFile[]): AddonModImscpTocItem[] {
         const items: AddonModImscpTocItem[] = [];
@@ -71,67 +72,10 @@ export class AddonModImscpProvider {
     }
 
     /**
-     * Get the previous item to the given one.
-     *
-     * @param items The items list.
-     * @param itemId The current item.
-     * @return The previous item id.
-     */
-    getPreviousItem(items: AddonModImscpTocItem[], itemId: string): string {
-        const position = this.getItemPosition(items, itemId);
-
-        if (position == -1) {
-            return '';
-        }
-
-        for (let i = position - 1; i >= 0; i--) {
-            if (items[i] && items[i].href) {
-                return items[i].href;
-            }
-        }
-
-        return '';
-    }
-
-    /**
-     * Get the next item to the given one.
-     *
-     * @param items The items list.
-     * @param itemId The current item.
-     * @return The next item id.
-     */
-    getNextItem(items: AddonModImscpTocItem[], itemId: string): string {
-        const position = this.getItemPosition(items, itemId);
-
-        if (position == -1) {
-            return '';
-        }
-
-        for (let i = position + 1; i < items.length; i++) {
-            if (items[i] && items[i].href) {
-                return items[i].href;
-            }
-        }
-
-        return '';
-    }
-
-    /**
-     * Get the position of a item.
-     *
-     * @param items The items list.
-     * @param itemId The item to search.
-     * @return The item position.
-     */
-    protected getItemPosition(items: AddonModImscpTocItem[], itemId: string): number {
-        return items.findIndex((item) => item.href == itemId);
-    }
-
-    /**
      * Check if we should ommit the file download.
      *
      * @param fileName The file name
-     * @return True if we should ommit the file.
+     * @returns True if we should ommit the file.
      */
     protected checkSpecialFiles(fileName: string): boolean {
         return fileName == 'imsmanifest.xml';
@@ -141,7 +85,7 @@ export class AddonModImscpProvider {
      * Get cache key for imscp data WS calls.
      *
      * @param courseId Course ID.
-     * @return Cache key.
+     * @returns Cache key.
      */
     protected getImscpDataCacheKey(courseId: number): string {
         return ROOT_CACHE_KEY + 'imscp:' + courseId;
@@ -154,7 +98,7 @@ export class AddonModImscpProvider {
      * @param key Name of the property to check.
      * @param value Value to search.
      * @param options Other options.
-     * @return Promise resolved when the imscp is retrieved.
+     * @returns Promise resolved when the imscp is retrieved.
      */
     protected async getImscpByKey(
         courseId: number,
@@ -183,7 +127,7 @@ export class AddonModImscpProvider {
             return currentImscp;
         }
 
-        throw new CoreError('Imscp not found');
+        throw new CoreError(Translate.instant('core.course.modulenotfound'));
     }
 
     /**
@@ -192,7 +136,7 @@ export class AddonModImscpProvider {
      * @param courseId Course ID.
      * @param cmId Course module ID.
      * @param options Other options.
-     * @return Promise resolved when the imscp is retrieved.
+     * @returns Promise resolved when the imscp is retrieved.
      */
     getImscp(courseId: number, cmId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModImscpImscp> {
         return this.getImscpByKey(courseId, 'coursemodule', cmId, options);
@@ -203,7 +147,7 @@ export class AddonModImscpProvider {
      *
      * @param items Module contents.
      * @param targetFilePath Path of the searched file.
-     * @return File URL.
+     * @returns File URL.
      */
     protected getFileUrlFromContents(items: CoreCourseModuleContentFile[], targetFilePath: string): string | undefined {
         const item = items.find((item) => {
@@ -211,8 +155,8 @@ export class AddonModImscpProvider {
                 return false;
             }
 
-            const filePath = CoreTextUtils.concatenatePaths(item.filepath, item.filename);
-            const filePathAlt = filePath.charAt(0) === '/' ? filePath.substr(1) : '/' + filePath;
+            const filePath = CorePath.concatenatePaths(item.filepath, item.filename);
+            const filePathAlt = filePath.charAt(0) === '/' ? filePath.substring(1) : '/' + filePath;
 
             // Check if it's main file.
             return filePath === targetFilePath || filePathAlt === targetFilePath;
@@ -225,28 +169,22 @@ export class AddonModImscpProvider {
      * Get src of a imscp item.
      *
      * @param module The module object.
-     * @param itemHref Href of item to get. If not defined, gets src of main item.
-     * @return Promise resolved with the item src.
+     * @param itemHref Href of item to get.
+     * @returns Promise resolved with the item src.
      */
-    async getIframeSrc(module: CoreCourseModule, itemHref?: string): Promise<string> {
-        if (!itemHref) {
-            const toc = this.getToc(module.contents);
-            if (!toc.length) {
-                throw new CoreError('Empty TOC');
-            }
-            itemHref = toc[0].href;
-        }
-
+    async getIframeSrc(module: CoreCourseModuleData, itemHref: string): Promise<string> {
         const siteId = CoreSites.getCurrentSiteId();
 
         try {
-            const dirPath = await CoreFilepool.getPackageDirUrlByUrl(siteId, module!.url!);
+            const dirPath = await CoreFilepool.getPackageDirUrlByUrl(siteId, module.url || '');
 
-            return CoreTextUtils.concatenatePaths(dirPath, itemHref);
+            return CorePath.concatenatePaths(dirPath, itemHref);
         } catch (error) {
             // Error getting directory, there was an error downloading or we're in browser. Return online URL if connected.
-            if (CoreApp.isOnline()) {
-                const indexUrl = this.getFileUrlFromContents(module.contents, itemHref);
+            if (CoreNetwork.isOnline()) {
+                const contents = await CoreCourse.getModuleContents(module);
+
+                const indexUrl = this.getFileUrlFromContents(contents, itemHref);
 
                 if (indexUrl) {
                     const site = await CoreSites.getSite(siteId);
@@ -260,12 +198,26 @@ export class AddonModImscpProvider {
     }
 
     /**
+     * Get last item viewed's href in the app for a IMSCP.
+     *
+     * @param id IMSCP instance ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @returns Promise resolved with last item viewed's href, undefined if none.
+     */
+    async getLastItemViewed(id: number, siteId?: string): Promise<string | undefined> {
+        const site = await CoreSites.getSite(siteId);
+        const entry = await site.getLastViewed(AddonModImscpProvider.COMPONENT, id);
+
+        return entry?.value;
+    }
+
+    /**
      * Invalidate the prefetched content.
      *
      * @param moduleId The module ID.
      * @param courseId Course ID of the module.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the content is invalidated.
+     * @returns Promise resolved when the content is invalidated.
      */
     async invalidateContent(moduleId: number, courseId: number, siteId?: string): Promise<void> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -284,7 +236,7 @@ export class AddonModImscpProvider {
      *
      * @param courseId Course ID.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the data is invalidated.
+     * @returns Promise resolved when the data is invalidated.
      */
     async invalidateImscpData(courseId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -297,7 +249,7 @@ export class AddonModImscpProvider {
      * like in core_course_get_contents response.
      *
      * @param file File to check.
-     * @return True if downloadable, false otherwise.
+     * @returns True if downloadable, false otherwise.
      */
     isFileDownloadable(file: CoreCourseModuleContentFile): boolean {
         return file.type === 'file' && !this.checkSpecialFiles(file.filename);
@@ -307,7 +259,7 @@ export class AddonModImscpProvider {
      * Return whether or not the plugin is enabled in a certain site.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with true if plugin is enabled, rejected or resolved with false otherwise.
+     * @returns Promise resolved with true if plugin is enabled, rejected or resolved with false otherwise.
      */
     async isPluginEnabled(siteId?: string): Promise<boolean> {
         const site = await CoreSites.getSite(siteId);
@@ -321,7 +273,7 @@ export class AddonModImscpProvider {
      * @param id Module ID.
      * @param name Name of the imscp.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the WS call is successful.
+     * @returns Promise resolved when the WS call is successful.
      */
     async logView(id: number, name?: string, siteId?: string): Promise<void> {
         const params: AddonModImscpViewImscpWSParams = {
@@ -338,6 +290,21 @@ export class AddonModImscpProvider {
             {},
             siteId,
         );
+    }
+
+    /**
+     * Store last item viewed in the app for a IMSCP.
+     *
+     * @param id IMSCP instance ID.
+     * @param href Item href.
+     * @param courseId Course ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @returns Promise resolved with last item viewed, undefined if none.
+     */
+    async storeLastItemViewed(id: number, href: string, courseId: number, siteId?: string): Promise<void> {
+        const site = await CoreSites.getSite(siteId);
+
+        await site.storeLastViewed(AddonModImscpProvider.COMPONENT, id, href, { data: String(courseId) });
     }
 
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Input, Output, EventEmitter, Component, Optional, Inject, ElementRef } from '@angular/core';
+import { Input, Output, EventEmitter, Component, Optional, Inject, ElementRef, OnInit } from '@angular/core';
 import { CoreFileHelper } from '@services/file-helper';
 
 import { CoreSites } from '@services/sites';
@@ -20,6 +20,7 @@ import { CoreDomUtils } from '@services/utils/dom';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreUrlUtils } from '@services/utils/url';
 import { CoreWSFile } from '@services/ws';
+import { CoreIonicColorNames } from '@singletons/colors';
 import { CoreLogger } from '@singletons/logger';
 import { CoreQuestionBehaviourButton, CoreQuestionHelper, CoreQuestionQuestion } from '../services/question-helper';
 
@@ -29,9 +30,9 @@ import { CoreQuestionBehaviourButton, CoreQuestionHelper, CoreQuestionQuestion }
 @Component({
     template: '',
 })
-export class CoreQuestionBaseComponent {
+export class CoreQuestionBaseComponent<T extends AddonModQuizQuestion = AddonModQuizQuestion> implements OnInit {
 
-    @Input() question?: AddonModQuizQuestion; // The question to render.
+    @Input() question?: T; // The question to render.
     @Input() component?: string; // The component the question belongs to.
     @Input() componentId?: number; // ID of the component the question belongs to.
     @Input() attemptId?: number; // Attempt ID.
@@ -53,9 +54,54 @@ export class CoreQuestionBaseComponent {
     }
 
     /**
+     * @inheritdoc
+     */
+    ngOnInit(): void {
+        if (!this.question) {
+            this.logger.warn('Aborting because of no question received.');
+
+            return CoreQuestionHelper.showComponentError(this.onAbort);
+        }
+
+        this.init();
+    }
+
+    /**
+     * Initialize the question component, override it if needed.
+     */
+    init(): void {
+        this.initComponent();
+    }
+
+    /**
+     * Initialize the component and the question text.
+     *
+     * @returns Element containing the question HTML, void if the data is not valid.
+     */
+    initComponent(): void | HTMLElement {
+        if (!this.question) {
+            return;
+        }
+
+        this.hostElement.classList.add('core-question-container');
+
+        const questionElement = CoreDomUtils.convertToElement(this.question.html);
+
+        // Extract question text.
+        this.question.text = CoreDomUtils.getContentsOfElement(questionElement, '.qtext');
+        if (this.question.text === undefined) {
+            this.logger.warn('Aborting because of an error parsing question.', this.question.slot);
+
+            return CoreQuestionHelper.showComponentError(this.onAbort);
+        }
+
+        return questionElement;
+    }
+
+    /**
      * Initialize a question component of type calculated or calculated simple.
      *
-     * @return Element containing the question HTML, void if the data is not valid.
+     * @returns Element containing the question HTML, void if the data is not valid.
      */
     initCalculatedComponent(): void | HTMLElement {
         // Treat the input text first.
@@ -81,29 +127,30 @@ export class CoreQuestionBaseComponent {
      * Treat a calculated question units in case they use radio buttons.
      *
      * @param questionEl Question HTML element.
-     * @return True if question has units using radio buttons.
+     * @returns True if question has units using radio buttons.
      */
     protected treatCalculatedRadioUnits(questionEl: HTMLElement): boolean {
         // Check if the question has radio buttons for units.
-        const radios = <HTMLInputElement[]> Array.from(questionEl.querySelectorAll('input[type="radio"]'));
-        if (!radios.length) {
+        const radios = Array.from(questionEl.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
+        if (!radios.length || !this.question) {
             return false;
         }
 
-        const question = <AddonModQuizCalculatedQuestion> this.question!;
+        const question: AddonModQuizCalculatedQuestion = this.question;
         question.options = [];
 
         for (const i in radios) {
             const radioEl = radios[i];
             const option: AddonModQuizQuestionRadioOption = {
                 id: radioEl.id,
+                class: '',
                 name: radioEl.name,
                 value: radioEl.value,
                 checked: radioEl.checked,
                 disabled: radioEl.disabled,
             };
             // Get the label with the question text.
-            const label = <HTMLElement> questionEl.querySelector('label[for="' + option.id + '"]');
+            const label = questionEl.querySelector<HTMLLabelElement>('label[for="' + option.id + '"]');
 
             question.optionsName = option.name;
 
@@ -128,7 +175,7 @@ export class CoreQuestionBaseComponent {
         if (question.parsedSettings && question.parsedSettings.unitsleft !== null) {
             question.optionsFirst = question.parsedSettings.unitsleft == '1';
         } else {
-            const input = questionEl.querySelector('input[type="text"][name*=answer]');
+            const input = questionEl.querySelector<HTMLInputElement>('input[type="text"][name*=answer]');
             question.optionsFirst =
                     questionEl.innerHTML.indexOf(input?.outerHTML || '') > questionEl.innerHTML.indexOf(radios[0].outerHTML);
         }
@@ -140,18 +187,18 @@ export class CoreQuestionBaseComponent {
      * Treat a calculated question units in case they use a select.
      *
      * @param questionEl Question HTML element.
-     * @return True if question has units using a select.
+     * @returns True if question has units using a select.
      */
     protected treatCalculatedSelectUnits(questionEl: HTMLElement): boolean {
         // Check if the question has a select for units.
-        const select = <HTMLSelectElement> questionEl.querySelector('select[name*=unit]');
+        const select = questionEl.querySelector<HTMLSelectElement>('select[name*=unit]');
         const options = select && Array.from(select.querySelectorAll('option'));
 
-        if (!select || !options?.length) {
+        if (!select || !options?.length || !this.question) {
             return false;
         }
 
-        const question = <AddonModQuizCalculatedQuestion> this.question!;
+        const question: AddonModQuizCalculatedQuestion = this.question;
         const selectModel: AddonModQuizQuestionSelect = {
             id: select.id,
             name: select.name,
@@ -163,7 +210,7 @@ export class CoreQuestionBaseComponent {
         for (const i in options) {
             const optionEl = options[i];
 
-            if (typeof optionEl.value == 'undefined') {
+            if (optionEl.value === undefined) {
                 this.logger.warn('Aborting because couldn\'t find input.', this.question?.slot);
                 CoreQuestionHelper.showComponentError(this.onAbort);
 
@@ -189,7 +236,7 @@ export class CoreQuestionBaseComponent {
         }
 
         // Get the accessibility label.
-        const accessibilityLabel = questionEl.querySelector('label[for="' + select.id + '"]');
+        const accessibilityLabel = questionEl.querySelector<HTMLLabelElement>('label[for="' + select.id + '"]');
         selectModel.accessibilityLabel = accessibilityLabel?.innerHTML;
 
         question.select = selectModel;
@@ -198,7 +245,7 @@ export class CoreQuestionBaseComponent {
         if (question.parsedSettings && question.parsedSettings.unitsleft !== null) {
             question.selectFirst = question.parsedSettings.unitsleft == '1';
         } else {
-            const input = questionEl.querySelector('input[type="text"][name*=answer]');
+            const input = questionEl.querySelector<HTMLInputElement>('input[type="text"][name*=answer]');
             question.selectFirst =
                     questionEl.innerHTML.indexOf(input?.outerHTML || '') > questionEl.innerHTML.indexOf(select.outerHTML);
         }
@@ -207,46 +254,19 @@ export class CoreQuestionBaseComponent {
     }
 
     /**
-     * Initialize the component and the question text.
-     *
-     * @return Element containing the question HTML, void if the data is not valid.
-     */
-    initComponent(): void | HTMLElement {
-        if (!this.question) {
-            this.logger.warn('Aborting because of no question received.');
-
-            return CoreQuestionHelper.showComponentError(this.onAbort);
-        }
-
-        this.hostElement.classList.add('core-question-container');
-
-        const element = CoreDomUtils.convertToElement(this.question.html);
-
-        // Extract question text.
-        this.question.text = CoreDomUtils.getContentsOfElement(element, '.qtext');
-        if (typeof this.question.text == 'undefined') {
-            this.logger.warn('Aborting because of an error parsing question.', this.question.slot);
-
-            return CoreQuestionHelper.showComponentError(this.onAbort);
-        }
-
-        return element;
-    }
-
-    /**
      * Initialize a question component of type essay.
      *
      * @param review Whether we're in review mode.
-     * @return Element containing the question HTML, void if the data is not valid.
+     * @returns Element containing the question HTML, void if the data is not valid.
      */
     initEssayComponent(review?: boolean): void | HTMLElement {
         const questionEl = this.initComponent();
-        if (!questionEl) {
+        if (!questionEl || !this.question) {
             return;
         }
 
-        const question = <AddonModQuizEssayQuestion> this.question!;
-        const answerDraftIdInput = <HTMLInputElement> questionEl.querySelector('input[name*="_answer:itemid"]');
+        const question: AddonModQuizEssayQuestion = this.question;
+        const answerDraftIdInput = questionEl.querySelector<HTMLInputElement>('input[name*="_answer:itemid"]');
 
         if (question.parsedSettings) {
             question.allowsAttachments = question.parsedSettings.attachments != '0';
@@ -282,7 +302,7 @@ export class CoreQuestionBaseComponent {
             return questionEl;
         }
 
-        const textarea = <HTMLTextAreaElement> questionEl.querySelector('textarea[name*=_answer]');
+        const textarea = questionEl.querySelector<HTMLTextAreaElement>('textarea[name*=_answer]');
         question.hasDraftFiles = question.allowsAnswerFiles && CoreQuestionHelper.hasDraftFileUrls(questionEl.innerHTML);
 
         if (!textarea && (question.hasInlineText || !question.allowsAttachments)) {
@@ -296,12 +316,12 @@ export class CoreQuestionBaseComponent {
         }
 
         if (textarea) {
-            const input = <HTMLInputElement> questionEl.querySelector('input[type="hidden"][name*=answerformat]');
+            const input = questionEl.querySelector<HTMLInputElement>('input[type="hidden"][name*=answerformat]');
             let content = CoreTextUtils.decodeHTML(textarea.innerHTML || '');
 
             if (question.hasDraftFiles && question.responsefileareas) {
                 content = CoreTextUtils.replaceDraftfileUrls(
-                    CoreSites.getCurrentSite()!.getURL(),
+                    CoreSites.getRequiredCurrentSite().getURL(),
                     content,
                     CoreQuestionHelper.getResponseFileAreaFiles(question, 'answer'),
                 ).text;
@@ -329,8 +349,8 @@ export class CoreQuestionBaseComponent {
         }
 
         if (question.allowsAttachments) {
-            const attachmentsInput = <HTMLInputElement> questionEl.querySelector('.attachments input[name*=_attachments]');
-            const objectElement = <HTMLObjectElement> questionEl.querySelector('.attachments object');
+            const attachmentsInput = questionEl.querySelector<HTMLInputElement>('.attachments input[name*=_attachments]');
+            const objectElement = questionEl.querySelector<HTMLObjectElement>('.attachments object');
             const fileManagerUrl = objectElement && objectElement.data;
 
             if (attachmentsInput) {
@@ -364,51 +384,57 @@ export class CoreQuestionBaseComponent {
      * @param questionEl Element with the question html.
      */
     protected handleEssayPlagiarism(questionEl: HTMLElement): void {
-        const question = <AddonModQuizEssayQuestion> this.question!;
+        if (!this.question) {
+            return;
+        }
+
+        const question: AddonModQuizEssayQuestion = this.question;
         const answerPlagiarism = questionEl.querySelector<HTMLSpanElement>('.answer .core_plagiarism_links');
         if (answerPlagiarism) {
             question.answerPlagiarism = answerPlagiarism.innerHTML;
         }
 
-        if (!question.attachments?.length) {
+        const attachments = question.attachments;
+        if (!attachments?.length) {
             return;
         }
 
-        const attachmentsPlagiarisms = questionEl.querySelectorAll<HTMLSpanElement>('.attachments .core_plagiarism_links');
-        question.attachmentsPlagiarisms = [];
+        const attachmentsPlagiarisms = Array.from(
+            questionEl.querySelectorAll<HTMLSpanElement>('.attachments .core_plagiarism_links'),
+        );
+        const questionAttachmentsPlagiarisms: string[] = [];
 
-        Array.from(attachmentsPlagiarisms).forEach((plagiarism) => {
+        attachmentsPlagiarisms.forEach((plagiarism) => {
             // Search the URL of the attachment it affects.
             const attachmentUrl = plagiarism.parentElement?.querySelector('a')?.href;
             if (!attachmentUrl) {
                 return;
             }
 
-            const position = question.attachments!.findIndex((file) => CoreFileHelper.getFileUrl(file) == attachmentUrl);
-
+            const position = attachments.findIndex((file) => CoreFileHelper.getFileUrl(file) === attachmentUrl);
             if (position >= 0) {
-                question.attachmentsPlagiarisms![position] = plagiarism.innerHTML;
+                questionAttachmentsPlagiarisms[position] = plagiarism.innerHTML;
             }
         });
+
+        question.attachmentsPlagiarisms = questionAttachmentsPlagiarisms;
     }
 
     /**
      * Initialize a question component that uses the original question text with some basic treatment.
      *
      * @param contentSelector The selector to find the question content (text).
-     * @return Element containing the question HTML, void if the data is not valid.
+     * @returns Element containing the question HTML, void if the data is not valid.
      */
     initOriginalTextComponent(contentSelector: string): void | HTMLElement {
         if (!this.question) {
-            this.logger.warn('Aborting because of no question received.');
-
-            return CoreQuestionHelper.showComponentError(this.onAbort);
+            return;
         }
 
         const element = CoreDomUtils.convertToElement(this.question.html);
 
         // Get question content.
-        const content = <HTMLElement> element.querySelector(contentSelector);
+        const content = element.querySelector<HTMLElement>(contentSelector);
         if (!content) {
             this.logger.warn('Aborting because of an error parsing question.', this.question.slot);
 
@@ -435,19 +461,19 @@ export class CoreQuestionBaseComponent {
     /**
      * Initialize a question component that has an input of type "text".
      *
-     * @return Element containing the question HTML, void if the data is not valid.
+     * @returns Element containing the question HTML, void if the data is not valid.
      */
     initInputTextComponent(): void | HTMLElement {
         const questionEl = this.initComponent();
-        if (!questionEl) {
+        if (!questionEl || !this.question) {
             return;
         }
 
         // Get the input element.
-        const question = <AddonModQuizTextQuestion> this.question!;
-        const input = <HTMLInputElement> questionEl.querySelector('input[type="text"][name*=answer]');
+        const question: AddonModQuizTextQuestion = this.question;
+        const input = questionEl.querySelector<HTMLInputElement>('input[type="text"][name*=answer]');
         if (!input) {
-            this.logger.warn('Aborting because couldn\'t find input.', this.question!.slot);
+            this.logger.warn('Aborting because couldn\'t find input.', this.question.slot);
 
             return CoreQuestionHelper.showComponentError(this.onAbort);
         }
@@ -457,22 +483,22 @@ export class CoreQuestionBaseComponent {
             name: input.name,
             value: input.value,
             readOnly: input.readOnly,
-            isInline: !!CoreDomUtils.closest(input, '.qtext'), // The answer can be inside the question text.
+            isInline: !!input.closest('.qtext'), // The answer can be inside the question text.
         };
 
         // Check if question is marked as correct.
         if (input.classList.contains('incorrect')) {
             question.input.correctClass = 'core-question-incorrect';
-            question.input.correctIcon = 'fas-times';
-            question.input.correctIconColor = 'danger';
+            question.input.correctIcon = 'fas-xmark';
+            question.input.correctIconColor = CoreIonicColorNames.DANGER;
         } else if (input.classList.contains('correct')) {
             question.input.correctClass = 'core-question-correct';
             question.input.correctIcon = 'fas-check';
-            question.input.correctIconColor = 'success';
+            question.input.correctIconColor = CoreIonicColorNames.SUCCESS;
         } else if (input.classList.contains('partiallycorrect')) {
             question.input.correctClass = 'core-question-partiallycorrect';
-            question.input.correctIcon = 'fas-check-square';
-            question.input.correctIconColor = 'warning';
+            question.input.correctIcon = 'fas-square-check';
+            question.input.correctIconColor = CoreIonicColorNames.WARNING;
         } else {
             question.input.correctClass = '';
             question.input.correctIcon = '';
@@ -481,12 +507,13 @@ export class CoreQuestionBaseComponent {
 
         if (question.input.isInline) {
             // Handle correct/incorrect classes and icons.
-            const content = <HTMLElement> questionEl.querySelector('.qtext');
+            const content = questionEl.querySelector<HTMLElement>('.qtext');
+            if (content) {
+                CoreQuestionHelper.replaceCorrectnessClasses(content);
+                CoreQuestionHelper.treatCorrectnessIcons(content);
 
-            CoreQuestionHelper.replaceCorrectnessClasses(content);
-            CoreQuestionHelper.treatCorrectnessIcons(content);
-
-            question.text = content.innerHTML;
+                question.text = content.innerHTML;
+            }
         }
 
         return questionEl;
@@ -495,17 +522,17 @@ export class CoreQuestionBaseComponent {
     /**
      * Initialize a question component with a "match" behaviour.
      *
-     * @return Element containing the question HTML, void if the data is not valid.
+     * @returns Element containing the question HTML, void if the data is not valid.
      */
     initMatchComponent(): void | HTMLElement {
         const questionEl = this.initComponent();
-        if (!questionEl) {
+        if (!questionEl || !this.question) {
             return;
         }
 
         // Find rows.
-        const question = <AddonModQuizMatchQuestion> this.question!;
-        const rows = Array.from(questionEl.querySelectorAll('table.answer tr'));
+        const question: AddonModQuizMatchQuestion = this.question;
+        const rows = Array.from(questionEl.querySelectorAll<HTMLTableRowElement>('table.answer tr'));
         if (!rows || !rows.length) {
             this.logger.warn('Aborting because couldn\'t find any row.', question.slot);
 
@@ -516,7 +543,7 @@ export class CoreQuestionBaseComponent {
 
         for (const i in rows) {
             const row = rows[i];
-            const columns = Array.from(row.querySelectorAll('td'));
+            const columns = Array.from(row.querySelectorAll<HTMLTableCellElement>('td'));
 
             if (!columns || columns.length < 2) {
                 this.logger.warn('Aborting because couldn\'t the right columns.', question.slot);
@@ -525,8 +552,8 @@ export class CoreQuestionBaseComponent {
             }
 
             // Get the select and the options.
-            const select = columns[1].querySelector('select');
-            const options = Array.from(columns[1].querySelectorAll('option'));
+            const select = columns[1].querySelector<HTMLSelectElement>('select');
+            const options = Array.from(columns[1].querySelectorAll<HTMLOptionElement>('option'));
 
             if (!select || !options || !options.length) {
                 this.logger.warn('Aborting because couldn\'t find select or options.', question.slot);
@@ -553,7 +580,7 @@ export class CoreQuestionBaseComponent {
             for (const j in options) {
                 const optionEl = options[j];
 
-                if (typeof optionEl.value == 'undefined') {
+                if (optionEl.value === undefined) {
                     this.logger.warn('Aborting because couldn\'t find the value of an option.', question.slot);
 
                     return CoreQuestionHelper.showComponentError(this.onAbort);
@@ -573,7 +600,7 @@ export class CoreQuestionBaseComponent {
             }
 
             // Get the accessibility label.
-            const accessibilityLabel = columns[1].querySelector('label.accesshide');
+            const accessibilityLabel = columns[1].querySelector<HTMLLabelElement>('label.accesshide');
             rowModel.accessibilityLabel = accessibilityLabel?.innerHTML;
 
             question.rows.push(rowModel);
@@ -587,24 +614,24 @@ export class CoreQuestionBaseComponent {
     /**
      * Initialize a question component with a multiple choice (checkbox) or single choice (radio).
      *
-     * @return Element containing the question HTML, void if the data is not valid.
+     * @returns Element containing the question HTML, void if the data is not valid.
      */
     initMultichoiceComponent(): void | HTMLElement {
         const questionEl = this.initComponent();
-        if (!questionEl) {
+        if (!questionEl || !this.question) {
             return;
         }
 
         // Get the prompt.
-        const question = <AddonModQuizMultichoiceQuestion> this.question!;
+        const question: AddonModQuizMultichoiceQuestion = this.question;
         question.prompt = CoreDomUtils.getContentsOfElement(questionEl, '.prompt');
 
         // Search radio buttons first (single choice).
-        let options = <HTMLInputElement[]> Array.from(questionEl.querySelectorAll('input[type="radio"]'));
+        let options = Array.from(questionEl.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
         if (!options || !options.length) {
             // Radio buttons not found, it should be a multi answer. Search for checkbox.
             question.multi = true;
-            options = <HTMLInputElement[]> Array.from(questionEl.querySelectorAll('input[type="checkbox"]'));
+            options = Array.from(questionEl.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
 
             if (!options || !options.length) {
                 // No checkbox found either. Abort.
@@ -621,6 +648,7 @@ export class CoreQuestionBaseComponent {
             const element = options[i];
             const option: AddonModQuizQuestionRadioOption = {
                 id: element.id,
+                class: '',
                 name: element.name,
                 value: element.value,
                 checked: element.checked,
@@ -643,6 +671,7 @@ export class CoreQuestionBaseComponent {
                 // Not found, use the old format.
                 label = questionEl.querySelector('label[for="' + option.id + '"]');
             }
+            option.class = label?.className || option.class;
 
             // Check that we were able to successfully extract options required data.
             if (!label || option.name === undefined || option.value === undefined) {
@@ -736,6 +765,7 @@ export type AddonModQuizQuestionSelectOption = {
 export type AddonModQuizQuestionRadioOption = {
     id: string;
     name: string;
+    class: string;
     value: string;
     disabled: boolean;
     checked: boolean;

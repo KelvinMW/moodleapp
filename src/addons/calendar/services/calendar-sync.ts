@@ -14,7 +14,7 @@
 
 import { Injectable } from '@angular/core';
 import { CoreSyncBaseProvider, CoreSyncBlockedError } from '@classes/base-sync';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
@@ -27,8 +27,9 @@ import {
 import { AddonCalendarOffline } from './calendar-offline';
 import { AddonCalendarHelper } from './calendar-helper';
 import { makeSingleton, Translate } from '@singletons';
-import { CoreSync } from '@services/sync';
+import { CoreSync, CoreSyncResult } from '@services/sync';
 import { CoreNetworkError } from '@classes/errors/network-error';
+import moment from 'moment-timezone';
 
 /**
  * Service to sync calendar.
@@ -51,10 +52,10 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
      *
      * @param siteId Site ID to sync. If not defined, sync all sites.
      * @param force Wether to force sync not depending on last execution.
-     * @return Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     async syncAllEvents(siteId?: string, force = false): Promise<void> {
-        await this.syncOnSites('all calendar events', this.syncAllEventsFunc.bind(this, force), siteId);
+        await this.syncOnSites('all calendar events', (siteId) => this.syncAllEventsFunc(force, siteId), siteId);
     }
 
     /**
@@ -62,7 +63,7 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
      *
      * @param force Wether to force sync not depending on last execution.
      * @param siteId Site ID to sync.
-     * @return Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     protected async syncAllEventsFunc(force = false, siteId?: string): Promise<void> {
         const result = force
@@ -79,7 +80,7 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
      * Sync a site events only if a certain time has passed since the last time.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when the events are synced or if it doesn't need to be synced.
+     * @returns Promise resolved when the events are synced or if it doesn't need to be synced.
      */
     async syncEventsIfNeeded(siteId?: string): Promise<AddonCalendarSyncEvents | undefined> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -95,14 +96,15 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
      * Synchronize all offline events of a certain site.
      *
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if sync is successful, rejected otherwise.
+     * @returns Promise resolved if sync is successful, rejected otherwise.
      */
     async syncEvents(siteId?: string): Promise<AddonCalendarSyncEvents> {
         siteId = siteId || CoreSites.getCurrentSiteId();
 
-        if (this.isSyncing(AddonCalendarSyncProvider.SYNC_ID, siteId)) {
+        const currentSyncPromise = this.getOngoingSync(AddonCalendarSyncProvider.SYNC_ID, siteId);
+        if (currentSyncPromise) {
             // There's already a sync ongoing for this site, return the promise.
-            return this.getOngoingSync(AddonCalendarSyncProvider.SYNC_ID, siteId)!;
+            return currentSyncPromise;
         }
 
         this.logger.debug('Try to sync calendar events for site ' + siteId);
@@ -117,12 +119,13 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
      * Sync user preferences of a site.
      *
      * @param siteId Site ID to sync.
-     * @param Promise resolved if sync is successful, rejected if sync fails.
+     * @returns Promise resolved if sync is successful, rejected if sync fails.
      */
     protected async performSyncEvents(siteId: string): Promise<AddonCalendarSyncEvents> {
         const result: AddonCalendarSyncEvents = {
             warnings: [],
             events: [],
+            offlineIdMap: {},
             deleted: [],
             toinvalidate: [],
             updated: false,
@@ -131,7 +134,7 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
         const eventIds: number[] = await CoreUtils.ignoreErrors(AddonCalendarOffline.getAllEventsIds(siteId), []);
 
         if (eventIds.length > 0) {
-            if (!CoreApp.isOnline()) {
+            if (!CoreNetwork.isOnline()) {
                 // Cannot sync in offline.
                 throw new CoreNetworkError();
             }
@@ -165,7 +168,7 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
      * @param eventId The event ID to sync.
      * @param result Object where to store the result of the sync.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved if sync is successful, rejected otherwise.
+     * @returns Promise resolved if sync is successful, rejected otherwise.
      */
     protected async syncOfflineEvent(eventId: number, result: AddonCalendarSyncEvents, siteId?: string): Promise<void> {
 
@@ -250,15 +253,19 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
                 description: {
                     text: event.description || '',
                     format: 1,
+                    itemid: 0, // Files not supported yet.
                 },
             },
         ); // Clone the object because it will be modified in the submit function.
 
         try {
-            const newEvent = await AddonCalendar.submitEventOnline(eventId > 0 ? eventId : 0, data, siteId);
+            const newEvent = await AddonCalendar.submitEventOnline(eventId, data, siteId);
 
             result.updated = true;
             result.events.push(newEvent);
+            if (eventId < 0) {
+                result.offlineIdMap[eventId] = newEvent.id;
+            }
 
             // Add data to invalidate.
             const numberOfRepetitions = data.repeat ? data.repeats :
@@ -272,7 +279,7 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
             });
 
             // Event sent, delete the offline data.
-            return AddonCalendarOffline.deleteEvent(event.id!, siteId);
+            return AddonCalendarOffline.deleteEvent(event.id, siteId);
 
         } catch (error) {
             if (!CoreUtils.isWebServiceError(error)) {
@@ -283,7 +290,7 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
             // The WebService has thrown an error, this means that the event cannot be created. Delete it.
             result.updated = true;
 
-            await AddonCalendarOffline.deleteEvent(event.id!, siteId);
+            await AddonCalendarOffline.deleteEvent(event.id, siteId);
 
             // Event deleted, add a warning.
             this.addOfflineDataDeletedWarning(result.warnings, event.name, error);
@@ -294,16 +301,13 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
 
 export const AddonCalendarSync = makeSingleton(AddonCalendarSyncProvider);
 
-export type AddonCalendarSyncEvents = {
-    warnings: string[];
+export type AddonCalendarSyncEvents = CoreSyncResult & {
     events: AddonCalendarEvent[];
+    offlineIdMap: Record<number, number>; // Map offline ID with online ID for created events.
     deleted: number[];
     toinvalidate: AddonCalendarSyncInvalidateEvent[];
-    updated: boolean;
     source?: string; // Added on pages.
-    day?: number; // Added on day page.
-    month?: number; // Added on day page.
-    year?: number; // Added on day page.
+    moment?: moment.Moment; // Added on day page.
 };
 
 export type AddonCalendarSyncInvalidateEvent = {
