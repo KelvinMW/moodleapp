@@ -33,6 +33,7 @@ import { CoreDomUtils } from '@services/utils/dom';
 import { CoreDom } from '@singletons/dom';
 import { CorePlatform } from '@services/platform';
 import { CoreUrl } from '@singletons/url';
+import { CoreLogger } from '@singletons/logger';
 
 const MOODLE_SITE_URL_PREFIX = 'url-';
 const MOODLE_VERSION_PREFIX = 'version-';
@@ -45,6 +46,8 @@ const MOODLEAPP_VERSION_PREFIX = 'moodleapp-';
 export class AppComponent implements OnInit, AfterViewInit {
 
     @ViewChild(IonRouterOutlet) outlet?: IonRouterOutlet;
+
+    protected logger = CoreLogger.getInstance('AppComponent');
 
     /**
      * @inheritdoc
@@ -196,7 +199,14 @@ export class AppComponent implements OnInit, AfterViewInit {
             return;
         }
 
-        CoreSubscriptions.once(this.outlet.activateEvents, () => SplashScreen.hide());
+        this.logger.debug('App component initialized');
+
+        CoreSubscriptions.once(this.outlet.activateEvents, async () => {
+            await CorePlatform.ready();
+
+            this.logger.debug('Hide splash screen');
+            SplashScreen.hide();
+        });
     }
 
     /**
@@ -204,6 +214,8 @@ export class AppComponent implements OnInit, AfterViewInit {
      */
     protected async onPlatformReady(): Promise<void> {
         await CorePlatform.ready();
+
+        this.logger.debug('Platform is ready');
 
         // Refresh online status when changes.
         CoreNetwork.onChange().subscribe(() => {
