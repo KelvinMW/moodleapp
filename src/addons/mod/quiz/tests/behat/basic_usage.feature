@@ -1,11 +1,12 @@
-@mod @mod_quiz @app @javascript
+@mod @mod_quiz @app @javascript @lms_from4.0
 Feature: Attempt a quiz in app
   As a student
   In order to demonstrate what I know
   I need to be able to attempt quizzes
 
   Background:
-    Given the following "courses" exist:
+    Given the Moodle site is compatible with this feature
+    And the following "courses" exist:
       | fullname | shortname |
       | Course 1 | C1        |
     And the following "users" exist:
@@ -132,7 +133,6 @@ Feature: Attempt a quiz in app
     And I should find "Question 1" in the app
     And I should find "Question 2" in the app
 
-  @lms_from3.10
   Scenario: Attempt a quiz (all question types)
     Given I entered the quiz activity "Quiz 2" on course "Course 1" as "student1" in the app
     When I press "Attempt quiz now" in the app

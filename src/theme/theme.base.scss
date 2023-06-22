@@ -120,15 +120,15 @@ body {
 }
 
 // Correctly inherit ion-text-wrap onto labels.
-.item ion-label core-format-text > *,
-.fake-ion-item core-format-text > * {
+.item ion-label core-format-text > *:not(pre),
+.fake-ion-item core-format-text > *:not(pre) {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.item.ion-text-wrap > ion-label core-format-text > *,
-.fake-ion-item.ion-text-wrap core-format-text > * {
+.item.ion-text-wrap > ion-label core-format-text > *:not(pre),
+.fake-ion-item.ion-text-wrap core-format-text > *:not(pre) {
     white-space: normal;
     overflow: inherit;
 }
@@ -1805,4 +1805,22 @@ ion-modal.core-modal-no-background {
     ion-backdrop {
         display: none;
     }
+}
+
+/*
+* This is to solve popver issue in chrome 114
+* For more info see: https://github.com/ionic-team/ionic-framework/issues/27599
+*/
+[popover].popover-viewport {
+    display: initial;
+    position: initial;
+    margin: initial;
+    border: initial;
+    background: initial;
+    padding: initial;
+    width: initial;
+    height: initial;
+    overflow: initial;
+    inset: initial;
+    color: initial;
 }
