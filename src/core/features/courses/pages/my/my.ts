@@ -29,6 +29,9 @@ import { CoreUtils } from '@services/utils/utils';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { Subscription } from 'rxjs';
 import { CoreCourses } from '../../services/courses';
+import { CoreTime } from '@singletons/time';
+import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
+import { Translate } from '@singletons';
 
 /**
  * Page that shows a my courses.
@@ -58,6 +61,7 @@ export class CoreCoursesMyPage implements OnInit, OnDestroy, AsyncDirective {
     protected updateSiteObserver: CoreEventObserver;
     protected onReadyPromise = new CorePromisedValue<void>();
     protected loadsManagerSubscription: Subscription;
+    protected logView: () => void;
 
     constructor(protected loadsManager: PageLoadsManager) {
         // Refresh the enabled flags if site is updated.
@@ -72,6 +76,18 @@ export class CoreCoursesMyPage implements OnInit, OnDestroy, AsyncDirective {
         this.loadsManagerSubscription = this.loadsManager.onRefreshPage.subscribe(() => {
             this.loaded = false;
             this.loadContent();
+        });
+
+        this.logView = CoreTime.once(async () => {
+            await CoreUtils.ignoreErrors(CoreCourses.logView('my'));
+
+            CoreAnalytics.logEvent({
+                type: CoreAnalyticsEventType.VIEW_ITEM,
+                ws: 'core_my_view_page',
+                name: Translate.instant('core.courses.mycourses'),
+                data: { category: 'course', page: 'my' },
+                url: '/my/courses.php',
+            });
         });
     }
 
@@ -138,6 +154,8 @@ export class CoreCoursesMyPage implements OnInit, OnDestroy, AsyncDirective {
 
         this.loaded = true;
         this.onReadyPromise.resolve();
+
+        this.logView();
     }
 
     /**

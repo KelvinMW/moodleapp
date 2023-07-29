@@ -33,7 +33,7 @@ import {
 import { CoreDomUtils, ToastDuration } from '@services/utils/dom';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
-import { CoreUrlUtils, CoreUrlParams } from '@services/utils/url';
+import { CoreUrlUtils } from '@services/utils/url';
 import { CoreUtils, CoreUtilsOpenInBrowserOptions } from '@services/utils/utils';
 import { CoreConstants } from '@/core/constants';
 import { SQLiteDB } from '@classes/sqlitedb';
@@ -42,7 +42,7 @@ import { CoreWSError } from '@classes/errors/wserror';
 import { CoreLogger } from '@singletons/logger';
 import { Translate } from '@singletons';
 import { CoreIonLoadingElement } from './ion-loading';
-import { CoreLang } from '@services/lang';
+import { CoreLang, CoreLangFormat } from '@services/lang';
 import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
 import { asyncInstance, AsyncInstance } from '../utils/async-instance';
 import { CoreDatabaseTable } from './database/database-table';
@@ -63,6 +63,7 @@ import { firstValueFrom } from '../utils/rxjs';
 import { CoreSiteError } from '@classes/errors/siteerror';
 import { CoreUserAuthenticatedSupportConfig } from '@features/user/classes/support/authenticated-support-config';
 import { CoreLoginHelper } from '@features/login/services/login-helper';
+import { CorePath } from '@singletons/path';
 
 /**
  * QR Code type enumeration.
@@ -969,7 +970,7 @@ export class CoreSite {
         // Moodle uses underscore instead of dash.
         data = {
             ...data,
-            moodlewssettinglang: (preSets.lang ?? await CoreLang.getCurrentLanguage()).replace('-', '_'),
+            moodlewssettinglang: CoreLang.formatLanguage(preSets.lang ?? await CoreLang.getCurrentLanguage(), CoreLangFormat.LMS),
         };
 
         try {
@@ -1598,8 +1599,8 @@ export class CoreSite {
      * @param anchor Anchor text if needed.
      * @returns URL with params.
      */
-    createSiteUrl(path: string, params?: CoreUrlParams, anchor?: string): string {
-        return CoreUrlUtils.addParamsToUrl(this.siteUrl + path, params, anchor);
+    createSiteUrl(path: string, params?: Record<string, unknown>, anchor?: string): string {
+        return CoreUrlUtils.addParamsToUrl(CorePath.concatenatePaths(this.siteUrl, path), params, anchor);
     }
 
     /**
@@ -1891,12 +1892,12 @@ export class CoreSite {
             options.showBrowserWarning = false; // A warning already shown, no need to show another.
         }
 
+        options.originalUrl = url;
+
         // Open the URL.
         if (inApp) {
             return CoreUtils.openInApp(autoLoginUrl, options);
         } else {
-            options.browserWarningUrl = url;
-
             return CoreUtils.openInBrowser(autoLoginUrl, options);
         }
     }
