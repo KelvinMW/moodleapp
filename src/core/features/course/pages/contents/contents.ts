@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { Component, ViewChild, OnInit, OnDestroy, forwardRef, ChangeDetectorRef } from '@angular/core';
-import { IonContent, IonRefresher } from '@ionic/angular';
+import { IonContent } from '@ionic/angular';
 
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
@@ -58,6 +58,7 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
     sections?: CoreCourseSection[];
     sectionId?: number;
     sectionNumber?: number;
+    blockInstanceId?: number;
     dataLoaded = false;
     updatingData = false;
     downloadCourseEnabled = false;
@@ -92,6 +93,7 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
 
         this.sectionId = CoreNavigator.getRouteNumberParam('sectionId');
         this.sectionNumber = CoreNavigator.getRouteNumberParam('sectionNumber');
+        this.blockInstanceId = CoreNavigator.getRouteNumberParam('blockInstanceId');
         this.moduleId = CoreNavigator.getRouteNumberParam('moduleId');
         this.isGuest = CoreNavigator.getRouteBooleanParam('isGuest');
 
@@ -289,14 +291,14 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
      * @param refresher Refresher.
      * @returns Promise resolved when done.
      */
-    async doRefresh(refresher?: IonRefresher): Promise<void> {
+    async doRefresh(refresher?: HTMLIonRefresherElement): Promise<void> {
         await CoreUtils.ignoreErrors(this.invalidateData());
 
         try {
             await this.loadData(true, true);
         } finally {
             // Do not call doRefresh on the format component if the refresher is defined in the format component
-            // to prevent an inifinite loop.
+            // to prevent an infinite loop.
             if (this.displayRefresher && this.formatComponent) {
                 await CoreUtils.ignoreErrors(this.formatComponent.doRefresh(refresher));
             }
@@ -355,6 +357,10 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
      * @returns Promise resolved when done.
      */
     protected async showLoadingAndRefresh(sync = false, invalidateData = true): Promise<void> {
+        // Try to keep current scroll position.
+        const scrollElement = await CoreUtils.ignoreErrors(this.content?.getScrollElement());
+        const scrollTop = scrollElement?.scrollTop ?? -1;
+
         this.updatingData = true;
         this.changeDetectorRef.detectChanges();
 
@@ -369,6 +375,11 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
         } finally {
             this.updatingData = false;
             this.changeDetectorRef.detectChanges();
+
+            if (scrollTop > 0) {
+                await CoreUtils.nextTick();
+                this.content?.scrollToPoint(0, scrollTop, 0);
+            }
         }
     }
 

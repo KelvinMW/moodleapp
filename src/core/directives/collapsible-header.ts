@@ -106,6 +106,11 @@ export class CoreCollapsibleHeaderDirective implements OnInit, OnChanges, OnDest
      */
     ngOnInit(): void {
         this.collapsible = !CoreUtils.isFalseOrZero(this.collapsible);
+
+        if (CoreDom.closest(this.collapsedHeader, 'core-tabs-outlet')) {
+            this.collapsible = false;
+        }
+
         this.init();
     }
 
@@ -378,8 +383,8 @@ export class CoreCollapsibleHeaderDirective implements OnInit, OnChanges, OnDest
                     textProperties.includes(property),
             )
             .reduce((styles, property) => {
-                styles[0][property] = collapsedTitleStyles.getPropertyValue(property);
-                styles[1][property] = expandedTitleStyles.getPropertyValue(property);
+                styles[0][property] = CoreDom.getCSSPropertyValue(collapsedTitleStyles, property);
+                styles[1][property] = CoreDom.getCSSPropertyValue(expandedTitleStyles, property);
 
                 return styles;
             }, [{}, {}]);

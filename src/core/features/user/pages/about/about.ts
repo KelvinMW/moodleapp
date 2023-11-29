@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { IonRefresher } from '@ionic/angular';
 
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
@@ -29,10 +28,11 @@ import {
 import { CoreUserHelper } from '@features/user/services/user-helper';
 import { CoreNavigator } from '@services/navigator';
 import { CoreIonLoadingElement } from '@classes/ion-loading';
-import { CoreSite } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { CoreFileUploaderHelper } from '@features/fileuploader/services/fileuploader-helper';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { Translate } from '@singletons';
+import { CoreUrlUtils } from '@services/utils/url';
 
 /**
  * Page that displays info about a user.
@@ -75,7 +75,6 @@ export class CoreUserAboutPage implements OnInit, OnDestroy {
             }
 
             this.user.email = data.user.email;
-            this.user.address = CoreUserHelper.formatAddress('', data.user.city, data.user.country);
         }, CoreSites.getCurrentSiteId());
     }
 
@@ -118,13 +117,7 @@ export class CoreUserAboutPage implements OnInit, OnDestroy {
             this.user = user;
             this.title = user.fullname;
 
-            this.user.address = CoreUserHelper.formatAddress('', user.city, user.country);
-
-            const serverTimezone = CoreSites.getCurrentSite()?.getStoredConfig('timezone');
-            this.displayTimezone = !!serverTimezone;
-            if (this.displayTimezone && this.user.timezone === USER_PROFILE_SERVER_TIMEZONE) {
-                this.user.timezone = serverTimezone;
-            }
+            this.fillTimezone();
 
             await this.checkUserImageUpdated();
         } catch (error) {
@@ -208,7 +201,7 @@ export class CoreUserAboutPage implements OnInit, OnDestroy {
      * @param event Event.
      * @returns Promise resolved when done.
      */
-    async refreshUser(event?: IonRefresher): Promise<void> {
+    async refreshUser(event?: HTMLIonRefresherElement): Promise<void> {
         await CoreUtils.ignoreErrors(CoreUser.invalidateUserCache(this.userId));
 
         await this.fetchUser();
@@ -254,11 +247,35 @@ export class CoreUserAboutPage implements OnInit, OnDestroy {
             return 'undefined';
         }
 
-        if (avatarUrl.startsWith(`${this.site?.siteUrl}/theme/image.php`)) {
+        if (CoreUrlUtils.isThemeImageUrl(avatarUrl, this.site?.siteUrl)) {
             return 'default';
         }
 
         return avatarUrl;
+    }
+
+    /**
+     * Fill user timezone depending on the server and fix the legacy timezones.
+     */
+    protected fillTimezone(): void {
+        if (!this.user) {
+            return;
+        }
+
+        const serverTimezone = CoreSites.getRequiredCurrentSite().getStoredConfig('timezone');
+        this.displayTimezone = !!serverTimezone;
+
+        if (!this.displayTimezone) {
+            return;
+        }
+
+        if (this.user.timezone === USER_PROFILE_SERVER_TIMEZONE) {
+            this.user.timezone = serverTimezone;
+        }
+
+        if (this.user.timezone) {
+            this.user.timezone = CoreUserHelper.translateLegacyTimezone(this.user.timezone);
+        }
     }
 
     /**

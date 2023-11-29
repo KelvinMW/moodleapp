@@ -21,7 +21,7 @@ import { CoreLogger } from '@singletons/logger';
 import { CoreSitesCommonWSOptions, CoreSites, CoreSitesReadingStrategy } from '@services/sites';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreUtils } from '@services/utils/utils';
-import { CoreSiteWSPreSets, CoreSite, WSObservable } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { CoreConstants } from '@/core/constants';
 import { makeSingleton, Translate } from '@singletons';
 import { CoreStatusWithWarningsWSResponse, CoreWSExternalFile, CoreWSExternalWarning } from '@services/ws';
@@ -55,6 +55,7 @@ import { SQLiteDB } from '@classes/sqlitedb';
 import { CorePlatform } from '@services/platform';
 import { asyncObservable, firstValueFrom } from '@/core/utils/rxjs';
 import { map } from 'rxjs/operators';
+import { CoreSiteWSPreSets, WSObservable } from '@classes/sites/authenticated-site';
 
 const ROOT_CACHE_KEY = 'mmCourse:';
 
@@ -81,6 +82,9 @@ export enum CoreCourseModuleCompletionStatus {
     COMPLETION_COMPLETE_FAIL = 3,
 }
 
+/**
+ * @deprecated since 4.3 Not used anymore.
+ */
 export enum CoreCourseCompletionMode {
     FULL = 'full',
     BASIC = 'basic',
@@ -106,36 +110,6 @@ export class CoreCourseProvider {
     static readonly ACCESS_GUEST = 'courses_access_guest';
     static readonly ACCESS_DEFAULT = 'courses_access_default';
     static readonly ALL_COURSES_CLEARED = -1;
-
-    /**
-     * @deprecated since 4.0, use CoreCourseModuleCompletionTracking.COMPLETION_TRACKING_NONE instead.
-     */
-    static readonly COMPLETION_TRACKING_NONE = 0;
-    /**
-     * @deprecated since 4.0, use CoreCourseModuleCompletionTracking.COMPLETION_TRACKING_MANUAL instead.
-     */
-    static readonly COMPLETION_TRACKING_MANUAL = 1;
-    /**
-     * @deprecated since 4.0, use CoreCourseModuleCompletionTracking.COMPLETION_TRACKING_AUTOMATIC instead.
-     */
-    static readonly COMPLETION_TRACKING_AUTOMATIC = 2;
-
-    /**
-     * @deprecated since 4.0, use CoreCourseModuleCompletionStatus.COMPLETION_INCOMPLETE instead.
-     */
-    static readonly COMPLETION_INCOMPLETE = 0;
-    /**
-     * @deprecated since 4.0, use CoreCourseModuleCompletionStatus.COMPLETION_COMPLETE instead.
-     */
-    static readonly COMPLETION_COMPLETE = 1;
-    /**
-     * @deprecated since 4.0, use CoreCourseModuleCompletionStatus.COMPLETION_COMPLETE_PASS instead.
-     */
-    static readonly COMPLETION_COMPLETE_PASS = 2;
-    /**
-     * @deprecated since 4.0, use CoreCourseModuleCompletionStatus.COMPLETION_COMPLETE_FAIL instead.
-     */
-    static readonly COMPLETION_COMPLETE_FAIL = 3;
 
     static readonly COMPONENT = 'CoreCourse';
 
@@ -704,6 +678,7 @@ export class CoreCourseProvider {
             course: courseId,
             section: sectionId,
             completiondata: completionData,
+            availabilityinfo: this.treatAvailablityInfo(module.availabilityinfo),
         };
     }
 
@@ -851,30 +826,12 @@ export class CoreCourseProvider {
 
         let path = 'assets/img/mod/';
         if (!CoreSites.getCurrentSite()?.isVersionGreaterEqualThan('4.0')) {
-            // @deprecatedonmoodle since Moodle 3.11.
+            // @deprecatedonmoodle since 3.11.
             path = 'assets/img/mod_legacy/';
         }
 
         // Use default icon on core modules.
         return path + moduleName + '.svg';
-    }
-
-    /**
-     * Get the section ID a module belongs to.
-     *
-     * @deprecated since 4.0.
-     * @param moduleId The module ID.
-     * @param siteId Site ID. If not defined, current site.
-     * @returns Promise resolved with the section ID.
-     */
-    async getModuleSectionId(moduleId: number, siteId?: string): Promise<number> {
-        // Try to get the section using getModuleBasicInfo.
-        const module = await CoreCourse.getModuleBasicInfo(
-            moduleId,
-            { siteId, readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE },
-        );
-
-        return module.section;
     }
 
     /**
@@ -998,6 +955,7 @@ export class CoreCourseProvider {
                     // Add course to all modules.
                     return sections.map((section) => ({
                         ...section,
+                        availabilityinfo: this.treatAvailablityInfo(section.availabilityinfo),
                         modules: section.modules.map((module) => this.addAdditionalModuleData(module, courseId, section.id)),
                     }));
                 }),
@@ -1555,6 +1513,21 @@ export class CoreCourseProvider {
         }, siteId);
     }
 
+    /**
+     * Treat availability info HTML.
+     *
+     * @param availabilityInfo HTML to treat.
+     * @returns Treated HTML.
+     */
+    protected treatAvailablityInfo(availabilityInfo?: string): string | undefined {
+        if (!availabilityInfo) {
+            return availabilityInfo;
+        }
+
+        // Remove "Show more" option in 4.2 or older sites.
+        return CoreDomUtils.removeElementFromHtml(availabilityInfo, 'li[data-action="showmore"]');
+    }
+
 }
 
 export const CoreCourse = makeSingleton(CoreCourseProvider);
@@ -1764,6 +1737,7 @@ export type CoreCourseGetContentsWSModule = {
     completion?: CoreCourseModuleCompletionTracking; // Type of completion tracking: 0 means none, 1 manual, 2 automatic.
     completiondata?: CoreCourseModuleWSCompletionData; // Module completion data.
     contents?: CoreCourseModuleContentFile[];
+    groupmode?: number; // @since 4.3. Group mode value
     downloadcontent?: number; // @since 4.0 The download content value.
     dates?: {
         label: string;
@@ -1806,15 +1780,6 @@ type CoreCourseGetCourseModuleByInstanceWSParams = {
 type CoreCourseGetCourseModuleWSResponse = {
     cm: CoreCourseModuleBasicInfo;
     warnings?: CoreWSExternalWarning[];
-};
-
-/**
- * Course module data returned by the WS with course added.
- *
- * @deprecated since 4.0. Use CoreCourseModuleData instead.
- */
-export type CoreCourseWSModule = CoreCourseGetContentsWSModule & {
-    course: number; // The course id.
 };
 
 /**

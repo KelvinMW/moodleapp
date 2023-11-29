@@ -71,28 +71,6 @@ export const enum CoreFileFormat {
 @Injectable({ providedIn: 'root' })
 export class CoreFileProvider {
 
-    // Formats to read a file.
-    /**
-     * @deprecated since 3.9.5, use CoreFileFormat directly.
-     */
-    static readonly FORMATTEXT = CoreFileFormat.FORMATTEXT;
-    /**
-     * @deprecated since 3.9.5, use CoreFileFormat directly.
-     */
-    static readonly FORMATDATAURL = CoreFileFormat.FORMATDATAURL;
-    /**
-     * @deprecated since 3.9.5, use CoreFileFormat directly.
-     */
-    static readonly FORMATBINARYSTRING = CoreFileFormat.FORMATBINARYSTRING;
-    /**
-     * @deprecated since 3.9.5, use CoreFileFormat directly.
-     */
-    static readonly FORMATARRAYBUFFER = CoreFileFormat.FORMATARRAYBUFFER;
-    /**
-     * @deprecated since 3.9.5, use CoreFileFormat directly.
-     */
-    static readonly FORMATJSON = CoreFileFormat.FORMATJSON;
-
     // Folders.
     static readonly SITESFOLDER = 'sites';
     static readonly TMPFOLDER = 'tmp';
@@ -1154,6 +1132,38 @@ export class CoreFileProvider {
     async clearTmpFolder(): Promise<void> {
         // Ignore errors because the folder might not exist.
         await CoreUtils.ignoreErrors(this.removeDir(CoreFileProvider.TMPFOLDER));
+    }
+
+    /**
+     * Remove deleted sites folders.
+     *
+     * @returns Promise resolved when done.
+     */
+    async clearDeletedSitesFolder(existingSiteNames: string[]): Promise<void> {
+        // Ignore errors because the folder might not exist.
+        const dirPath = CoreFileProvider.SITESFOLDER;
+
+        // Get the directory contents.
+        try {
+            const contents = await this.getDirectoryContents(dirPath);
+
+            if (!contents.length) {
+                return;
+            }
+
+            const promises: Promise<void>[] = contents.map(async (file) => {
+                if (file.isDirectory) {
+                    if (!existingSiteNames.includes(file.name)) {
+                        // Site does not exist... delete it.
+                        await CoreUtils.ignoreErrors(this.removeDir(this.getSiteFolder(file.name)));
+                    }
+                }
+            });
+
+            await Promise.all(promises);
+        } catch {
+            // Ignore errors, maybe it doesn't exist.
+        }
     }
 
     /**

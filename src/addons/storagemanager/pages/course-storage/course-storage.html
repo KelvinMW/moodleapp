@@ -19,7 +19,10 @@
 
         <ion-card class="wholecourse">
             <ion-card-header>
-                <ion-card-title>{{ title }}</ion-card-title>
+                <ion-card-title>
+                    <core-format-text [text]="title" contextLevel="course" [contextInstanceId]="courseId" [adaptImg]="false">
+                    </core-format-text>
+                </ion-card-title>
                 <ion-item class="size ion-text-wrap ion-no-padding">
                     <ion-label>
                         <p class="item-heading ion-text-wrap">{{ 'addon.storagemanager.totaldownloads' | translate }}</p>
@@ -47,7 +50,7 @@
         <ng-container *ngFor="let section of sections">
             <ion-card class="section" *ngIf="section.modules.length > 0">
                 <ion-card-header>
-                    <ion-item [lines]="section.expanded ? 'full' : 'none'" button detail="false" (click)="toggleExpand($event, section)"
+                    <ion-item [lines]="section.expanded ? 'full' : 'none'" button [detail]="false" (click)="toggleExpand($event, section)"
                         [class.core-course-storage-section-expanded]="section.expanded"
                         [attr.aria-label]="(section.expanded ? 'core.collapse' : 'core.expand') | translate"
                         [attr.aria-expanded]="section.expanded" [attr.aria-controls]="'core-course-storage-section-' + section.id">

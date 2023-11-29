@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import { AfterViewInit, Component, OnDestroy, ViewChild } from '@angular/core';
-import { IonRefresher } from '@ionic/angular';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreSplitViewComponent } from '@components/split-view/split-view';
 import { CoreNavigator } from '@services/navigator';
@@ -41,14 +40,12 @@ export class AddonCompetencyPlanListPage implements AfterViewInit, OnDestroy {
     protected logView: () => void;
 
     constructor() {
-        const userId = CoreNavigator.getRouteNumberParam('userId');
+        const userId = CoreNavigator.getRouteNumberParam('userId') ?? CoreSites.getCurrentSiteUserId();
         const source = CoreRoutedItemsManagerSourcesTracker.getOrCreateSource(AddonCompetencyPlansSource, [userId]);
 
         this.plans = new CoreListItemsManager(source, AddonCompetencyPlanListPage);
 
         this.logView = CoreTime.once(async () => {
-            const userId = source.USER_ID ?? CoreSites.getCurrentSiteId();
-
             CoreAnalytics.logEvent({
                 type: CoreAnalyticsEventType.VIEW_ITEM_LIST,
                 ws: 'tool_lp_data_for_plans_page',
@@ -88,7 +85,7 @@ export class AddonCompetencyPlanListPage implements AfterViewInit, OnDestroy {
      *
      * @param refresher Refresher.
      */
-    async refreshLearningPlans(refresher: IonRefresher): Promise<void> {
+    async refreshLearningPlans(refresher: HTMLIonRefresherElement): Promise<void> {
         await this.plans.getSource().invalidateCache();
 
         this.plans.getSource().setDirty(true);

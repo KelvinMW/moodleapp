@@ -93,30 +93,67 @@ export class AddonModUrlModuleHandlerService extends CoreModuleHandlerBase imple
                     modal.dismiss();
                 }
             },
-            buttons: [{
+            button: {
                 hidden: true, // Hide it until we calculate if it should be displayed or not.
                 icon: 'fas-link',
                 label: 'core.openmodinbrowser',
                 action: (event: Event, module: CoreCourseModuleData, courseId: number): void => {
                     openUrl(module, courseId);
                 },
-            }],
+            },
         };
 
         const hideButton = await CoreUtils.ignoreErrors(this.hideLinkButton(module));
 
-        if (handlerData.buttons && hideButton !== undefined) {
-            handlerData.buttons[0].hidden = hideButton;
+        if (handlerData.button && hideButton !== undefined) {
+            handlerData.button.hidden = hideButton;
+        }
 
-            if (module.contents && module.contents[0]) {
-                const icon = AddonModUrl.guessIcon(module.contents[0].fileurl);
-
-                // Calculate the icon to use.
-                handlerData.icon = CoreCourse.getModuleIconSrc(module.modname, module.modicon, icon);
-            }
+        try {
+            handlerData.icon = await this.getIconSrc(module);
+        } catch {
+            // Ignore errors.
         }
 
         return handlerData;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    async getIconSrc(module?: CoreCourseModuleData): Promise<string | undefined> {
+        if (!module) {
+            return;
+        }
+
+        let mainFile = module.contents?.[0];
+
+        if (!mainFile) {
+            try {
+                // Try to get module contents, it's needed to get the URL with parameters.
+                const contents = await CoreCourse.getModuleContents(
+                    module,
+                    undefined,
+                    undefined,
+                    true,
+                    false,
+                    undefined,
+                    'url',
+                );
+
+                mainFile = contents[0];
+            } catch {
+                // Fallback in case is not prefetched.
+                const mod = await CoreCourse.getModule(module.id, module.course, undefined, true, false, undefined, 'url');
+
+                mainFile = mod.contents?.[0];
+            }
+        }
+
+        const icon = mainFile? AddonModUrl.guessIcon(mainFile.fileurl) : undefined;
+
+        // Calculate the icon to use.
+        return CoreCourse.getModuleIconSrc(module.modname, module.modicon, icon);
     }
 
     /**
@@ -179,15 +216,6 @@ export class AddonModUrlModuleHandlerService extends CoreModuleHandlerBase imple
      */
     manualCompletionAlwaysShown(module: CoreCourseModuleData): Promise<boolean> {
         return this.shouldOpenLink(module);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    iconIsShape(module?: CoreCourseModuleData | undefined, modicon?: string | undefined): boolean | undefined {
-        const iconUrl = module?.modicon ?? modicon;
-
-        return !iconUrl?.startsWith('assets/img/files/');
     }
 
     /**

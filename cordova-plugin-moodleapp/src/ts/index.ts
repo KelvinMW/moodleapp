@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { SystemUI } from './plugins/SystemUI';
+import { InstallReferrer } from './plugins/InstallReferrer';
+import { SecureStorage } from './plugins/SecureStorage';
 
 const api: MoodleAppPlugins = {
-    systemUI: new SystemUI(),
+    secureStorage: new SecureStorage(),
+    installReferrer: new InstallReferrer(),
 };
 
 // This is necessary to work around the default transpilation behavior,

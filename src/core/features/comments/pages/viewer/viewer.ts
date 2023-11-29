@@ -26,7 +26,7 @@ import {
     CoreCommentsSync,
     CoreCommentsSyncProvider,
 } from '@features/comments/services/comments-sync';
-import { IonContent, IonRefresher } from '@ionic/angular';
+import { IonContent } from '@ionic/angular';
 import { ContextLevel, CoreConstants } from '@/core/constants';
 import { CoreNavigator } from '@services/navigator';
 import { NgZone, Translate } from '@singletons';
@@ -51,7 +51,7 @@ import { CoreAnimations } from '@components/animations';
     selector: 'page-core-comments-viewer',
     templateUrl: 'viewer.html',
     animations: [CoreAnimations.SLIDE_IN_OUT],
-    styleUrls: ['viewer.scss'],
+    styleUrls: ['../../../../../theme/components/discussion.scss', 'viewer.scss'],
 })
 export class CoreCommentsViewerPage implements OnInit, OnDestroy {
 
@@ -222,6 +222,7 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
         comment.showDate = this.showDate(comment, prevComment);
         comment.showUserData = this.showUserData(comment, prevComment);
         comment.showTail = this.showTail(comment, prevComment);
+        comment.delete = comment.delete ?? false; // If this property is undefined, core-message assumes comment can be deleted.
     }
 
     /**
@@ -248,7 +249,7 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
      * @param refresher Refresher.
      * @returns Resolved when done.
      */
-    async refreshComments(showErrors: boolean, refresher?: IonRefresher): Promise<void> {
+    async refreshComments(showErrors: boolean, refresher?: HTMLIonRefresherElement): Promise<void> {
         this.commentsLoaded = false;
         this.refreshIcon = CoreConstants.ICON_LOADING;
         this.syncIcon = CoreConstants.ICON_LOADING;

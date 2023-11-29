@@ -12,16 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnInit, Input, Output, EventEmitter, DoCheck, KeyValueDiffers, ViewChild, KeyValueDiffer } from '@angular/core';
+import {
+    Component,
+    OnInit,
+    Input,
+    Output,
+    EventEmitter,
+    DoCheck,
+    KeyValueDiffers,
+    ViewChild,
+    KeyValueDiffer,
+    HostBinding,
+} from '@angular/core';
 import { Subject } from 'rxjs';
 import { Md5 } from 'ts-md5';
 
-import { CoreSiteWSPreSets } from '@classes/site';
+import { CoreSiteWSPreSets } from '@classes/sites/authenticated-site';
 import { CoreCompileHtmlComponent } from '@features/compile/components/compile-html/compile-html';
 import { CoreSitePlugins, CoreSitePluginsContent, CoreSitePluginsProvider } from '@features/siteplugins/services/siteplugins';
 import { CoreNavigator } from '@services/navigator';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreEvents } from '@singletons/events';
+import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
 
 /**
  * Component to render a site plugin content.
@@ -36,7 +48,7 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
     // Get the compile element. Don't set the right type to prevent circular dependencies.
     @ViewChild('compile') compileComponent?: CoreCompileHtmlComponent;
 
-    @Input() component!: string;
+    @HostBinding('class') @Input() component!: string;
     @Input() method!: string;
     @Input() args?: Record<string, unknown>;
     @Input() initResult?: CoreSitePluginsContent | null; // Result of the init WS call of the handler.
@@ -236,6 +248,19 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
      */
     updateModuleCourseContent(cmId: number, alreadyFetched?: boolean): void {
         CoreEvents.trigger(CoreSitePluginsProvider.UPDATE_COURSE_CONTENT, { cmId, alreadyFetched });
+    }
+
+    /**
+     * Update this content stored in the app's cache. This function will not reload the view, it will only update the data stored
+     * in the device so it's updated for the next usage. If you want to update the view, please use refreshContent.
+     */
+    async updateCachedContent(): Promise<void> {
+        await CoreSitePlugins.getContent(
+            this.component,
+            this.method,
+            this.args,
+            CoreSites.getReadingStrategyPreSets(CoreSitesReadingStrategy.ONLY_NETWORK),
+        );
     }
 
 }

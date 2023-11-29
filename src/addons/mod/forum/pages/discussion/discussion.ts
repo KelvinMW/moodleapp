@@ -23,7 +23,7 @@ import { CoreRatingOffline } from '@features/rating/services/rating-offline';
 import { CoreRatingSyncProvider } from '@features/rating/services/rating-sync';
 import { CoreUser } from '@features/user/services/user';
 import { CanLeave } from '@guards/can-leave';
-import { IonContent, IonRefresher } from '@ionic/angular';
+import { IonContent } from '@ionic/angular';
 import { CoreNetwork } from '@services/network';
 import { CoreNavigator } from '@services/navigator';
 import { CoreScreen } from '@services/screen';
@@ -165,8 +165,11 @@ export class AddonModForumDiscussionPage implements OnInit, AfterViewInit, OnDes
             return;
         }
 
+        const currentSite = CoreSites.getCurrentSite();
         this.isOnline = CoreNetwork.isOnline();
-        this.externalUrl = CoreSites.getCurrentSite()?.createSiteUrl('/mod/forum/discuss.php', { d: this.discussionId.toString() });
+        this.externalUrl = currentSite && currentSite.shouldDisplayInformativeLinks() ?
+            currentSite.createSiteUrl('/mod/forum/discuss.php', { d: this.discussionId.toString() }) :
+            undefined;
         this.onlineObserver = CoreNetwork.onChange().subscribe(() => {
             // Execute the callback in the Angular zone, so change detection doesn't stop working.
             NgZone.run(() => {
@@ -647,7 +650,7 @@ export class AddonModForumDiscussionPage implements OnInit, AfterViewInit, OnDes
      * @param showErrors If show errors to the user of hide them.
      * @returns Promise resolved when done.
      */
-    async doRefresh(refresher?: IonRefresher | null, done?: () => void, showErrors: boolean = false): Promise<void> {
+    async doRefresh(refresher?: HTMLIonRefresherElement | null, done?: () => void, showErrors: boolean = false): Promise<void> {
         if (this.discussionLoaded) {
             await this.refreshPosts(true, showErrors).finally(() => {
                 refresher?.complete();

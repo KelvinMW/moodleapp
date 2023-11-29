@@ -29,7 +29,7 @@ import moment from 'moment-timezone';
 import { of } from 'rxjs';
 import { firstValueFrom, zipIncludingComplete } from '@/core/utils/rxjs';
 import { catchError, map } from 'rxjs/operators';
-import { chainRequests, WSObservable } from '@classes/site';
+import { chainRequests, WSObservable } from '@classes/sites/authenticated-site';
 
 // Id for a course item representing all courses (for example, for course filters).
 export const ALL_COURSES_ID = -1;
@@ -211,14 +211,14 @@ export class CoreCoursesHelperProvider {
         }
 
         if (course.courseimage !== undefined) {
-            course.courseImage = course.courseimage; // @deprecated sinde 4.3 use courseimage instead.
+            course.courseImage = course.courseimage; // @deprecated since 4.3 use courseimage instead.
 
             return;
         }
 
         if (course.overviewfiles && course.overviewfiles[0]) {
             course.courseimage = course.overviewfiles[0].fileurl;
-            course.courseImage = course.courseimage; // @deprecated sinde 4.3 use courseimage instead.
+            course.courseImage = course.courseimage; // @deprecated since 4.3 use courseimage instead.
 
             return;
         }

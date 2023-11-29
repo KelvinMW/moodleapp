@@ -74,7 +74,7 @@ export class CoreCourseIndexPage implements OnInit, OnDestroy {
                 if (data.sectionId) {
                     this.contentsTab.pageParams.sectionId = data.sectionId;
                 }
-                if (data.sectionNumber) {
+                if (data.sectionNumber !== undefined) {
                     this.contentsTab.pageParams.sectionNumber = data.sectionNumber;
                 }
 
@@ -148,26 +148,19 @@ export class CoreCourseIndexPage implements OnInit, OnDestroy {
 
         this.modNavOptions = CoreNavigator.getRouteParam<CoreNavigationOptions>('modNavOptions');
         this.openModule = CoreNavigator.getRouteBooleanParam('openModule') ?? true; // If false, just scroll to module.
-        if (!this.modNavOptions) {
-            // Fallback to old way of passing params. @deprecated since 4.0.
-            const modParams = CoreNavigator.getRouteParam<Params>('modParams');
-            if (modParams) {
-                this.modNavOptions = { params: modParams };
-            }
-        }
-
         this.currentPagePath = CoreNavigator.getCurrentPath();
         this.contentsTab.page = CorePath.concatenatePaths(this.currentPagePath, this.contentsTab.page);
         this.contentsTab.pageParams = {
             course: this.course,
             sectionId: CoreNavigator.getRouteNumberParam('sectionId'),
             sectionNumber: CoreNavigator.getRouteNumberParam('sectionNumber'),
+            blockInstanceId: CoreNavigator.getRouteNumberParam('blockInstanceId'),
             isGuest: this.isGuest,
         };
 
         if (this.module) {
             this.contentsTab.pageParams.moduleId = this.module.id;
-            if (!this.contentsTab.pageParams.sectionId && !this.contentsTab.pageParams.sectionNumber) {
+            if (!this.contentsTab.pageParams.sectionId && this.contentsTab.pageParams.sectionNumber === undefined) {
                 // No section specified, use module section.
                 this.contentsTab.pageParams.sectionId = this.module.section;
             }

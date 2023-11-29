@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import { AfterViewInit, Component, OnDestroy, ViewChild } from '@angular/core';
-import { IonRefresher } from '@ionic/angular';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreSplitViewComponent } from '@components/split-view/split-view';
 import {
@@ -30,6 +29,7 @@ import { CoreRoutedItemsManagerSourcesTracker } from '@classes/items-management/
 import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
 import { CoreSites } from '@services/sites';
 import { CoreTime } from '@singletons/time';
+import { ContextLevel } from '@/core/constants';
 
 /**
  * Page that displays the list of competencies of a learning plan.
@@ -48,6 +48,8 @@ export class AddonCompetencyCompetenciesPage implements AfterViewInit, OnDestroy
     >;
 
     title = '';
+    contextLevel?: string;
+    contextInstanceId?: number;
 
     protected logView: () => void;
 
@@ -99,8 +101,12 @@ export class AddonCompetencyCompetenciesPage implements AfterViewInit, OnDestroy
                 }
 
                 this.title = source.plan.plan.name;
+                this.contextLevel = ContextLevel.USER;
+                this.contextInstanceId = source.user?.id || source.plan.plan.userid;
             } else {
                 this.title = Translate.instant('addon.competency.coursecompetencies');
+                this.contextLevel = ContextLevel.COURSE;
+                this.contextInstanceId = source.COURSE_ID;
             }
 
             this.logView();
@@ -114,7 +120,7 @@ export class AddonCompetencyCompetenciesPage implements AfterViewInit, OnDestroy
      *
      * @param refresher Refresher.
      */
-    async refreshCompetencies(refresher?: IonRefresher): Promise<void> {
+    async refreshCompetencies(refresher?: HTMLIonRefresherElement): Promise<void> {
         await this.competencies.getSource().invalidateCache();
 
         this.competencies.getSource().setDirty(true);

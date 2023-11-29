@@ -14,7 +14,7 @@
 
 import { Injectable } from '@angular/core';
 import { CoreError } from '@classes/errors/error';
-import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { CoreCourseCommonModWSOptions } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreFileUploaderStoreFilesResult } from '@features/fileuploader/services/fileuploader';
@@ -28,6 +28,7 @@ import { makeSingleton, Translate } from '@singletons';
 import { CoreEvents } from '@singletons/events';
 import { AddonModGlossaryEntryDBRecord, ENTRIES_TABLE_NAME } from './database/glossary';
 import { AddonModGlossaryOffline } from './glossary-offline';
+import { CoreSiteWSPreSets } from '@classes/sites/authenticated-site';
 
 export const GLOSSARY_ENTRY_ADDED = 'addon_mod_glossary_entry_added';
 export const GLOSSARY_ENTRY_UPDATED = 'addon_mod_glossary_entry_updated';
@@ -291,16 +292,16 @@ export class AddonModGlossaryProvider {
         glossaryId: number,
         options: AddonModGlossaryGetEntriesOptions = {},
     ): Promise<AddonModGlossaryGetEntriesWSResponse> {
-        options.from = options.from || 0;
-        options.limit = options.limit || AddonModGlossaryProvider.LIMIT_ENTRIES;
+        const from = options.from || 0;
+        const limit = options.limit || AddonModGlossaryProvider.LIMIT_ENTRIES;
 
         const site = await CoreSites.getSite(options.siteId);
 
         const params: AddonModGlossaryGetEntriesByLetterWSParams = {
             id: glossaryId,
             letter: 'ALL',
-            from: options.from,
-            limit: options.limit,
+            from,
+            limit,
         };
         const preSets: CoreSiteWSPreSets = {
             cacheKey: this.getEntriesByLetterCacheKey(glossaryId),
@@ -316,9 +317,9 @@ export class AddonModGlossaryProvider {
             preSets,
         );
 
-        if (options.limit == AddonModGlossaryProvider.LIMIT_ENTRIES) {
+        if (limit === AddonModGlossaryProvider.LIMIT_ENTRIES) {
             // Store entries in background, don't block the user for this.
-            CoreUtils.ignoreErrors(this.storeEntries(glossaryId, result.entries, options.from, site.getId()));
+            CoreUtils.ignoreErrors(this.storeEntries(glossaryId, result.entries, from, site.getId()));
         }
 
         return result;
@@ -446,13 +447,13 @@ export class AddonModGlossaryProvider {
         site: CoreSite,
         options: AddonModGlossaryGetCategoriesOptions = {},
     ): Promise<AddonModGlossaryCategory[]> {
-        options.from = options.from || 0;
-        options.limit = options.limit || AddonModGlossaryProvider.LIMIT_CATEGORIES;
+        const from = options.from || 0;
+        const limit = options.limit || AddonModGlossaryProvider.LIMIT_CATEGORIES;
 
         const params: AddonModGlossaryGetCategoriesWSParams = {
             id: glossaryId,
-            from: options.from,
-            limit: options.limit,
+            from,
+            limit,
         };
         const preSets: CoreSiteWSPreSets = {
             cacheKey: this.getCategoriesCacheKey(glossaryId),
@@ -465,11 +466,12 @@ export class AddonModGlossaryProvider {
         const response = await site.read<AddonModGlossaryGetCategoriesWSResponse>('mod_glossary_get_categories', params, preSets);
 
         categories = categories.concat(response.categories);
-        const canLoadMore = (options.from + options.limit) < response.count;
+        const canLoadMore = (from + limit) < response.count;
         if (canLoadMore) {
-            options.from += options.limit;
-
-            return this.getCategories(glossaryId, categories, site, options);
+            return this.getCategories(glossaryId, categories, site, {
+                ...options,
+                from: from + limit,
+            });
         }
 
         return categories;

@@ -24,7 +24,6 @@ import { CoreWS } from '@services/ws';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { CoreTextUtils } from '@services/utils/text';
-import { CoreWSError } from '@classes/errors/wserror';
 import { makeSingleton, Clipboard, InAppBrowser, FileOpener, WebIntent, QRScanner, Translate, NgZone } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import { CoreViewerQRScannerComponent } from '@features/viewer/components/qr-scanner/qr-scanner';
@@ -260,7 +259,7 @@ export class CoreUtilsProvider {
         try {
             const response = await this.timeoutPromise(window.fetch(url, initOptions), CoreWS.getRequestTimeout());
 
-            return !!response && response.redirected;
+            return response.redirected;
         } catch (error) {
             if (error.timeout && controller) {
                 // Timeout, abort the request.
@@ -377,23 +376,11 @@ export class CoreUtilsProvider {
             virtualInput.innerHTML = text;
             virtualInput.select();
             virtualInput.setSelectionRange(0, 99999);
-            document.execCommand('copy');
+            document.execCommand('copy'); // eslint-disable-line deprecation/deprecation
         }
 
         // Show toast using ionicLoading.
         CoreDomUtils.showToast('core.copiedtoclipboard', true);
-    }
-
-    /**
-     * Create a "fake" WS error for local errors.
-     *
-     * @param message The message to include in the error.
-     * @param needsTranslate If the message needs to be translated.
-     * @returns Fake WS error.
-     * @deprecated since 3.9.5. Just create the error directly.
-     */
-    createFakeWSError(message: string, needsTranslate?: boolean): CoreWSError {
-        return CoreWS.createFakeWSError(message, needsTranslate);
     }
 
     /**
@@ -1033,11 +1020,29 @@ export class CoreUtilsProvider {
             // Error, use the original path.
         }
 
-        try {
+        const openFile = async (mimetype?: string) => {
             if (this.shouldOpenWithDialog(options)) {
                 await FileOpener.showOpenWithDialog(path, mimetype || '');
             } else {
                 await FileOpener.open(path, mimetype || '');
+            }
+        };
+
+        try {
+            try {
+                await openFile(mimetype);
+            } catch (error) {
+                if (!extension || !error || Number(error.status) !== 9) {
+                    throw error;
+                }
+
+                // Cannot open mimetype. Check if there is a deprecated mimetype for the extension.
+                const deprecatedMimetype = CoreMimetypeUtils.getDeprecatedMimeType(extension);
+                if (!deprecatedMimetype || deprecatedMimetype === mimetype) {
+                    throw error;
+                }
+
+                await openFile(deprecatedMimetype);
             }
         } catch (error) {
             this.logger.error('Error opening file ' + path + ' with mimetype ' + mimetype);
@@ -1177,6 +1182,7 @@ export class CoreUtilsProvider {
      * @param options Options.
      */
     async openInBrowser(url: string, options: CoreUtilsOpenInBrowserOptions = {}): Promise<void> {
+        // eslint-disable-next-line deprecation/deprecation
         const originaUrl = CoreUrlUtils.unfixPluginfileURL(options.originalUrl ?? options.browserWarningUrl ?? url);
         if (options.showBrowserWarning || options.showBrowserWarning === undefined) {
             try {
@@ -1407,7 +1413,7 @@ export class CoreUtilsProvider {
      * Create a deferred promise that can be resolved or rejected explicitly.
      *
      * @returns The deferred promise.
-     * @deprecated since app 4.1. Use CorePromisedValue instead.
+     * @deprecated since 4.1. Use CorePromisedValue instead.
      */
     promiseDefer<T>(): CorePromisedValue<T> {
         return new CorePromisedValue<T>();
@@ -1529,14 +1535,14 @@ export class CoreUtilsProvider {
      * @param time Number of milliseconds of the timeout.
      * @returns Promise with the timeout.
      */
-    timeoutPromise<T>(promise: Promise<T>, time: number): Promise<T | void> {
+    timeoutPromise<T>(promise: Promise<T>, time: number): Promise<T> {
         return new Promise((resolve, reject): void => {
             let timedOut = false;
-            const resolveBeforeTimeout = () => {
+            const resolveBeforeTimeout = (value: T) => {
                 if (timedOut) {
                     return;
                 }
-                resolve();
+                resolve(value);
             };
             const timeout = setTimeout(
                 () => {
@@ -1919,7 +1925,7 @@ export type CoreUtilsOpenInBrowserOptions = {
     showBrowserWarning?: boolean; // Whether to display a warning before opening in browser. Defaults to true.
     originalUrl?: string; // Original URL to open (in case the URL was treated, e.g. to add a token or an auto-login).
     /**
-     * @deprecated since 4.3, use originalUrl instead.
+     * @deprecated since 4.3. Use originalUrl instead.
      */
     browserWarningUrl?: string;
 };

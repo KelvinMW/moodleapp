@@ -14,7 +14,6 @@
 
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { FormControl, FormGroup, FormBuilder, Validators } from '@angular/forms';
-import { IonRefresher } from '@ionic/angular';
 import { CoreEvents } from '@singletons/events';
 import { CoreGroup, CoreGroups } from '@services/groups';
 import { CoreSites } from '@services/sites';
@@ -35,7 +34,7 @@ import {
 import { AddonCalendarOffline } from '../../services/calendar-offline';
 import { AddonCalendarEventTypeOption, AddonCalendarHelper } from '../../services/calendar-helper';
 import { AddonCalendarSync, AddonCalendarSyncProvider } from '../../services/calendar-sync';
-import { CoreSite } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { Translate } from '@singletons';
 import { CoreFilterHelper } from '@features/filter/services/filter-helper';
 import { AddonCalendarOfflineEventDBRecord } from '../../services/database/calendar-offline';
@@ -383,7 +382,7 @@ export class AddonCalendarEditEventPage implements OnInit, OnDestroy, CanLeave {
      *
      * @param refresher Refresher.
      */
-    refreshData(refresher?: IonRefresher): void {
+    refreshData(refresher?: HTMLIonRefresherElement): void {
         const promises = [
             AddonCalendar.invalidateAccessInformation(this.courseId),
             AddonCalendar.invalidateAllowedEventTypes(this.courseId),
@@ -646,7 +645,7 @@ export class AddonCalendarEditEventPage implements OnInit, OnDestroy, CanLeave {
      */
     async addReminder(): Promise<void> {
         const formData = this.form.value;
-        const eventTime = CoreTimeUtils.convertToTimestamp(formData.timestart, true);
+        const eventTime = moment(formData.timestart).unix();
 
         const reminderTime = await CoreDomUtils.openPopover<{timeBefore: number}>({
             component: CoreRemindersSetReminderMenuComponent,

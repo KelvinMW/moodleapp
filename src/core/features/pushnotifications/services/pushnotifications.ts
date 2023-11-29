@@ -24,7 +24,7 @@ import { CoreUtils } from '@services/utils/utils';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreConfig } from '@services/config';
 import { CoreConstants } from '@/core/constants';
-import { CoreSite, CoreSiteInfo } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { makeSingleton, Badge, Push, Device, Translate, ApplicationInit, NgZone } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import { CoreEvents } from '@singletons/events';
@@ -48,6 +48,7 @@ import { CoreObject } from '@singletons/object';
 import { lazyMap, LazyMap } from '@/core/utils/lazy-map';
 import { CorePlatform } from '@services/platform';
 import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
+import { CoreSiteInfo } from '@classes/sites/unauthenticated-site';
 
 /**
  * Service to handle push notifications.
@@ -370,7 +371,6 @@ export class CorePushNotificationsProvider {
      * @param itemCategory The item category.
      * @param wsName Name of the WS.
      * @param data Other data to pass to the event.
-     * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when done. This promise is never rejected.
      * @deprecated since 4.3. Use CoreAnalytics.logEvent instead.
      */
@@ -387,6 +387,7 @@ export class CorePushNotificationsProvider {
         data.category = itemCategory;
         data.moodleaction = wsName;
 
+        // eslint-disable-next-line deprecation/deprecation
         return this.logEvent('view_item', data);
     }
 
@@ -396,7 +397,6 @@ export class CorePushNotificationsProvider {
      * @param itemCategory The item category.
      * @param wsName Name of the WS.
      * @param data Other data to pass to the event.
-     * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when done. This promise is never rejected.
      * @deprecated since 4.3. Use CoreAnalytics.logEvent instead.
      */
@@ -409,6 +409,7 @@ export class CorePushNotificationsProvider {
         data.moodleaction = wsName;
         data.category = itemCategory;
 
+        // eslint-disable-next-line deprecation/deprecation
         return this.logEvent('view_item_list', data);
     }
 
@@ -841,7 +842,7 @@ export class CorePushNotificationsProvider {
                 result.siteid,
                 result.siteurl,
                 result.token,
-                CoreTextUtils.parseJSON<CoreSiteInfo | null>(result.info, null) || undefined,
+                { info: CoreTextUtils.parseJSON<CoreSiteInfo | null>(result.info, null) || undefined },
             );
 
             await this.unregisterDeviceOnMoodle(tmpSite);

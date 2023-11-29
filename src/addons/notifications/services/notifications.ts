@@ -19,11 +19,12 @@ import { CoreWSExternalWarning } from '@services/ws';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreUser, USER_NOREPLY_USER } from '@features/user/services/user';
-import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { CoreLogger } from '@singletons/logger';
 import { Translate, makeSingleton } from '@singletons';
 import { CoreCourseModuleDelegate } from '@features/course/services/module-delegate';
 import { AddonNotificationsPushNotification } from './handlers/push-click';
+import { CoreSiteWSPreSets } from '@classes/sites/authenticated-site';
 
 declare module '@singletons/events' {
 
@@ -496,14 +497,14 @@ export type AddonNotificationsPreferencesNotificationProcessor = {
     lockedmessage?: string; // @since 3.6. Text to display if locked.
     userconfigured: number; // Is configured?.
     enabled?: boolean; // @since 4.0. Processor enabled.
-    loggedin: AddonNotificationsPreferencesNotificationProcessorState; // @deprecated removed on 4.0.
-    loggedoff: AddonNotificationsPreferencesNotificationProcessorState; // @deprecated removed on 4.0.
+    loggedin: AddonNotificationsPreferencesNotificationProcessorState; // @deprecatedonmoodle since 4.0.
+    loggedoff: AddonNotificationsPreferencesNotificationProcessorState; // @deprecatedonmoodle since 4.0.
 };
 
 /**
  * State in notification processor in notification preferences component.
  *
- * @deprecated removed on 4.0.
+ * @deprecatedonmoodle since 4.0
  */
 export type AddonNotificationsPreferencesNotificationProcessorState = {
     name: 'loggedoff' | 'loggedin'; // Name.

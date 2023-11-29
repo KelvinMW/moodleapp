@@ -14,7 +14,7 @@
 
 import { Injectable } from '@angular/core';
 import { CoreError } from '@classes/errors/error';
-import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { CoreCourseCommonModWSOptions } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreNetwork } from '@services/network';
@@ -25,6 +25,7 @@ import { CoreWSExternalFile, CoreWSExternalWarning, CoreWSStoredFile } from '@se
 import { makeSingleton, Translate } from '@singletons';
 import { AddonModFeedbackOffline } from './feedback-offline';
 import { AddonModFeedbackAutoSyncData, AddonModFeedbackSyncProvider } from './feedback-sync';
+import { CoreSiteWSPreSets } from '@classes/sites/authenticated-site';
 
 const ROOT_CACHE_KEY = 'AddonModFeedback:';
 
@@ -194,9 +195,9 @@ export class AddonModFeedbackProvider {
             }
 
             // Treat multichoice checkboxes.
-            if (item.typ == 'multichoice' && item.presentation.split(AddonModFeedbackProvider.MULTICHOICE_TYPE_SEP)[0] == 'c') {
+            if (item.typ === 'multichoice' && item.presentation.split(AddonModFeedbackProvider.MULTICHOICE_TYPE_SEP)[0] === 'c') {
 
-                offlineValues[item.id] = offlineValues[item.id].filter((value) => value > 0);
+                offlineValues[item.id] = offlineValues[item.id].filter((value) => Number(value) > 0);
                 item.rawValue = offlineValues[item.id].join(AddonModFeedbackProvider.LINE_SEP);
             } else {
                 item.rawValue = offlineValues[item.id][0];
@@ -358,7 +359,7 @@ export class AddonModFeedbackProvider {
     async getAttempt(
         feedbackId: number,
         attemptId: number,
-        options: CoreCourseCommonModWSOptions = {},
+        options: AddonModFeedbackGroupOptions = {},
         previous?: AddonModFeedbackGetAttemptPreviousData,
     ): Promise<AddonModFeedbackWSAttempt | AddonModFeedbackWSAnonAttempt> {
         options.siteId = options.siteId || CoreSites.getCurrentSiteId();
@@ -370,7 +371,6 @@ export class AddonModFeedbackProvider {
 
         const responses = await this.getResponsesAnalysis(feedbackId, {
             page: previous.page,
-            groupId: 0,
             ...options, // Include all options.
         });
 

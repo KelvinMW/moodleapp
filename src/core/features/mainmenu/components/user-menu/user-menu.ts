@@ -14,9 +14,10 @@
 
 import { CoreConstants } from '@/core/constants';
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { CoreSite, CoreSiteInfo } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
+import { CoreSiteInfo } from '@classes/sites/unauthenticated-site';
 import { CoreFilter } from '@features/filter/services/filter';
-import { CoreLoginSitesComponent } from '@features/login/components/sites/sites';
+import { CoreLoginSitesModalComponent } from '@features/login/components/sites-modal/sites-modal';
 import { CoreLoginHelper } from '@features/login/services/login-helper';
 import { CoreUserAuthenticatedSupportConfig } from '@features/user/classes/support/authenticated-support-config';
 import { CoreUserSupport } from '@features/user/services/support';
@@ -49,6 +50,7 @@ export class CoreMainMenuUserMenuComponent implements OnInit, OnDestroy {
     siteLogo?: string;
     siteLogoLoaded = false;
     siteUrl?: string;
+    displaySiteUrl = false;
     handlers: CoreUserProfileHandlerData[] = [];
     handlersLoaded = false;
     user?: CoreUserProfile;
@@ -70,6 +72,7 @@ export class CoreMainMenuUserMenuComponent implements OnInit, OnDestroy {
         this.displaySwitchAccount = !currentSite.isFeatureDisabled('NoDelegate_SwitchAccount');
         this.displayContactSupport = new CoreUserAuthenticatedSupportConfig(currentSite).canContactSupport();
         this.removeAccountOnLogout = !!CoreConstants.CONFIG.removeaccountonlogout;
+        this.displaySiteUrl = currentSite.shouldDisplayInformativeLinks();
 
         this.loadSiteLogo(currentSite);
 
@@ -113,8 +116,8 @@ export class CoreMainMenuUserMenuComponent implements OnInit, OnDestroy {
      * @returns Promise resolved when done.
      */
     protected async loadSiteLogo(currentSite: CoreSite): Promise<void> {
-        if (CoreConstants.CONFIG.forceLoginLogo) {
-            this.siteLogo = 'assets/img/login_logo.png';
+        if (currentSite.forcesLocalLogo()) {
+            this.siteLogo = currentSite.getLogoUrl();
             this.siteLogoLoaded = true;
 
             return;
@@ -123,7 +126,7 @@ export class CoreMainMenuUserMenuComponent implements OnInit, OnDestroy {
         try {
             const siteConfig = await currentSite.getPublicConfig();
 
-            this.siteLogo = CoreLoginHelper.getLogoUrl(siteConfig);
+            this.siteLogo = currentSite.getLogoUrl(siteConfig);
         } catch {
             // Ignore errors.
         } finally {
@@ -239,7 +242,7 @@ export class CoreMainMenuUserMenuComponent implements OnInit, OnDestroy {
         event.stopPropagation();
 
         const closeAll = await CoreDomUtils.openSideModal<boolean>({
-            component: CoreLoginSitesComponent,
+            component: CoreLoginSitesModalComponent,
             cssClass: 'core-modal-lateral core-modal-lateral-sm',
         });
 

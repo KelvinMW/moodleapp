@@ -27,6 +27,7 @@ import { makeSingleton, Translate } from '@singletons';
 import { CoreQuestion, CoreQuestionProvider, CoreQuestionQuestionParsed, CoreQuestionsAnswers } from './question';
 import { CoreQuestionDelegate } from './question-delegate';
 import { CoreIcons } from '@singletons/icons';
+import { CoreUrlUtils } from '@services/utils/url';
 
 /**
  * Service with some common functions to handle questions.
@@ -42,7 +43,7 @@ export class CoreQuestionHelperProvider {
      * @param question Question.
      * @param button Behaviour button (DOM element).
      */
-    protected addBehaviourButton(question: CoreQuestionQuestion, button: HTMLInputElement): void {
+    protected addBehaviourButton(question: CoreQuestionQuestion, button: HTMLElement): void {
         if (!button || !question) {
             return;
         }
@@ -50,10 +51,26 @@ export class CoreQuestionHelperProvider {
         question.behaviourButtons = question.behaviourButtons || [];
 
         // Extract the data we want.
+        if (button instanceof HTMLInputElement) {
+            // Old behaviour that changed in 4.2 because of MDL-78874.
+            question.behaviourButtons.push({
+                id: button.id,
+                name: button.name,
+                value: button.value,
+                disabled: button.disabled,
+            });
+
+            return;
+        }
+
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
         question.behaviourButtons.push({
             id: button.id,
             name: button.name,
-            value: button.value,
+            value: button.innerHTML,
             disabled: button.disabled,
         });
     }
@@ -101,7 +118,7 @@ export class CoreQuestionHelperProvider {
      * The buttons aren't deleted from the content because all the im-controls block will be removed afterwards.
      *
      * @param question Question to treat.
-     * @param selector Selector to search the buttons. By default, '.im-controls input[type="submit"]'.
+     * @param selector Selector to search the buttons. By default, '.im-controls [type="submit"]'.
      */
     extractQbehaviourButtons(question: CoreQuestionQuestionParsed, selector?: string): void {
         if (CoreQuestionDelegate.getPreventSubmitMessage(question)) {
@@ -109,7 +126,7 @@ export class CoreQuestionHelperProvider {
             return;
         }
 
-        selector = selector || '.im-controls input[type="submit"]';
+        selector = selector || '.im-controls [type="submit"]';
 
         const element = CoreDomUtils.convertToElement(question.html);
 
@@ -169,7 +186,7 @@ export class CoreQuestionHelperProvider {
      */
     extractQbehaviourRedoButton(question: CoreQuestionQuestion): void {
         // Create a fake div element so we can search using querySelector.
-        const redoSelector = 'input[type="submit"][name*=redoslot], input[type="submit"][name*=tryagain]';
+        const redoSelector = '[type="submit"][name*=redoslot], [type="submit"][name*=tryagain]';
 
         // Search redo button in feedback.
         if (!this.searchBehaviourButton(question, 'html', '.outcome ' + redoSelector)) {
@@ -662,7 +679,7 @@ export class CoreQuestionHelperProvider {
                 return;
             }
 
-            if (fileUrl.indexOf('theme/image.php') > -1 && fileUrl.indexOf('flagged') > -1) {
+            if (CoreUrlUtils.isThemeImageUrl(fileUrl) && fileUrl.indexOf('flagged') > -1) {
                 // Ignore flag images.
                 return;
             }
@@ -739,7 +756,7 @@ export class CoreQuestionHelperProvider {
     protected searchBehaviourButton(question: CoreQuestionQuestion, htmlProperty: string, selector: string): boolean {
         const element = CoreDomUtils.convertToElement(question[htmlProperty]);
 
-        const button = <HTMLInputElement> element.querySelector(selector);
+        const button = element.querySelector<HTMLElement>(selector);
         if (!button) {
             return false;
         }

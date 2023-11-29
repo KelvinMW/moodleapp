@@ -58,24 +58,6 @@ export interface CoreCourseFormatHandler extends CoreDelegateHandler {
     displayBlocks?(course: CoreCourseAnyCourseData): boolean;
 
     /**
-     * Whether the option to enable section/module download should be displayed.
-     *
-     * @deprecated on 4.0 Not used anymore because prefetch has been moved to storage manager.
-     * @param course The course to check.
-     * @returns Whether the option to enable section/module download should be displayed.
-     */
-    displayEnableDownload?(course: CoreCourseAnyCourseData): boolean;
-
-    /**
-     * Whether the default course index should be displayed. Defaults to true.
-     *
-     * @deprecated on 4.0. Please use displayCourseIndex instead.
-     * @param course The course to check.
-     * @returns Whether the default course index should be displayed.
-     */
-    displaySectionSelector?(course: CoreCourseAnyCourseData): boolean;
-
-    /**
      * Whether the default section selector should be displayed. Defaults to true.
      *
      * @param course The course to check.

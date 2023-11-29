@@ -31,7 +31,7 @@
                     (contentChanged)="onMessageChange($event)">
                 </core-rich-text-editor>
             </ion-item>
-            <ion-item button class="divider ion-text-wrap" (click)="toggleAdvanced()" detail="false" [attr.aria-expanded]="advanced"
+            <ion-item button class="divider ion-text-wrap" (click)="toggleAdvanced()" [detail]="false" [attr.aria-expanded]="advanced"
                 [attr.aria-label]="(advanced ? 'core.hideadvanced' : 'core.showadvanced') | translate" role="heading"
                 aria-controls="addon-mod-forum-new-discussion-advanced">
                 <ion-icon name="fas-chevron-right" flip-rtl slot="start" aria-hidden="true" class="expandable-status-icon"
@@ -43,7 +43,7 @@
             <div *ngIf="advanced" id="addon-mod-forum-new-discussion-advanced">
                 <ion-item *ngIf="showGroups && groupIds.length > 1 && accessInfo.cancanposttomygroups">
                     <ion-label>{{ 'addon.mod_forum.posttomygroups' | translate }}</ion-label>
-                    <ion-toggle [(ngModel)]="newDiscussion.postToAllGroups" name="postallgroups"></ion-toggle>
+                    <ion-toggle [(ngModel)]="newDiscussion.postToAllGroups" name="postallgroups" slot="end"></ion-toggle>
                 </ion-item>
                 <ion-item *ngIf="showGroups" class="core-edit-set-group">
                     <ion-label>{{ 'addon.mod_forum.group' | translate }}</ion-label>
@@ -58,11 +58,11 @@
                 </ion-item>
                 <ion-item>
                     <ion-label>{{ 'addon.mod_forum.discussionsubscription' | translate }}</ion-label>
-                    <ion-toggle [(ngModel)]="newDiscussion.subscribe" name="subscribe"></ion-toggle>
+                    <ion-toggle [(ngModel)]="newDiscussion.subscribe" name="subscribe" slot="end"></ion-toggle>
                 </ion-item>
                 <ion-item *ngIf="canPin">
                     <ion-label>{{ 'addon.mod_forum.discussionpinned' | translate }}</ion-label>
-                    <ion-toggle [(ngModel)]="newDiscussion.pin" name="pin"></ion-toggle>
+                    <ion-toggle [(ngModel)]="newDiscussion.pin" name="pin" slot="end"></ion-toggle>
                 </ion-item>
                 <core-attachments *ngIf="canCreateAttachments && forum && forum.maxattachments > 0" [files]="newDiscussion.files"
                     [maxSize]="forum.maxbytes" [maxSubmissions]="forum.maxattachments" [component]="component" [componentId]="forum.cmid"
@@ -84,7 +84,7 @@
                             <ion-button expand="block" fill="outline" (click)="discard()">{{ 'core.discard' | translate }}</ion-button>
                         </ion-col>
                         <ion-col>
-                            <ion-button expand="block" [disabled]="newDiscussion.subject == '' || newDiscussion.message == null"
+                            <ion-button expand="block" [disabled]="newDiscussion.subject === '' || newDiscussion.message === null"
                                 (click)="add()">
                                 {{ 'addon.mod_forum.posttoforum' | translate }}
                             </ion-button>

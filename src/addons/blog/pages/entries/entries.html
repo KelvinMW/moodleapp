@@ -18,7 +18,7 @@
     <core-loading [hideUntil]="loaded">
         <ion-item *ngIf="showMyEntriesToggle">
             <ion-label>{{ 'addon.blog.showonlyyourentries' | translate }}</ion-label>
-            <ion-toggle [(ngModel)]="onlyMyEntries" (ionChange)="onlyMyEntriesToggleChanged(onlyMyEntries)"></ion-toggle>
+            <ion-toggle [(ngModel)]="onlyMyEntries" (ionChange)="onlyMyEntriesToggleChanged(onlyMyEntries)" slot="end"></ion-toggle>
         </ion-item>
         <core-empty-box *ngIf="entries && entries.length == 0" icon="far-newspaper" [message]="'addon.blog.noentriesyet' | translate">
         </core-empty-box>
@@ -65,7 +65,7 @@
                     <core-file *ngFor="let file of entry.attachmentfiles" [file]="file" [component]="this.component"
                         [componentId]="entry.id">
                     </core-file>
-                    <ion-item *ngIf="entry.uniquehash" [href]="entry.uniquehash" core-link detail="true">
+                    <ion-item *ngIf="entry.uniquehash" [href]="entry.uniquehash" core-link [detail]="true">
                         <ion-label>{{ 'addon.blog.linktooriginalentry' | translate }}</ion-label>
                     </ion-item>
                 </ion-card-content>

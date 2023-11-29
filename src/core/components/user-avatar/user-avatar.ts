@@ -14,14 +14,15 @@
 
 import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChange } from '@angular/core';
 
-import { CoreSites } from '@services/sites';
+import { CoreSiteBasicInfo, CoreSites } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { USER_PROFILE_PICTURE_UPDATED, CoreUserBasicData } from '@features/user/services/user';
 import { CoreNavigator } from '@services/navigator';
 import { CoreNetwork } from '@services/network';
-import { CoreUrl } from '@singletons/url';
 import { CoreUserHelper } from '@features/user/services/user-helper';
+import { CoreUrlUtils } from '@services/utils/url';
+import { CoreSiteInfo } from '@classes/sites/unauthenticated-site';
 
 /**
  * Component to display a "user avatar".
@@ -35,7 +36,8 @@ import { CoreUserHelper } from '@features/user/services/user-helper';
 })
 export class CoreUserAvatarComponent implements OnInit, OnChanges, OnDestroy {
 
-    @Input() user?: CoreUserWithAvatar;
+    @Input() user?: CoreUserWithAvatar; // @todo Fix the accepted type and restrict it a bit.
+    @Input() site?: CoreSiteBasicInfo | CoreSiteInfo; // Site info contains user info.
     // The following params will override the ones in user object.
     @Input() profileUrl?: string;
     @Input() linkProfile = true; // Avoid linking to the profile if wanted.
@@ -71,14 +73,29 @@ export class CoreUserAvatarComponent implements OnInit, OnChanges, OnDestroy {
     /**
      * @inheritdoc
      */
-    ngOnInit(): void {
-        this.siteId = this.siteId || CoreSites.getCurrentSiteId();
+    async ngOnInit(): Promise<void> {
+        this.siteId = this.siteId ?? (this.site && 'id' in this.site
+            ? this.site.id
+            : CoreSites.getCurrentSiteId());
+
+        if (this.site && !this.user) {
+            this.user = {
+                id: ('userid' in this.site
+                    ? this.site.userid
+                    : this.site.userId)
+                    ?? (await CoreSites.getSite(this.siteId)).getUserId(),
+                fullname: this.site.fullname ?? '',
+                firstname: this.site.firstname ?? '',
+                lastname: this.site.lastname ?? '',
+                userpictureurl: this.site.userpictureurl,
+            };
+        }
 
         this.setFields();
     }
 
     /**
-     * Listen to changes.
+     * @inheritdoc
      */
     ngOnChanges(changes: { [name: string]: SimpleChange }): void {
         // If something change, update the fields.
@@ -111,7 +128,7 @@ export class CoreUserAvatarComponent implements OnInit, OnChanges, OnDestroy {
             this.initials = CoreUserHelper.getUserInitials(this.user);
         }
 
-        if (this.initials && this.avatarUrl && CoreUrl.parse(this.avatarUrl)?.path?.startsWith('/theme/image.php')) {
+        if (this.initials && this.avatarUrl && CoreUrlUtils.isThemeImageUrl(this.avatarUrl)) {
             this.avatarUrl = undefined;
         }
 
@@ -166,7 +183,7 @@ export class CoreUserAvatarComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     /**
-     * Component destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.pictureObserver.off();
@@ -189,4 +206,6 @@ export type CoreUserWithAvatar = CoreUserBasicData & {
     isonline?: boolean;
     courseid?: number;
     lastaccess?: number;
+    firstname?: string; // The first name(s) of the user.
+    lastname?: string; // The family name of the user.
 };

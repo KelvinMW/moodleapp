@@ -23,7 +23,6 @@ import { CoreUtils } from '@services/utils/utils';
 import { CoreDomUtils } from '@services/utils/dom';
 import {
     CoreLoginHelper,
-    CoreLoginHelperProvider,
     CoreLoginSiteFinderSettings,
     CoreLoginSiteSelectorListMethod,
 } from '@features/login/services/login-helper';
@@ -46,6 +45,9 @@ import { CoreUserSupportConfig } from '@features/user/classes/support/support-co
 import { CoreUserGuestSupportConfig } from '@features/user/classes/support/guest-support-config';
 import { CoreLoginError } from '@classes/errors/loginerror';
 import { CorePlatform } from '@services/platform';
+import { CoreReferrer } from '@services/referrer';
+import { CoreSitesFactory } from '@services/sites-factory';
+import { ONBOARDING_DONE } from '@features/login/constants';
 
 /**
  * Site (url) chooser when adding a new site.
@@ -98,8 +100,21 @@ export class CoreLoginSitePage implements OnInit {
 
         if (sites.length) {
             url = await this.initSiteSelector();
-        } else if (CoreConstants.CONFIG.enableonboarding && !CorePlatform.isIOS()) {
-            this.initOnboarding();
+        } else {
+            url = await this.consumeInstallReferrerUrl() ?? '';
+
+            const showOnboarding = CoreConstants.CONFIG.enableonboarding && !CorePlatform.isIOS();
+
+            if (url) {
+                this.connect(url);
+
+                if (showOnboarding) {
+                    // Don't display onboarding in this case, and don't display it again later.
+                    CoreConfig.set(ONBOARDING_DONE, 1);
+                }
+            } else if (showOnboarding) {
+                this.initOnboarding();
+            }
         }
 
         this.showScanQR = CoreLoginHelper.displayQRInSiteScreen();
@@ -151,12 +166,32 @@ export class CoreLoginSitePage implements OnInit {
     }
 
     /**
+     * Consume install referrer URL.
+     *
+     * @returns Referrer URL, undefined if no URL to use.
+     */
+    protected async consumeInstallReferrerUrl(): Promise<string | undefined> {
+        const url = await CoreUtils.ignoreErrors(CoreUtils.timeoutPromise(CoreReferrer.consumeInstallReferrerUrl(), 1000));
+        if (!url) {
+            return;
+        }
+
+        const hasSites = (await CoreUtils.ignoreErrors(CoreSites.getSites(), [])).length > 0;
+        if (hasSites) {
+            // There are sites stored already, don't use the referrer URL since it's an update or a backup was restored.
+            return;
+        }
+
+        return url;
+    }
+
+    /**
      * Initialize and show onboarding if needed.
      *
      * @returns Promise resolved when done.
      */
     protected async initOnboarding(): Promise<void> {
-        const onboardingDone = await CoreConfig.get(CoreLoginHelperProvider.ONBOARDING_DONE, false);
+        const onboardingDone = await CoreConfig.get(ONBOARDING_DONE, false);
 
         if (!onboardingDone) {
             // Check onboarding.
@@ -241,14 +276,13 @@ export class CoreLoginSitePage implements OnInit {
     /**
      * Try to connect to a site.
      *
-     * @param e Event.
      * @param url The URL to connect to.
-     * @param foundSite The site clicked, if any, from the found sites list.
+     * @param e Event (if any).
      * @returns Promise resolved when done.
      */
-    async connect(e: Event, url: string, foundSite?: CoreLoginSiteInfoExtended): Promise<void> {
-        e.preventDefault();
-        e.stopPropagation();
+    async connect(url: string, e?: Event): Promise<void> {
+        e?.preventDefault();
+        e?.stopPropagation();
 
         CoreApp.closeKeyboard();
 
@@ -306,7 +340,7 @@ export class CoreLoginSitePage implements OnInit {
                 }
             }
 
-            await this.login(checkResult, foundSite);
+            await this.login(checkResult);
 
             modal.dismiss();
         }
@@ -345,36 +379,19 @@ export class CoreLoginSitePage implements OnInit {
     /**
      * Process login to a site.
      *
-     * @param response Response obtained from the site check request.
-     * @param foundSite The site clicked, if any, from the found sites list.
+     * @param siteCheck Response obtained from the site check request.
      *
      * @returns Promise resolved after logging in.
      */
-    protected async login(response: CoreSiteCheckResponse, foundSite?: CoreLoginSiteInfoExtended): Promise<void> {
+    protected async login(siteCheck: CoreSiteCheckResponse): Promise<void> {
         try {
-            await CoreSites.checkApplication(response.config);
+            await CoreSites.checkApplication(siteCheck.config);
 
             CoreForms.triggerFormSubmittedEvent(this.formElement, true);
 
-            if (CoreLoginHelper.isSSOLoginNeeded(response.code)) {
-                // SSO. User needs to authenticate in a browser.
-                CoreLoginHelper.confirmAndOpenBrowserForSSOLogin(
-                    response.siteUrl,
-                    response.code,
-                    response.service,
-                    response.config?.launchurl,
-                );
-            } else {
-                const pageParams = { siteUrl: response.siteUrl, siteConfig: response.config };
-                if (foundSite && !this.fixedSites) {
-                    pageParams['siteName'] = foundSite.name;
-                    pageParams['logoUrl'] = foundSite.imageurl;
-                }
-
-                CoreNavigator.navigate('/login/credentials', {
-                    params: pageParams,
-                });
-            }
+            CoreNavigator.navigate('/login/credentials', {
+                params: { siteCheck },
+            });
         } catch {
             // Ignore errors.
         }
@@ -550,7 +567,7 @@ export class CoreLoginSitePage implements OnInit {
             // Put the text in the field (if present).
             this.siteForm.controls.siteUrl.setValue(text);
 
-            this.connect(new Event('click'), text);
+            this.connect(text);
         } else {
             CoreDomUtils.showErrorModal('core.errorurlschemeinvalidsite', true);
         }
@@ -573,17 +590,14 @@ export class CoreLoginSitePage implements OnInit {
 
         try {
             // Check if site uses SSO.
-            const response = await CoreSites.checkSite(siteUrl);
+            const siteCheck = await CoreSites.checkSite(siteUrl);
 
-            await CoreSites.checkApplication(response.config);
+            await CoreSites.checkApplication(siteCheck.config);
 
-            if (!CoreLoginHelper.isSSOLoginNeeded(response.code)) {
+            if (!CoreLoginHelper.isSSOLoginNeeded(siteCheck.code)) {
                 // No SSO, go to credentials page.
                 await CoreNavigator.navigate('/login/credentials', {
-                    params: {
-                        siteUrl: response.siteUrl,
-                        siteConfig: response.config,
-                    },
+                    params: { siteCheck },
                 });
             }
         } catch {
@@ -606,6 +620,16 @@ export class CoreLoginSitePage implements OnInit {
      */
     openSettings(): void {
         CoreNavigator.navigate('/settings');
+    }
+
+    /**
+     * Check whether site URL should be displayed.
+     *
+     * @param siteUrl Site URL.
+     * @returns Whether to display URL.
+     */
+    displaySiteUrl(siteUrl: string): boolean {
+        return CoreSitesFactory.makeUnauthenticatedSite(siteUrl).shouldDisplayInformativeLinks();
     }
 
 }

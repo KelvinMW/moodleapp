@@ -14,10 +14,9 @@
 
 import { ActivatedRoute, ActivatedRouteSnapshot } from '@angular/router';
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { IonRefresher } from '@ionic/angular';
 import { Subscription } from 'rxjs';
 
-import { CoreSite } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
@@ -53,7 +52,6 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
     protected subscription?: Subscription;
     protected logView: (user: CoreUserProfile) => void;
 
-    userGroups?: string;
     userLoaded = false;
     isLoadingHandlers = false;
     user?: CoreUserProfile;
@@ -74,7 +72,6 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
             }
 
             this.user.email = data.user.email;
-            this.user.address = CoreUserHelper.formatAddress('', data.user.city, data.user.country);
         }, CoreSites.getCurrentSiteId());
 
         this.logView = CoreTime.once(async (user) => {
@@ -134,11 +131,6 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
 
         try {
             await this.fetchUser();
-
-            if (this.courseId && this.user && 'groups' in this.user) {
-                const separator = Translate.instant('core.listsep');
-                this.userGroups = this.user.groups?.map(group => group.name).join(separator + ' ');
-            }
         } finally {
             this.userLoaded = true;
         }
@@ -151,7 +143,6 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
         try {
             const user = await CoreUser.getProfile(this.userId, this.courseId);
 
-            user.address = CoreUserHelper.formatAddress('', user.city, user.country);
             this.rolesFormatted = 'roles' in user ? CoreUserHelper.formatRoleList(user.roles) : '';
 
             this.user = user;
@@ -196,7 +187,7 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
      * @param event Event.
      * @returns Promise resolved when done.
      */
-    async refreshUser(event?: IonRefresher): Promise<void> {
+    async refreshUser(event?: HTMLIonRefresherElement): Promise<void> {
         await CoreUtils.ignoreErrors(Promise.all([
             CoreUser.invalidateUserCache(this.userId),
             CoreCourses.invalidateUserNavigationOptions(),

@@ -34,7 +34,7 @@ import { CoreDomUtils } from '@services/utils/dom';
 import { CoreIframeUtils, CoreIframeUtilsProvider } from '@services/utils/iframe';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
-import { CoreSite } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { NgZone, Translate } from '@singletons';
 import { CoreExternalContentDirective } from './external-content';
 import { CoreLinkDirective } from './link';
@@ -52,7 +52,7 @@ import { CoreRefreshContext, CORE_REFRESH_CONTEXT } from '@/core/utils/refresh-c
 import { CorePlatform } from '@services/platform';
 import { ElementController } from '@classes/element-controllers/ElementController';
 import { MediaElementController } from '@classes/element-controllers/MediaElementController';
-import { FrameElementController } from '@classes/element-controllers/FrameElementController';
+import { FrameElement, FrameElementController } from '@classes/element-controllers/FrameElementController';
 import { CoreUrl } from '@singletons/url';
 import { CoreIcons } from '@singletons/icons';
 
@@ -89,13 +89,6 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
     @Input() openLinksInApp?: boolean; // Whether links should be opened in InAppBrowser.
     @Input() hideIfEmpty = false; // If true, the tag will contain nothing if text is empty.
     @Input() disabled?: boolean; // If disabled, autoplay elements will be disabled.
-
-    @Input() fullOnClick?: boolean | string; // @deprecated on 4.0 Won't do anything.
-    @Input() fullTitle?: string; // @deprecated on 4.0 Won't do anything.
-    /**
-     * Max height in pixels to render the content box. It should be 50 at least to make sense.
-     */
-    @Input() maxHeight?: number; // @deprecated on 4.0 Use collapsible-item directive instead.
 
     @Output() afterRender: EventEmitter<void>; // Called when the data is rendered.
     @Output() onClick: EventEmitter<void> = new EventEmitter(); // Called when clicked.
@@ -372,13 +365,6 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
 
         await CoreUtils.nextTick();
 
-        // Use collapsible-item directive instead.
-        if (this.maxHeight && !this.collapsible) {
-            this.collapsible = new CoreCollapsibleItemDirective(new ElementRef(this.element));
-            this.collapsible.height = this.maxHeight;
-            this.collapsible.ngOnInit();
-        }
-
         // Add magnifying glasses to images.
         this.addMagnifyingGlasses();
 
@@ -478,11 +464,13 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
         const audios = Array.from(div.querySelectorAll('audio'));
         const videos = Array.from(div.querySelectorAll('video'));
         const iframes = Array.from(div.querySelectorAll('iframe'));
-        const buttons = Array.from(div.querySelectorAll('.button'));
+        const buttons = Array.from(div.querySelectorAll<HTMLElement>('.button'));
         const icons = Array.from(div.querySelectorAll('i.fa,i.fas,i.far,i.fab'));
-        const elementsWithInlineStyles = Array.from(div.querySelectorAll('*[style]'));
-        const stopClicksElements = Array.from(div.querySelectorAll('button,input,select,textarea'));
-        const frames = Array.from(div.querySelectorAll(CoreIframeUtilsProvider.FRAME_TAGS.join(',').replace(/iframe,?/, '')));
+        const elementsWithInlineStyles = Array.from(div.querySelectorAll<HTMLElement>('*[style]'));
+        const stopClicksElements = Array.from(div.querySelectorAll<HTMLElement>('button,input,select,textarea'));
+        const frames = Array.from(
+            div.querySelectorAll<FrameElement>(CoreIframeUtilsProvider.FRAME_TAGS.join(',').replace(/iframe,?/, '')),
+        );
         const svgImages = Array.from(div.querySelectorAll('image'));
         const promises: Promise<void>[] = [];
 
@@ -574,7 +562,7 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
         });
 
         // Handle all kind of frames.
-        const frameControllers = frames.map((frame: HTMLFrameElement | HTMLObjectElement | HTMLEmbedElement) => {
+        const frameControllers = frames.map<FrameElementController>((frame) => {
             CoreIframeUtils.treatFrame(frame, false);
 
             return new FrameElementController(frame, !this.disabled);

@@ -15,7 +15,7 @@
 import { Injectable } from '@angular/core';
 
 import { CoreConstants } from '@/core/constants';
-import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { CoreCourseAnyModuleData } from '@features/course/services/course';
 import { CoreCourses } from '@features/courses/services/courses';
 import { CoreApp } from '@services/app';
@@ -31,6 +31,8 @@ import { CoreLogger } from '@singletons/logger';
 import { CoreSitePluginsModuleHandler } from '../classes/handlers/module-handler';
 import { CorePromisedValue } from '@classes/promised-value';
 import { CorePlatform } from '@services/platform';
+import { CoreEnrolAction, CoreEnrolInfoIcon } from '@features/enrol/services/enrol-delegate';
+import { CoreSiteWSPreSets } from '@classes/sites/authenticated-site';
 
 const ROOT_CACHE_KEY = 'CoreSitePlugins:';
 
@@ -388,16 +390,6 @@ export class CoreSitePluginsProvider {
         const site = await CoreSites.getSite(siteId);
 
         await site.invalidateWsCacheForKey(this.getContentCacheKey(component, callback, args || {}));
-    }
-
-    /**
-     * Check if the get content WS is available.
-     *
-     * @returns If get content WS is available.
-     * @deprecated since app 4.0
-     */
-    isGetContentAvailable(): boolean {
-        return true;
     }
 
     /**
@@ -825,7 +817,7 @@ export type CoreSitePluginsPlugin = CoreSitePluginsWSPlugin & {
 export type CoreSitePluginsHandlerData = CoreSitePluginsInitHandlerData | CoreSitePluginsCourseOptionHandlerData |
 CoreSitePluginsMainMenuHandlerData | CoreSitePluginsCourseModuleHandlerData | CoreSitePluginsCourseFormatHandlerData |
 CoreSitePluginsUserHandlerData | CoreSitePluginsSettingsHandlerData | CoreSitePluginsMessageOutputHandlerData |
-CoreSitePluginsBlockHandlerData | CoreSitePluginsMainMenuHomeHandlerData;
+CoreSitePluginsBlockHandlerData | CoreSitePluginsMainMenuHomeHandlerData | CoreSitePluginsEnrolHandlerData;
 
 /**
  * Plugin handler data common to all delegates.
@@ -894,6 +886,7 @@ export type CoreSitePluginsCourseModuleHandlerData = CoreSitePluginsHandlerCommo
     supportedfeatures?: Record<string, unknown>;
     manualcompletionalwaysshown?: boolean;
     nolinkhandlers?: boolean;
+    hascustomcmlistitem?: boolean;
 };
 
 /**
@@ -902,10 +895,6 @@ export type CoreSitePluginsCourseModuleHandlerData = CoreSitePluginsHandlerCommo
 export type CoreSitePluginsCourseFormatHandlerData = CoreSitePluginsHandlerCommonData & {
     canviewallsections?: boolean;
     displayenabledownload?: boolean;
-    /**
-     * @deprecated on 4.0, use displaycourseindex instead.
-     */
-    displaysectionselector?: boolean;
     displaycourseindex?: boolean;
 };
 
@@ -958,6 +947,14 @@ export type CoreSitePluginsBlockHandlerData = CoreSitePluginsHandlerCommonData &
         type?: string;
     };
     fallback?: string;
+};
+
+/**
+ * Enrol handler specific data.
+ */
+export type CoreSitePluginsEnrolHandlerData = CoreSitePluginsHandlerCommonData & {
+    enrolmentAction?: CoreEnrolAction;
+    infoIcons?: CoreEnrolInfoIcon[];
 };
 
 /**

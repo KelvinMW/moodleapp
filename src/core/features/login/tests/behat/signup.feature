@@ -62,20 +62,21 @@ Feature: Test signup in app
     And I set the following fields to these values in the app:
       | Username | u1 |
       | Password | pu1 |
-    And I press "Log in" near "Forgotten your username or password?" in the app
+    And I press "Log in" near "Lost password?" in the app
     Then I should find "You need to confirm your account" in the app
 
     When I open a browser tab with url "$WWWROOT"
     And I confirm email for "u1"
     And I close the browser tab opened by the app
     And I press "Close" in the app
-    And I press "Log in" near "Forgotten your username or password?" in the app
+    And I press "Log in" near "Lost password?" in the app
     Then I should find "Acceptance test site" in the app
     But I should not find "You need to confirm your account" in the app
 
     When I press the user menu button in the app
     And I press "User Test" in the app
-    Then I should find "Barcelona, Spain" in the app
+    Then I should find "Barcelona" in the app
+    Then I should find "Spain" in the app
     And I should find "u1@u1.com" in the app
 
   @lms_from3.10
@@ -173,7 +174,7 @@ Feature: Test signup in app
     And I set the following fields to these values in the app:
       | Username | u1 |
       | Password | pu1 |
-    And I press "Log in" near "Forgotten your username or password?" in the app
+    And I press "Log in" near "Lost password?" in the app
     And I press the user menu button in the app
     And I press "User Test" in the app
     Then I should find "No" near "Are you a developer?" in the app

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { IonRefresher } from '@ionic/angular';
 
 import { CoreConfig } from '@services/config';
 import { CoreLocalNotifications } from '@services/local-notifications';
@@ -192,7 +191,7 @@ export class AddonNotificationsSettingsPage implements OnInit, OnDestroy {
      *
      * @param refresher Refresher.
      */
-    async refreshPreferences(refresher?: IonRefresher): Promise<void> {
+    async refreshPreferences(refresher?: HTMLIonRefresherElement): Promise<void> {
         try {
             await CoreUtils.ignoreErrors(AddonNotifications.invalidateNotificationPreferences());
 
@@ -332,7 +331,7 @@ export class AddonNotificationsSettingsPage implements OnInit, OnDestroy {
     }
 
     /**
-     * Page destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         // If there is a pending action to update preferences, execute it right now.
@@ -347,7 +346,7 @@ export class AddonNotificationsSettingsPage implements OnInit, OnDestroy {
 /**
  * State in notification processor in notification preferences component with some calculated data.
  *
- * @deprecated 4.0
+ * @deprecatedonmoodle since 4.0
  */
 type ProcessorStateFormatted = AddonNotificationsPreferencesNotificationProcessorState & {
     updating?: boolean; // Calculated in the app. Whether the state is being updated.

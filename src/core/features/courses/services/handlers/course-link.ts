@@ -53,9 +53,9 @@ export class CoreCoursesCourseLinkHandlerService extends CoreContentLinksHandler
         params: Params,
     ): CoreContentLinksAction[] | Promise<CoreContentLinksAction[]> {
         const courseId = parseInt(params.id, 10);
-        const sectionId = params.sectionid ? parseInt(params.sectionid, 10) : null;
+        const sectionId = params.sectionid ? parseInt(params.sectionid, 10) : undefined;
         const pageParams: Params = {
-            sectionId: sectionId || null,
+            sectionId: sectionId || undefined,
         };
         let sectionNumber = params.section !== undefined ? parseInt(params.section, 10) : NaN;
 
@@ -69,6 +69,12 @@ export class CoreCoursesCourseLinkHandlerService extends CoreContentLinksHandler
 
         if (!isNaN(sectionNumber)) {
             pageParams.sectionNumber = sectionNumber;
+        } else {
+            const matches = url.match(/#inst(\d+)/);
+
+            if (matches && matches[1]) {
+                pageParams.blockInstanceId = parseInt(matches[1], 10);
+            }
         }
 
         return [{
@@ -132,11 +138,11 @@ export class CoreCoursesCourseLinkHandlerService extends CoreContentLinksHandler
         const guestInfo = await CoreCourseHelper.courseUsesGuestAccessInfo(courseId);
         pageParams.isGuest = guestInfo.guestAccess;
 
-        if (hasAccess && !guestInfo.guestAccess && !guestInfo.passwordRequired) {
+        if (hasAccess && !guestInfo.guestAccess && !guestInfo.requiresUserInput) {
             // Direct access.
             const course = await CoreUtils.ignoreErrors(CoreCourses.getUserCourse(courseId), { id: courseId });
 
-            CoreCourseHelper.openCourse(course, pageParams);
+            CoreCourseHelper.openCourse(course, { params: pageParams });
         } else {
             this.navigateCourseSummary(courseId, pageParams);
 

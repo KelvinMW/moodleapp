@@ -20,14 +20,15 @@ import { CoreSites } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreUserOffline } from './user-offline';
 import { CoreLogger } from '@singletons/logger';
-import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
+import { CoreSite } from '@classes/sites/site';
 import { makeSingleton, Translate } from '@singletons';
 import { CoreEvents, CoreEventSiteData, CoreEventUserDeletedData, CoreEventUserSuspendedData } from '@singletons/events';
 import { CoreStatusWithWarningsWSResponse, CoreWSExternalWarning } from '@services/ws';
 import { CoreError } from '@classes/errors/error';
 import { USERS_TABLE_NAME, CoreUserDBRecord } from './database/user';
 import { CoreUserHelper } from './user-helper';
-import { CoreUrl } from '@singletons/url';
+import { CoreUrlUtils } from '@services/utils/url';
+import { CoreSiteWSPreSets } from '@classes/sites/authenticated-site';
 
 const ROOT_CACHE_KEY = 'mmUser:';
 
@@ -107,26 +108,6 @@ export class CoreUserProvider {
         site = site || CoreSites.getCurrentSite();
 
         return !!site?.wsAvailable('core_enrol_search_users');
-    }
-
-    /**
-     * Check if WS to update profile picture is available in site.
-     *
-     * @returns Promise resolved with boolean: whether it's available.
-     * @deprecated since app 4.0
-     */
-    async canUpdatePicture(): Promise<boolean> {
-        return true;
-    }
-
-    /**
-     * Check if WS to search participants is available in site.
-     *
-     * @returns Whether it's available.
-     * @deprecated since app 4.0
-     */
-    canUpdatePictureInSite(): boolean {
-        return true;
     }
 
     /**
@@ -671,7 +652,7 @@ export class CoreUserProvider {
             // Do not prefetch when initials are set and image is default.
             if ('firstname' in entry || 'lastname' in entry) {
                 const initials = CoreUserHelper.getUserInitials(entry);
-                if (initials && imageUrl && CoreUrl.parse(imageUrl)?.path === '/theme/image.php') {
+                if (initials && imageUrl && CoreUrlUtils.isThemeImageUrl(imageUrl)) {
                     return;
                 }
             }
