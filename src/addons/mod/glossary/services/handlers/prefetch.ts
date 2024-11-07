@@ -23,8 +23,10 @@ import { CoreSitesReadingStrategy } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreWSFile } from '@services/ws';
 import { makeSingleton } from '@singletons';
-import { AddonModGlossary, AddonModGlossaryEntry, AddonModGlossaryGlossary, AddonModGlossaryProvider } from '../glossary';
+import { AddonModGlossary, AddonModGlossaryEntry, AddonModGlossaryGlossary } from '../glossary';
 import { AddonModGlossarySync, AddonModGlossarySyncResult } from '../glossary-sync';
+import { ContextLevel } from '@/core/constants';
+import { ADDON_MOD_GLOSSARY_COMPONENT } from '../../constants';
 
 /**
  * Handler to prefetch forums.
@@ -34,7 +36,7 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
 
     name = 'AddonModGlossary';
     modName = 'glossary';
-    component = AddonModGlossaryProvider.COMPONENT;
+    component = ADDON_MOD_GLOSSARY_COMPONENT;
     updatesNames = /^configuration$|^.*files$|^entries$/;
 
     /**
@@ -155,13 +157,13 @@ export class AddonModGlossaryPrefetchHandlerService extends CoreCourseActivityPr
             options,
         ).then((entries) => {
             const promises: Promise<unknown>[] = [];
-            const commentsEnabled = !CoreComments.areCommentsDisabledInSite();
+            const commentsEnabled = CoreComments.areCommentsEnabledInSite();
 
             entries.forEach((entry) => {
                 // Don't fetch individual entries, it's too many WS calls.
                 if (glossary.allowcomments && commentsEnabled) {
                     promises.push(CoreComments.getComments(
-                        'module',
+                        ContextLevel.MODULE,
                         glossary.coursemodule,
                         'mod_glossary',
                         entry.id,

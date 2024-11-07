@@ -239,13 +239,13 @@ export class CoreListItemsManager<
     /**
      * @inheritdoc
      */
-    protected getSelectedItemPathFromRoute(route: ActivatedRouteSnapshot): string | null {
+    protected getSelectedItemPathFromRoute(route: ActivatedRouteSnapshot | ActivatedRoute): string | null {
         const segments: UrlSegment[] = [];
 
         while (route.firstChild) {
             route = route.firstChild;
 
-            segments.push(...route.url);
+            segments.push(...CoreNavigator.getRouteUrl(route));
         }
 
         return segments.map(segment => segment.path).join('/').replace(/\/+/, '/').trim() || null;
@@ -274,7 +274,7 @@ export class CoreListItemsManager<
      */
     private buildRouteMatcher(): (route: ActivatedRouteSnapshot) => boolean {
         if (this.pageRouteLocator instanceof ActivatedRoute) {
-            const pageRoutePath = CoreNavigator.getRouteFullPath(this.pageRouteLocator.snapshot);
+            const pageRoutePath = CoreNavigator.getRouteFullPath(this.pageRouteLocator);
 
             return route => CoreNavigator.getRouteFullPath(route) === pageRoutePath;
         }

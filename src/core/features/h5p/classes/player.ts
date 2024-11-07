@@ -14,7 +14,7 @@
 
 import { CoreFile } from '@services/file';
 import { CoreSites } from '@services/sites';
-import { CoreUrlUtils } from '@services/utils/url';
+import { CoreUrl } from '@singletons/url';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreH5P } from '../services/h5p';
 import { CoreH5PCore, CoreH5PDisplayOptions, CoreH5PContentData, CoreH5PDependenciesFiles } from './core';
@@ -51,7 +51,7 @@ export class CoreH5PPlayer {
             params.component = component;
         }
 
-        return CoreUrlUtils.addParamsToUrl(CorePath.concatenatePaths(siteUrl, '/h5p/embed.php'), params);
+        return CoreUrl.addParamsToUrl(CorePath.concatenatePaths(siteUrl, '/h5p/embed.php'), params);
     }
 
     /**
@@ -145,7 +145,7 @@ export class CoreH5PPlayer {
 
         const fileEntry = await CoreFile.writeFile(indexPath, html);
 
-        return fileEntry.toURL();
+        return CoreFile.getFileEntryURL(fileEntry);
     }
 
     /**
@@ -298,7 +298,12 @@ export class CoreH5PPlayer {
             params.state = otherOptions.state;
         }
 
-        return CoreUrlUtils.addParamsToUrl(path, params);
+        const customCssUrl = await CoreUtils.ignoreErrors(CoreH5P.getCustomCssSrc(siteId));
+        if (customCssUrl) {
+            params.customCssUrl = customCssUrl;
+        }
+
+        return CoreUrl.addParamsToUrl(path, params);
     }
 
     /**

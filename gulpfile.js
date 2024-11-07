@@ -15,9 +15,9 @@
 const BuildLangTask = require('./gulp/task-build-lang');
 const BuildBehatPluginTask = require('./gulp/task-build-behat-plugin');
 const BuildEnvTask = require('./gulp/task-build-env');
-const PushTask = require('./gulp/task-push');
+const BuildIconsJsonTask = require('./gulp/task-build-icons-json');
 const OverrideLangTask = require('./gulp/task-override-lang');
-const Utils = require('./gulp/utils');
+const FreezeDependenciesTask = require('./gulp/task-freeze-dependencies');
 const gulp = require('gulp');
 
 const paths = {
@@ -29,8 +29,6 @@ const paths = {
         './src/core/',
     ],
 };
-
-const args = Utils.getCommandLineArguments();
 
 // Build the language files into a single file per language.
 gulp.task('lang', (done) => {
@@ -47,6 +45,14 @@ gulp.task('env', (done) => {
     new BuildEnvTask().run(done);
 });
 
+gulp.task('icons', (done) => {
+    new BuildIconsJsonTask().run(done);
+});
+
+gulp.task('freeze-dependencies', (done) => {
+    new FreezeDependenciesTask().run(done);
+});
+
 // Build a Moodle plugin to run Behat tests.
 if (BuildBehatPluginTask.isBehatConfigured()) {
     gulp.task('behat', (done) => {
@@ -54,15 +60,12 @@ if (BuildBehatPluginTask.isBehatConfigured()) {
     });
 }
 
-gulp.task('push', (done) => {
-    new PushTask().run(args, done);
-});
-
 gulp.task(
     'default',
     gulp.parallel([
         'lang',
         'env',
+        'icons',
         ...(BuildBehatPluginTask.isBehatConfigured() ? ['behat'] : [])
     ]),
 );

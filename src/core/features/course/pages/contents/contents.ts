@@ -21,10 +21,13 @@ import { CoreCourses, CoreCourseAnyCourseData } from '@features/courses/services
 import {
     CoreCourse,
     CoreCourseCompletionActivityStatus,
+    CoreCourseModuleCompletionStatus,
+    CoreCourseProvider,
 } from '@features/course/services/course';
 import {
     CoreCourseHelper,
     CoreCourseModuleCompletionData,
+    CoreCourseModuleData,
     CoreCourseSection,
 } from '@features/course/services/course-helper';
 import { CoreCourseFormatDelegate } from '@features/course/services/format-delegate';
@@ -37,6 +40,9 @@ import {
 } from '@singletons/events';
 import { CoreNavigator } from '@services/navigator';
 import { CoreRefreshContext, CORE_REFRESH_CONTEXT } from '@/core/utils/refresh-context';
+import { CoreCoursesHelper } from '@features/courses/services/courses-helper';
+import { CoreSites } from '@services/sites';
+import { CoreWait } from '@singletons/wait';
 
 /**
  * Page that displays the contents of a course.
@@ -210,10 +216,11 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
     protected async loadSections(refresh?: boolean): Promise<void> {
         // Get all the sections.
         const sections = await CoreCourse.getSections(this.course.id, false, true);
+        let modules: CoreCourseModuleData[] | undefined;
 
         if (refresh) {
             // Invalidate the recently downloaded module list. To ensure info can be prefetched.
-            const modules = CoreCourse.getSectionsModules(sections);
+            modules = CoreCourse.getSectionsModules(sections);
 
             await CoreCourseModulePrefetchDelegate.invalidateModules(modules, this.course.id);
         }
@@ -221,10 +228,12 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
         let completionStatus: Record<string, CoreCourseCompletionActivityStatus> = {};
 
         // Get the completion status.
-        if (this.course.enablecompletion !== false) {
-            const sectionWithModules = sections.find((section) => section.modules.length > 0);
+        if (CoreCoursesHelper.isCompletionEnabledInCourse(this.course)) {
+            if (!modules) {
+                modules = CoreCourse.getSectionsModules(sections);
+            }
 
-            if (sectionWithModules && sectionWithModules.modules[0].completion !== undefined) {
+            if (modules[0]?.completion !== undefined) {
                 // The module already has completion (3.6 onwards). Load the offline completion.
                 this.modulesHaveCompletion = true;
 
@@ -265,7 +274,7 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
     protected async loadCourseFormatOptions(): Promise<void> {
 
         // Load the course format options when course completion is enabled to show completion progress on sections.
-        if (!this.course.enablecompletion) {
+        if (!CoreCoursesHelper.isCompletionEnabledInCourse(this.course)) {
             return;
         }
 
@@ -314,20 +323,48 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
      * @returns Promise resolved when done.
      */
     async onCompletionChange(completionData: CoreCourseModuleCompletionData): Promise<void> {
-        const shouldReload = completionData.valueused === undefined || completionData.valueused;
-
-        if (!shouldReload) {
-            // Invalidate the completion.
-            await CoreUtils.ignoreErrors(CoreCourse.invalidateSections(this.course.id));
-
-            this.debouncedUpdateCachedCompletion?.();
-
+        if (completionData.courseId != this.course?.id) {
             return;
         }
 
-        await CoreUtils.ignoreErrors(this.invalidateData());
+        const siteId = CoreSites.getCurrentSiteId();
+        const shouldReload = completionData.valueused === true;
 
-        await this.showLoadingAndRefresh(true, false);
+        if (!shouldReload) {
+
+            if (!this.course || !('progress' in this.course) || typeof this.course.progress != 'number') {
+                return;
+            }
+
+            if (this.sections) {
+                // If the completion value is not used, the page won't be reloaded, so update the progress bar.
+                const completionModules = CoreCourse.getSectionsModules(this.sections)
+                    .map((module) => module.completion && module.completion > 0 ? 1 : module.completion)
+                    .reduce((accumulator, currentValue) => (accumulator || 0) + (currentValue || 0), 0);
+
+                const moduleProgressPercent = 100 / (completionModules || 1);
+                // Use min/max here to avoid floating point rounding errors over/under-flowing the progress bar.
+                if (completionData.state === CoreCourseModuleCompletionStatus.COMPLETION_COMPLETE) {
+                    this.course.progress = Math.min(100, this.course.progress + moduleProgressPercent);
+                } else {
+                    this.course.progress = Math.max(0, this.course.progress - moduleProgressPercent);
+                }
+            }
+
+            await CoreUtils.ignoreErrors(this.invalidateData());
+            this.debouncedUpdateCachedCompletion?.();
+        } else {
+            await CoreUtils.ignoreErrors(this.invalidateData());
+            await this.showLoadingAndRefresh(true, false);
+        }
+
+        if (!('progress' in this.course) || this.course.progress === undefined || this.course.progress === null) {
+            return;
+        }
+
+        CoreEvents.trigger(CoreCourseProvider.PROGRESS_UPDATED, {
+            courseId: this.course.id, progress: this.course.progress,
+        }, siteId);
     }
 
     /**
@@ -377,7 +414,7 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshCon
             this.changeDetectorRef.detectChanges();
 
             if (scrollTop > 0) {
-                await CoreUtils.nextTick();
+                await CoreWait.nextTick();
                 this.content?.scrollToPoint(0, scrollTop, 0);
             }
         }

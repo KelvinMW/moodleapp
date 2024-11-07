@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { InAppBrowserObject, InAppBrowserOptions } from '@ionic-native/in-app-browser';
+import { InAppBrowserObject, InAppBrowserOptions } from '@awesome-cordova-plugins/in-app-browser';
 
 import { CoreNetwork } from '@services/network';
 import { CoreDB } from '@services/db';
@@ -25,9 +25,8 @@ import {
     CoreWSUploadFileResult,
 } from '@services/ws';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
-import { CoreUrlUtils } from '@services/utils/url';
+import { CoreUrl } from '@singletons/url';
 import { CoreUtils, CoreUtilsOpenInBrowserOptions } from '@services/utils/utils';
 import { CoreConstants } from '@/core/constants';
 import { SQLiteDB } from '@classes/sqlitedb';
@@ -42,16 +41,20 @@ import { CoreDatabaseCachingStrategy } from '../database/database-table-proxy';
 import {
     CONFIG_TABLE,
     CoreSiteConfigDBRecord,
+    CoreSiteLastViewedDBPrimaryKeys,
     CoreSiteLastViewedDBRecord,
     CoreSiteWSCacheRecord,
+    LAST_VIEWED_PRIMARY_KEYS,
     LAST_VIEWED_TABLE,
     WS_CACHE_TABLE,
 } from '@services/database/sites';
 import { map } from 'rxjs/operators';
-import { firstValueFrom } from '../../utils/rxjs';
 import { CoreFilepool } from '@services/filepool';
 import { CoreSiteInfo } from './unauthenticated-site';
 import { CoreAuthenticatedSite, CoreAuthenticatedSiteOptionalData, CoreSiteWSPreSets, WSObservable } from './authenticated-site';
+import { firstValueFrom } from 'rxjs';
+import { CorePlatform } from '@services/platform';
+import { CoreLoadings } from '@services/loadings';
 
 /**
  * Class that represents a site (combination of site + user).
@@ -65,8 +68,8 @@ export class CoreSite extends CoreAuthenticatedSite {
 
     protected db!: SQLiteDB;
     protected cacheTable: AsyncInstance<CoreDatabaseTable<CoreSiteWSCacheRecord>>;
-    protected configTable: AsyncInstance<CoreDatabaseTable<CoreSiteConfigDBRecord, 'name'>>;
-    protected lastViewedTable: AsyncInstance<CoreDatabaseTable<CoreSiteLastViewedDBRecord, 'component' | 'id'>>;
+    protected configTable: AsyncInstance<CoreDatabaseTable<CoreSiteConfigDBRecord, 'name', never>>;
+    protected lastViewedTable: AsyncInstance<CoreDatabaseTable<CoreSiteLastViewedDBRecord, CoreSiteLastViewedDBPrimaryKeys>>;
     protected lastAutoLogin = 0;
     protected tokenPluginFileWorks?: boolean;
     protected tokenPluginFileWorksPromise?: Promise<boolean>;
@@ -99,18 +102,19 @@ export class CoreSite extends CoreAuthenticatedSite {
             config: { cachingStrategy: CoreDatabaseCachingStrategy.None },
         }));
 
-        this.configTable = asyncInstance(() => CoreSites.getSiteTable(CONFIG_TABLE, {
+        this.configTable = asyncInstance(() => CoreSites.getSiteTable<CoreSiteConfigDBRecord, 'name', never>(CONFIG_TABLE, {
             siteId: this.getId(),
             database: this.getDb(),
             config: { cachingStrategy: CoreDatabaseCachingStrategy.Eager },
             primaryKeyColumns: ['name'],
+            rowIdColumn: null,
         }));
 
         this.lastViewedTable = asyncInstance(() => CoreSites.getSiteTable(LAST_VIEWED_TABLE, {
             siteId: this.getId(),
             database: this.getDb(),
             config: { cachingStrategy: CoreDatabaseCachingStrategy.Eager },
-            primaryKeyColumns: ['component', 'id'],
+            primaryKeyColumns: [...LAST_VIEWED_PRIMARY_KEYS],
         }));
         this.setInfo(otherData.info);
         this.calculateOfflineDisabled();
@@ -161,7 +165,7 @@ export class CoreSite extends CoreAuthenticatedSite {
      */
     setConfig(config: CoreSiteConfig): void {
         if (config) {
-            config.tool_mobile_disabledfeatures = CoreTextUtils.treatDisabledFeatures(config.tool_mobile_disabledfeatures);
+            config.tool_mobile_disabledfeatures = this.treatDisabledFeatures(config.tool_mobile_disabledfeatures);
         }
 
         this.config = config;
@@ -376,7 +380,7 @@ export class CoreSite extends CoreAuthenticatedSite {
         const accessKey = this.tokenPluginFileWorks || this.tokenPluginFileWorks === undefined ?
             this.infos && this.infos.userprivateaccesskey : undefined;
 
-        return CoreUrlUtils.fixPluginfileURL(url, this.token || '', this.siteUrl, accessKey);
+        return CoreUrl.fixPluginfileURL(url, this.token || '', this.siteUrl, accessKey);
     }
 
     /**
@@ -472,23 +476,6 @@ export class CoreSite extends CoreAuthenticatedSite {
     }
 
     /**
-     * Open a URL in browser using auto-login in the Moodle site if available and the URL belongs to the site.
-     *
-     * @param url The URL to open.
-     * @param alertMessage If defined, an alert will be shown before opening the browser.
-     * @param options Other options.
-     * @returns Promise resolved when done, rejected otherwise.
-     * @deprecated since 4.1. Use openInBrowserWithAutoLogin instead, now it always checks that URL belongs to same site.
-     */
-    async openInBrowserWithAutoLoginIfSameSite(
-        url: string,
-        alertMessage?: string,
-        options: CoreUtilsOpenInBrowserOptions = {},
-    ): Promise<void> {
-        return this.openInBrowserWithAutoLogin(url, alertMessage, options);
-    }
-
-    /**
      * Open a URL in inappbrowser using auto-login in the Moodle site if available.
      *
      * @param url The URL to open.
@@ -500,23 +487,6 @@ export class CoreSite extends CoreAuthenticatedSite {
         const iabInstance = <InAppBrowserObject> await this.openWithAutoLogin(true, url, options, alertMessage);
 
         return iabInstance;
-    }
-
-    /**
-     * Open a URL in inappbrowser using auto-login in the Moodle site if available and the URL belongs to the site.
-     *
-     * @param url The URL to open.
-     * @param options Override default options passed to inappbrowser.
-     * @param alertMessage If defined, an alert will be shown before opening the inappbrowser.
-     * @returns Promise resolved when done.
-     * @deprecated since 4.1. Use openInAppWithAutoLogin instead, now it always checks that URL belongs to same site.
-     */
-    async openInAppWithAutoLoginIfSameSite(
-        url: string,
-        options?: InAppBrowserOptions,
-        alertMessage?: string,
-    ): Promise<InAppBrowserObject> {
-        return this.openInAppWithAutoLogin(url, options, alertMessage);
     }
 
     /**
@@ -554,29 +524,21 @@ export class CoreSite extends CoreAuthenticatedSite {
 
         // Open the URL.
         if (inApp) {
+            if (
+                options.clearsessioncache === undefined && autoLoginUrl !== url &&
+                (
+                    CoreConstants.CONFIG.clearIABSessionWhenAutoLogin === 'all' ||
+                    (CoreConstants.CONFIG.clearIABSessionWhenAutoLogin === 'android' && CorePlatform.isAndroid()) ||
+                    (CoreConstants.CONFIG.clearIABSessionWhenAutoLogin === 'ios' && CorePlatform.isIOS())
+                )
+            ) {
+                options.clearsessioncache = 'yes';
+            }
+
             return CoreUtils.openInApp(autoLoginUrl, options);
         } else {
             return CoreUtils.openInBrowser(autoLoginUrl, options);
         }
-    }
-
-    /**
-     * Open a URL in browser or InAppBrowser using auto-login in the Moodle site if available and the URL belongs to the site.
-     *
-     * @param inApp True to open it in InAppBrowser, false to open in browser.
-     * @param url The URL to open.
-     * @param options Override default options passed to inappbrowser.
-     * @param alertMessage If defined, an alert will be shown before opening the browser/inappbrowser.
-     * @returns Promise resolved when done. Resolve param is returned only if inApp=true.
-     * @deprecated since 4.1. Use openWithAutoLogin instead, now it always checks that URL belongs to same site.
-     */
-    async openWithAutoLoginIfSameSite(
-        inApp: boolean,
-        url: string,
-        options: InAppBrowserOptions & CoreUtilsOpenInBrowserOptions = {},
-        alertMessage?: string,
-    ): Promise<InAppBrowserObject | void> {
-        return this.openWithAutoLogin(inApp, url, options, alertMessage);
     }
 
     /**
@@ -741,7 +703,7 @@ export class CoreSite extends CoreAuthenticatedSite {
         let modal: CoreIonLoadingElement | undefined;
 
         if (showModal) {
-            modal = await CoreDomUtils.showModalLoading();
+            modal = await CoreLoadings.show();
         }
 
         try {
@@ -813,7 +775,7 @@ export class CoreSite extends CoreAuthenticatedSite {
      * @returns Promise resolved with boolean: whether it works or not.
      */
     checkTokenPluginFile(url: string): Promise<boolean> {
-        if (!CoreUrlUtils.canUseTokenPluginFile(url, this.siteUrl, this.infos && this.infos.userprivateaccesskey)) {
+        if (!CoreUrl.canUseTokenPluginFile(url, this.siteUrl, this.infos && this.infos.userprivateaccesskey)) {
             // Cannot use tokenpluginfile.
             return Promise.resolve(false);
         } else if (this.tokenPluginFileWorks !== undefined) {
@@ -876,14 +838,9 @@ export class CoreSite extends CoreAuthenticatedSite {
                 return await this.lastViewedTable.getMany({ component });
             }
 
-            const whereAndParams = SQLiteDB.getInOrEqual(ids);
-
-            whereAndParams.sql = 'id ' + whereAndParams.sql + ' AND component = ?';
-            whereAndParams.params.push(component);
-
             return await this.lastViewedTable.getManyWhere({
-                sql: whereAndParams.sql,
-                sqlParams: whereAndParams.params,
+                sql: `id IN (${ids.map(() => '?').join(', ')}) AND component = ?`,
+                sqlParams: [...ids, component],
                 js: (record) => record.component === component && ids.includes(record.id),
             });
         } catch {

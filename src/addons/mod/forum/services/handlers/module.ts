@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { Injectable, Type } from '@angular/core';
-import { AddonModForum, AddonModForumProvider } from '../forum';
+import { AddonModForum, AddonModForumTracking } from '../forum';
 import { makeSingleton, Translate } from '@singletons';
 import { CoreEvents } from '@singletons/events';
 import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
@@ -21,6 +21,9 @@ import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@features/
 import { CoreConstants, ModPurpose } from '@/core/constants';
 import { CoreModuleHandlerBase } from '@features/course/classes/module-base-handler';
 import { CoreCourseModuleData } from '@features/course/services/course-helper';
+import { CoreText } from '@singletons/text';
+import { CoreUser } from '@features/user/services/user';
+import { ADDON_MOD_FORUM_MARK_READ_EVENT, ADDON_MOD_FORUM_PAGE_NAME } from '../../constants';
 
 /**
  * Handler to support forum modules.
@@ -28,11 +31,9 @@ import { CoreCourseModuleData } from '@features/course/services/course-helper';
 @Injectable({ providedIn: 'root' })
 export class AddonModForumModuleHandlerService extends CoreModuleHandlerBase implements CoreCourseModuleHandler {
 
-    static readonly PAGE_NAME = 'mod_forum';
-
     name = 'AddonModForum';
     modName = 'forum';
-    protected pageName = AddonModForumModuleHandlerService.PAGE_NAME;
+    protected pageName = ADDON_MOD_FORUM_PAGE_NAME;
 
     supportedFeatures = {
         [CoreConstants.FEATURE_GROUPS]: true,
@@ -55,6 +56,29 @@ export class AddonModForumModuleHandlerService extends CoreModuleHandlerBase imp
     async getData(module: CoreCourseModuleData, courseId: number): Promise<CoreCourseModuleHandlerData> {
         const data = await super.getData(module, courseId);
 
+        const customData = module.customdata ?
+            CoreText.parseJSON<{ trackingtype?: string | number } | ''>(module.customdata, {}) : {};
+        const trackingType = typeof customData !== 'string' && customData.trackingtype !== undefined ?
+            Number(customData.trackingtype) : undefined;
+
+        if (trackingType === AddonModForumTracking.OFF) {
+            // Tracking is disabled in forum.
+            data.extraBadge = '';
+
+            return data;
+        }
+
+        if (trackingType === AddonModForumTracking.OPTIONAL) {
+            // Forum has tracking optional, check if user has tracking enabled.
+            const user = await CoreUser.getProfile(CoreSites.getCurrentSiteUserId());
+
+            if (user.trackforums === 0) {
+                data.extraBadge = '';
+
+                return data;
+            }
+        }
+
         if ('afterlink' in module && !!module.afterlink) {
             const match = />(\d+)[^<]+/.exec(module.afterlink);
             data.extraBadge = match ? Translate.instant('addon.mod_forum.unreadpostsnumber', { $a : match[1] }) : '';
@@ -63,7 +87,7 @@ export class AddonModForumModuleHandlerService extends CoreModuleHandlerBase imp
         }
 
         const event = CoreEvents.on(
-            AddonModForumProvider.MARK_READ_EVENT,
+            ADDON_MOD_FORUM_MARK_READ_EVENT,
             eventData => {
                 if (eventData.courseId !== courseId || eventData.moduleId !== module.id) {
                     return;

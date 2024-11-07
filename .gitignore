@@ -55,12 +55,14 @@ yarn-error.log
 # Miscellaneous
 /.angular
 /.angular/cache
+/.nx
 .sass-cache/
 /connect.lock
 /coverage
 /libpeerconnection.log
 testem.log
 /typings
+circular-dependencies
 
 # System files
 .DS_Store
@@ -70,6 +72,7 @@ Thumbs.db
 /src/assets/lib
 /src/assets/lang/*
 /src/assets/env.json
+/src/assets/fonts/icons.json
 
 /moodle.config.*.json
 !/moodle.config.example.json

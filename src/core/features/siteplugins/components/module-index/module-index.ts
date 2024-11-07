@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnInit, OnDestroy, Input, ViewChild, HostBinding } from '@angular/core';
+import { Component, OnInit, OnDestroy, Input, ViewChild, HostBinding, Optional } from '@angular/core';
 
 import { CoreSiteWSPreSets } from '@classes/sites/authenticated-site';
-import {
-    CoreCourseModuleSummaryResult,
-    CoreCourseModuleSummaryComponent,
-} from '@features/course/components/module-summary/module-summary';
+import { CoreCourseModuleSummaryResult } from '@features/course/components/module-summary/module-summary';
+import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
 import { CoreCourse } from '@features/course/services/course';
 import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import {
@@ -30,7 +28,7 @@ import {
     CoreSitePluginsContent,
     CoreSitePluginsCourseModuleHandlerData,
 } from '@features/siteplugins/services/siteplugins';
-import { CoreDomUtils } from '@services/utils/dom';
+import { CoreModals } from '@services/modals';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreSitePluginsPluginContentComponent, CoreSitePluginsPluginContentLoadedData } from '../plugin-content/plugin-content';
 
@@ -44,8 +42,8 @@ import { CoreSitePluginsPluginContentComponent, CoreSitePluginsPluginContentLoad
 })
 export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, CoreCourseModuleMainComponent {
 
-    @Input() module!: CoreCourseModuleData; // The module.
-    @Input() courseId!: number; // Course ID the module belongs to.
+    @Input({ required: true }) module!: CoreCourseModuleData; // The module.
+    @Input({ required: true }) courseId!: number; // Course ID the module belongs to.
     @Input() pageTitle?: string; // Current page title. It can be used by the "new-content" directives.
 
     @ViewChild(CoreSitePluginsPluginContentComponent) content?: CoreSitePluginsPluginContentComponent;
@@ -58,6 +56,7 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
     description?: string;
 
     collapsibleFooterAppearOnBottom = true;
+    addDefaultModuleInfo = false;
 
     displayOpenInBrowser = true;
     displayDescription = true;
@@ -72,6 +71,8 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
     isDestroyed = false;
 
     jsData?: Record<string, unknown>; // Data to pass to the component.
+
+    constructor(@Optional() public courseContentsPage?: CoreCourseContentsPage) {}
 
     /**
      * @inheritdoc
@@ -133,6 +134,7 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
      * Function called when the data of the site plugin content is loaded.
      */
     contentLoaded(data: CoreSitePluginsPluginContentLoadedData): void {
+        this.addDefaultModuleInfo = !data.content.includes('<core-course-module-info');
         if (data.success) {
             CoreCourse.storeModuleViewed(this.courseId, this.module.id, {
                 sectionId: this.module.section,
@@ -155,7 +157,9 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
             return;
         }
 
-        const data = await CoreDomUtils.openSideModal<CoreCourseModuleSummaryResult>({
+        const { CoreCourseModuleSummaryComponent } = await import('@features/course/components/module-summary/module-summary');
+
+        const data = await CoreModals.openSideModal<CoreCourseModuleSummaryResult>({
             component: CoreCourseModuleSummaryComponent,
             componentProps: {
                 moduleId: this.module.id,

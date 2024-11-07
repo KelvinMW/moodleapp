@@ -1,8 +1,8 @@
 {
     "app_id": "com.moodle.moodlemobile",
     "appname": "Moodle Mobile",
-    "versioncode": 44000,
-    "versionname": "4.4.0",
+    "versioncode": 50000,
+    "versionname": "5.0.0",
     "cache_update_frequency_usually": 420000,
     "cache_update_frequency_often": 1200000,
     "cache_update_frequency_sometimes": 3600000,
@@ -48,7 +48,7 @@
         "nl": "Nederlands",
         "no": "Norsk",
         "pl": "Polski",
-        "ps": "پښتو",
+        "ps": "لیسي",
         "pt": "Português - Portugal",
         "pt-br": "Português - Brasil",
         "ro": "Română",
@@ -72,12 +72,12 @@
         "student": {
             "url": "https://school.moodledemo.net",
             "username": "student",
-            "password": "moodle"
+            "password": "moodle2024"
         },
         "teacher": {
             "url": "https://school.moodledemo.net",
             "username": "teacher",
-            "password": "moodle"
+            "password": "moodle2024"
         }
     },
     "defaultZoomLevel": "none",
@@ -111,5 +111,28 @@
         "long": 3500,
         "sticky": 0
     },
-    "disableTokenFile": false
+    "disableTokenFile": false,
+    "iconsPrefixes": {
+        "font-awesome": {
+            "brands": [
+                "fab"
+            ],
+            "regular": [
+                "far"
+            ],
+            "solid": [
+                "fa",
+                "fas"
+            ]
+        },
+        "moodle": {
+            "font-awesome": [
+                "fam"
+            ],
+            "moodle": [
+                "moodle"
+            ]
+        }
+    },
+    "clearIABSessionWhenAutoLogin": "android"
 }

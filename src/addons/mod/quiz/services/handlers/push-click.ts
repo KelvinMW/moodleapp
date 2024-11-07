@@ -17,12 +17,13 @@ import { Injectable } from '@angular/core';
 import { CoreCourseHelper } from '@features/course/services/course-helper';
 import { CorePushNotificationsClickHandler } from '@features/pushnotifications/services/push-delegate';
 import { CorePushNotificationsNotificationBasicData } from '@features/pushnotifications/services/pushnotifications';
-import { CoreUrlUtils } from '@services/utils/url';
+import { CoreUrl } from '@singletons/url';
 import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
 import { AddonModQuiz } from '../quiz';
 import { AddonModQuizHelper } from '../quiz-helper';
 import { isSafeNumber } from '@/core/utils/types';
+import { ADDON_MOD_QUIZ_FEATURE_NAME } from '../../constants';
 
 /**
  * Handler for quiz push notifications clicks.
@@ -32,7 +33,7 @@ export class AddonModQuizPushClickHandlerService implements CorePushNotification
 
     name = 'AddonModQuizPushClickHandler';
     priority = 200;
-    featureName = 'CoreCourseModuleDelegate_AddonModQuiz';
+    featureName = ADDON_MOD_QUIZ_FEATURE_NAME;
 
     protected readonly SUPPORTED_NAMES = ['submission', 'confirmation', 'attempt_overdue'];
 
@@ -55,7 +56,7 @@ export class AddonModQuizPushClickHandlerService implements CorePushNotification
      * @returns Promise resolved when done.
      */
     async handleClick(notification: AddonModQuizPushNotificationData): Promise<void> {
-        const contextUrlParams = CoreUrlUtils.extractUrlParams(notification.contexturl || '');
+        const contextUrlParams = CoreUrl.extractUrlParams(notification.contexturl || '');
         const data = notification.customdata || {};
         const courseId = Number(notification.courseid);
 

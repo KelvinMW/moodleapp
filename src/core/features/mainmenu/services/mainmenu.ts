@@ -19,8 +19,7 @@ import { CoreSites } from '@services/sites';
 import { CoreConstants } from '@/core/constants';
 import { CoreMainMenuDelegate, CoreMainMenuHandlerToDisplay } from './mainmenu-delegate';
 import { Device, makeSingleton } from '@singletons';
-import { CoreArray } from '@singletons/array';
-import { CoreTextUtils } from '@services/utils/text';
+import { CoreText } from '@singletons/text';
 import { CoreScreen } from '@services/screen';
 import { CorePlatform } from '@services/platform';
 
@@ -73,7 +72,7 @@ export class CoreMainMenuProvider {
             this.getCustomItemsFromConfig(),
         ]);
 
-        return CoreArray.flatten(customItems);
+        return customItems.flat();
     }
 
     /**
@@ -114,7 +113,7 @@ export class CoreMainMenuProvider {
             const id = url + '#' + type;
             if (!icon) {
                 // Icon not defined, use default one.
-                icon = type == 'embedded' ? 'fa-expand' : 'fa-link'; // @todo Find a better icon for embedded.
+                icon = type == 'embedded' ? 'fas-expand' : 'fas-link'; // @todo Find a better icon for embedded.
             }
 
             if (!map[id]) {
@@ -212,7 +211,7 @@ export class CoreMainMenuProvider {
             .filter(item => typeof item.label === 'string' || currentLang in item.label || fallbackLang in item.label)
             .map(item => ({
                 ...item,
-                url: CoreTextUtils.replaceArguments(item.url, replacements, 'uri'),
+                url: CoreText.replaceArguments(item.url, replacements, 'uri'),
                 label: typeof item.label === 'string'
                     ? item.label
                     : item.label[currentLang] ?? item.label[fallbackLang],

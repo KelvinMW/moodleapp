@@ -27,9 +27,10 @@ import {
     CoreCourseModulePrefetchDelegate,
     CoreCourseModulePrefetchHandler,
 } from '@features/course/services/module-prefetch-delegate';
-import { CoreConstants } from '@/core/constants';
+import { CoreConstants, DownloadStatus } from '@/core/constants';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { BehaviorSubject } from 'rxjs';
+import { toBoolean } from '@/core/transforms/boolean';
 
 /**
  * Component to display a module entry in a list of modules.
@@ -45,17 +46,17 @@ import { BehaviorSubject } from 'rxjs';
 })
 export class CoreCourseModuleComponent implements OnInit, OnDestroy {
 
-    @Input() module!: CoreCourseModuleData; // The module to render.
+    @Input({ required: true }) module!: CoreCourseModuleData; // The module to render.
     @Input() section?: CoreCourseSection; // The section the module belongs to.
-    @Input() showActivityDates = false; // Whether to show activity dates.
-    @Input() showCompletionConditions = false; // Whether to show activity completion conditions.
-    @Input() showLegacyCompletion?: boolean; // Whether to show module completion in the old format.
-    @Input() showCompletion = true; // Whether to show module completion.
-    @Input() showAvailability = true; // Whether to show module availability.
-    @Input() showExtra = true; // Whether to show extra badges.
-    @Input() showDownloadStatus = true; // Whether to show download status.
-    @Input() showIndentation = true; // Whether to show indentation
-    @Input() isLastViewed = false; // Whether it's the last module viewed in a course.
+    @Input({ transform: toBoolean }) showActivityDates = false; // Whether to show activity dates.
+    @Input({ transform: toBoolean }) showCompletionConditions = false; // Whether to show activity completion conditions.
+    @Input({ transform: toBoolean }) showLegacyCompletion?: boolean; // Whether to show module completion in the old format.
+    @Input({ transform: toBoolean }) showCompletion = true; // Whether to show module completion.
+    @Input({ transform: toBoolean }) showAvailability = true; // Whether to show module availability.
+    @Input({ transform: toBoolean }) showExtra = true; // Whether to show extra badges.
+    @Input({ transform: toBoolean }) showDownloadStatus = true; // Whether to show download status.
+    @Input({ transform: toBoolean }) showIndentation = true; // Whether to show indentation
+    @Input({ transform: toBoolean }) isLastViewed = false; // Whether it's the last module viewed in a course.
     @Output() completionChanged = new EventEmitter<CoreCourseModuleCompletionData>(); // Notify when module completion changes.
     @HostBinding('class.indented') indented = false;
 
@@ -65,7 +66,6 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
     prefetchStatusIcon$ = new BehaviorSubject<string>(''); // Module prefetch status icon.
     prefetchStatusText$ = new BehaviorSubject<string>(''); // Module prefetch status text.
     moduleHasView = true;
-    activityInline = false;
 
     protected prefetchHandler?: CoreCourseModulePrefetchHandler;
 
@@ -102,20 +102,8 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
         this.module.handlerData.a11yTitle = this.module.handlerData.a11yTitle ?? this.module.handlerData.title;
         this.moduleHasView = CoreCourse.moduleHasView(this.module);
 
-        if (
-            this.module.handlerData.hasCustomCmListItem &&
-            (!this.showAvailability || !this.module.availabilityinfo) &&
-            (!this.showCompletion || !this.hasCompletion) &&
-            (!this.showActivityDates || !this.module.dates?.length) &&
-            !this.module.groupmode &&
-            !(this.module.visible === 0) &&
-            !(this.module.visible !== 0 && this.module.isStealth)
-        ) {
-            this.activityInline = true;
-        }
-
         if (this.showDownloadStatus && this.module.handlerData.showDownloadButton) {
-            const status = await CoreCourseModulePrefetchDelegate.getModuleStatus(this.module, this.module.course);
+            const status = await CoreCourseModulePrefetchDelegate.getDownloadedModuleStatus(this.module, this.module.course);
             this.updateModuleStatus(status);
 
             // Listen for changes on this module status, even if download isn't enabled.
@@ -144,19 +132,19 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
     /**
      * Show module status.
      *
-     * @param prefetchstatus Module status.
+     * @param prefetchStatus Module status.
      */
-    protected updateModuleStatus(prefetchstatus: string): void {
-        if (!prefetchstatus) {
+    protected updateModuleStatus(prefetchStatus: DownloadStatus | null): void {
+        if (!prefetchStatus) {
             return;
         }
 
-        switch (prefetchstatus) {
-            case CoreConstants.OUTDATED:
+        switch (prefetchStatus) {
+            case DownloadStatus.OUTDATED:
                 this.prefetchStatusIcon$.next(CoreConstants.ICON_OUTDATED);
                 this.prefetchStatusText$.next('core.outdated');
                 break;
-            case CoreConstants.DOWNLOADED:
+            case DownloadStatus.DOWNLOADED:
                 this.prefetchStatusIcon$.next(CoreConstants.ICON_DOWNLOADED);
                 this.prefetchStatusText$.next('core.downloaded');
                 break;
@@ -166,7 +154,7 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
                 break;
         }
 
-        this.module.handlerData?.updateStatus?.(prefetchstatus);
+        this.module.handlerData?.updateStatus?.(prefetchStatus);
     }
 
     /**

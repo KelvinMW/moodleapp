@@ -19,9 +19,8 @@ import { SafeResourceUrl } from '@angular/platform-browser';
 
 import { CoreFile } from '@services/file';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreUrlUtils } from '@services/utils/url';
+import { CoreUrl } from '@singletons/url';
 import { CoreIframeUtils } from '@services/utils/iframe';
-import { CoreUtils } from '@services/utils/utils';
 import { DomSanitizer, Router, StatusBar } from '@singletons';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreScreen, CoreScreenOrientation } from '@services/screen';
@@ -29,7 +28,7 @@ import { Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { NavigationStart } from '@angular/router';
 import { CoreSites } from '@services/sites';
-import { CoreUrl } from '@singletons/url';
+import { toBoolean } from '@/core/transforms/boolean';
 
 @Component({
     selector: 'core-iframe',
@@ -40,24 +39,31 @@ export class CoreIframeComponent implements OnChanges, OnDestroy {
 
     static loadingTimeout = 15000;
 
-    @ViewChild('iframe') iframe?: ElementRef;
+    @ViewChild('iframe') set iframeElement(iframeRef: ElementRef | undefined) {
+        this.iframe = iframeRef?.nativeElement;
+
+        this.initIframeElement();
+    }
+
     @Input() src?: string;
     @Input() id: string | null = null;
-    @Input() iframeWidth?: string;
-    @Input() iframeHeight?: string;
-    @Input() allowFullscreen?: boolean | string;
-    @Input() showFullscreenOnToolbar?: boolean | string;
-    @Input() autoFullscreenOnRotate?: boolean | string;
-    @Input() allowAutoLogin = true;
+    @Input() iframeWidth = '100%';
+    @Input() iframeHeight = '100%';
+    @Input({ transform: toBoolean }) allowFullscreen = false;
+    @Input({ transform: toBoolean }) showFullscreenOnToolbar = false;
+    @Input({ transform: toBoolean }) autoFullscreenOnRotate = false;
+    @Input({ transform: toBoolean }) allowAutoLogin = true;
     @Output() loaded: EventEmitter<HTMLIFrameElement> = new EventEmitter<HTMLIFrameElement>();
 
     loading?: boolean;
     safeUrl?: SafeResourceUrl;
     displayHelp = false;
     fullscreen = false;
+    launchExternalLabel?: string; // Text to set to the button to launch external app.
 
     initialized = false;
 
+    protected iframe?: HTMLIFrameElement;
     protected style?: HTMLStyleElement;
     protected orientationObs?: CoreEventObserver;
     protected navSubscription?: Subscription;
@@ -78,18 +84,7 @@ export class CoreIframeComponent implements OnChanges, OnDestroy {
             return;
         }
 
-        const iframe: HTMLIFrameElement | undefined = this.iframe?.nativeElement;
-        if (!iframe) {
-            return;
-        }
-
         this.initialized = true;
-
-        this.iframeWidth = (this.iframeWidth && CoreDomUtils.formatPixelsSize(this.iframeWidth)) || '100%';
-        this.iframeHeight = (this.iframeHeight && CoreDomUtils.formatPixelsSize(this.iframeHeight)) || '100%';
-        this.allowFullscreen = CoreUtils.isTrueOrOne(this.allowFullscreen);
-        this.showFullscreenOnToolbar = CoreUtils.isTrueOrOne(this.showFullscreenOnToolbar);
-        this.autoFullscreenOnRotate = CoreUtils.isTrueOrOne(this.autoFullscreenOnRotate);
 
         if (this.showFullscreenOnToolbar || this.autoFullscreenOnRotate) {
             // Leave fullscreen when navigating.
@@ -102,7 +97,7 @@ export class CoreIframeComponent implements OnChanges, OnDestroy {
                 });
 
             const shadow =
-                iframe.closest('.ion-page')?.querySelector('ion-header ion-toolbar')?.shadowRoot;
+                this.elementRef.nativeElement.closest('.ion-page')?.querySelector('ion-header ion-toolbar')?.shadowRoot;
             if (shadow) {
                 this.style = document.createElement('style');
                 shadow.appendChild(this.style);
@@ -122,25 +117,34 @@ export class CoreIframeComponent implements OnChanges, OnDestroy {
         }
 
         // Show loading only with external URLs.
-        this.loading = !this.src || !CoreUrlUtils.isLocalFileUrl(this.src);
-
-        CoreIframeUtils.treatFrame(iframe, false);
-
-        iframe.addEventListener('load', () => {
-            this.loading = false;
-            this.loaded.emit(iframe); // Notify iframe was loaded.
-        });
-
-        iframe.addEventListener('error', () => {
-            this.loading = false;
-            CoreDomUtils.showErrorModal('core.errorloadingcontent', true);
-        });
+        this.loading = !this.src || !CoreUrl.isLocalFileUrl(this.src);
 
         if (this.loading) {
             setTimeout(() => {
                 this.loading = false;
             }, CoreIframeComponent.loadingTimeout);
         }
+    }
+
+    /**
+     * Initialize things related to the iframe element.
+     */
+    protected initIframeElement(): void {
+        if (!this.iframe) {
+            return;
+        }
+
+        CoreIframeUtils.treatFrame(this.iframe, false);
+
+        this.iframe.addEventListener('load', () => {
+            this.loading = false;
+            this.loaded.emit(this.iframe); // Notify iframe was loaded.
+        });
+
+        this.iframe.addEventListener('error', () => {
+            this.loading = false;
+            CoreDomUtils.showErrorModal('core.errorloadingcontent', true);
+        });
     }
 
     /**
@@ -157,14 +161,34 @@ export class CoreIframeComponent implements OnChanges, OnDestroy {
      * Detect changes on input properties.
      */
     async ngOnChanges(changes: {[name: string]: SimpleChange }): Promise<void> {
+        if (changes.iframeWidth) {
+            this.iframeWidth = (this.iframeWidth && CoreDomUtils.formatPixelsSize(this.iframeWidth)) || '100%';
+        }
+        if (changes.iframeHeight) {
+            this.iframeHeight = (this.iframeHeight && CoreDomUtils.formatPixelsSize(this.iframeHeight)) || '100%';
+        }
+
         if (!changes.src) {
             return;
         }
 
         let url = this.src;
 
-        if (url && !CoreUrlUtils.isLocalFileUrl(url)) {
-            url = CoreUrlUtils.getYoutubeEmbedUrl(url) || url;
+        if (url) {
+            const { launchExternal, label } = CoreIframeUtils.frameShouldLaunchExternal(url);
+
+            if (launchExternal) {
+                this.launchExternalLabel = label;
+                this.loading = false;
+
+                return;
+            }
+        }
+
+        this.launchExternalLabel = undefined;
+
+        if (url && !CoreUrl.isLocalFileUrl(url)) {
+            url = CoreUrl.getYoutubeEmbedUrl(url) || url;
             this.displayHelp = CoreIframeUtils.shouldDisplayHelpForUrl(url);
 
             const currentSite = CoreSites.getCurrentSite();
@@ -182,7 +206,7 @@ export class CoreIframeComponent implements OnChanges, OnDestroy {
             await CoreIframeUtils.fixIframeCookies(url);
         }
 
-        this.safeUrl = DomSanitizer.bypassSecurityTrustResourceUrl(url ? CoreFile.convertFileSrc(url) : '');
+        this.safeUrl = url ? DomSanitizer.bypassSecurityTrustResourceUrl(CoreFile.convertFileSrc(url)) : undefined;
 
         // Now that the URL has been set, initialize the iframe. Wait for the iframe to the added to the DOM.
         setTimeout(() => {
@@ -228,8 +252,8 @@ export class CoreIframeComponent implements OnChanges, OnDestroy {
 
         document.body.classList.toggle('core-iframe-fullscreen', this.fullscreen);
 
-        if (notifyIframe && this.iframe?.nativeElement) {
-            (<HTMLIFrameElement> this.iframe.nativeElement).contentWindow?.postMessage(
+        if (notifyIframe && this.iframe) {
+            this.iframe.contentWindow?.postMessage(
                 this.fullscreen ? 'enterFullScreen' : 'exitFullScreen',
                 '*',
             );
@@ -248,6 +272,19 @@ export class CoreIframeComponent implements OnChanges, OnDestroy {
         } else if (event.data == 'exitFullScreen' && this.fullscreen) {
             this.toggleFullscreen(false, false);
         }
+    }
+
+    /**
+     * Launch content in an external app.
+     */
+    launchExternal(): void {
+        if (!this.src) {
+            return;
+        }
+
+        CoreIframeUtils.frameLaunchExternal(this.src, {
+            site: CoreSites.getCurrentSite(),
+        });
     }
 
 }

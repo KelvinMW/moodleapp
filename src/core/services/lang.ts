@@ -16,7 +16,6 @@ import { Injectable } from '@angular/core';
 
 import { CoreConstants } from '@/core/constants';
 import { LangChangeEvent } from '@ngx-translate/core';
-import { CoreAppProvider } from '@services/app';
 import { CoreConfig } from '@services/config';
 import { CoreSubscriptions } from '@singletons/subscriptions';
 import { makeSingleton, Translate, Http } from '@singletons';
@@ -26,6 +25,9 @@ import { CoreSite } from '../classes/sites/site';
 import { CorePlatform } from '@services/platform';
 import { AddonFilterMultilangHandler } from '@addons/filter/multilang/services/handlers/multilang';
 import { AddonFilterMultilang2Handler } from '@addons/filter/multilang2/services/handlers/multilang2';
+import { firstValueFrom } from 'rxjs';
+import { CoreLogger } from '@singletons/logger';
+import { CoreSites } from './sites';
 
 /*
  * Service to handle language features, like changing the current language.
@@ -39,6 +41,11 @@ export class CoreLangProvider {
     protected customStrings: CoreLanguageObject = {}; // Strings defined using the admin tool.
     protected customStringsRaw?: string;
     protected sitePluginsStrings: CoreLanguageObject = {}; // Strings defined by site plugins.
+    protected logger: CoreLogger;
+
+    constructor() {
+        this.logger = CoreLogger.getInstance('CoreLang');
+    }
 
     async initialize(): Promise<void> {
         // Set fallback language and language to use until the app determines the right language to use.
@@ -64,7 +71,7 @@ export class CoreLangProvider {
 
         let language: string;
 
-        if (CoreAppProvider.isAutomated()) {
+        if (CorePlatform.isAutomated()) {
             // Force current language to English when Behat is running.
             language = 'en';
         } else {
@@ -170,13 +177,21 @@ export class CoreLangProvider {
         // Use british english when parent english is loaded.
         moment.locale(language == 'en' ? 'en-gb' : language);
 
+        const previousLanguage = this.currentLanguage ?? this.getDefaultLanguage();
+
         this.currentLanguage = language;
 
         try {
-            await Promise.all([
-                this.reloadLanguageStrings(),
-                CoreConfig.set('current_language', language),
-            ]);
+            await this.reloadLanguageStrings();
+            await CoreConfig.set('current_language', language);
+        } catch (error) {
+            if (language !== previousLanguage) {
+                this.logger.error(`Language ${language} not available, reverting to ${previousLanguage}`, error);
+
+                return this.changeCurrentLanguage(previousLanguage);
+            }
+
+            throw error;
         } finally {
             // Load the custom and site plugins strings for the language.
             if (this.loadLangStrings(this.customStrings, language) || this.loadLangStrings(this.sitePluginsStrings, language)) {
@@ -229,6 +244,19 @@ export class CoreLangProvider {
     async getCurrentLanguage(format?: CoreLangFormat): Promise<string> {
         if (this.currentLanguage === undefined) {
             this.currentLanguage = await this.detectLanguage();
+        }
+
+        return format ? this.formatLanguage(this.currentLanguage, format) : this.currentLanguage;
+    }
+
+    /**
+     * Get current language sync.
+     *
+     * @returns Current language or undefined.
+     */
+    getCurrentLanguageSync(format?: CoreLangFormat): string | undefined {
+        if (this.currentLanguage === undefined) {
+            return;
         }
 
         return format ? this.formatLanguage(this.currentLanguage, format) : this.currentLanguage;
@@ -365,14 +393,22 @@ export class CoreLangProvider {
     /**
      * Loads custom strings obtained from site.
      *
-     * @param currentSite Current site object.
+     * @param currentSite Current site object. If not defined, use current site.
      */
-    loadCustomStringsFromSite(currentSite: CoreSite): void {
+    loadCustomStringsFromSite(currentSite?: CoreSite): void {
+        currentSite = currentSite ?? CoreSites.getCurrentSite();
+
+        if (!currentSite) {
+            return;
+        }
+
         const customStrings = currentSite.getStoredConfig('tool_mobile_customlangstrings');
 
-        if (customStrings !== undefined) {
-            this.loadCustomStrings(customStrings);
+        if (customStrings === undefined) {
+            return;
         }
+
+        this.loadCustomStrings(customStrings);
     }
 
     /**
@@ -501,7 +537,7 @@ export class CoreLangProvider {
             responseType: 'json',
         });
 
-        return <Record<string, string>> await observable.toPromise();
+        return <Record<string, string>> await firstValueFrom(observable);
     }
 
     /**
@@ -563,7 +599,10 @@ export class CoreLangProvider {
                         // Merge parent translations with the child ones.
                         const parentTranslations = Translate.translations[fallbackLang] ?? await this.readLangFile(fallbackLang);
 
-                        const mergedData = Object.assign(parentTranslations, data);
+                        const mergedData = {
+                            ...parentTranslations,
+                            ...data,
+                        };
 
                         Object.assign(data, mergedData);
                     } catch {

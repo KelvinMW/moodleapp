@@ -21,6 +21,7 @@ import { CoreRedirectPayload } from '@services/navigator';
 import { CoreCourseModuleCompletionData } from '@features/course/services/course-helper';
 import { CoreScreenOrientation } from '@services/screen';
 import { CoreSiteInfoResponse, CoreSitePublicConfigResponse } from '@classes/sites/unauthenticated-site';
+import { DownloadStatus } from '../constants';
 
 /**
  * Observer instance to stop listening to an event.
@@ -55,6 +56,7 @@ export interface CoreEventsData {
     [CoreEvents.IAB_LOAD_START]: InAppBrowserEvent;
     [CoreEvents.IAB_LOAD_STOP]: InAppBrowserEvent;
     [CoreEvents.IAB_MESSAGE]: Record<string, unknown>;
+    [CoreEvents.LOGIN]: { siteId: string };
     [CoreEvents.LOGIN_SITE_CHECKED]: CoreEventLoginSiteCheckedData;
     [CoreEvents.LOGIN_SITE_UNCHECKED]: CoreEventLoginSiteUncheckedData;
     [CoreEvents.SEND_ON_ENTER_CHANGED]: CoreEventSendOnEnterChangedData;
@@ -326,7 +328,7 @@ export type CoreEventLoadingChangedData = {
  */
 export type CoreEventCourseStatusChanged = {
     courseId: number; // Course Id.
-    status: string;
+    status: DownloadStatus;
 };
 
 /**
@@ -335,7 +337,7 @@ export type CoreEventCourseStatusChanged = {
 export type CoreEventPackageStatusChanged = {
     component: string;
     componentId: string | number;
-    status: string;
+    status: DownloadStatus;
 };
 
 /**
@@ -427,6 +429,7 @@ export type CoreEventActivityDataSentData = {
  */
 export type CoreEventLoginSiteCheckedData = {
     config: CoreSitePublicConfigResponse;
+    siteId?: string;
 };
 
 /**
@@ -435,6 +438,7 @@ export type CoreEventLoginSiteCheckedData = {
 export type CoreEventLoginSiteUncheckedData = {
     config?: CoreSitePublicConfigResponse;
     loginSuccessful: boolean;
+    siteId?: string;
 };
 
 /**

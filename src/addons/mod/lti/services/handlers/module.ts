@@ -19,9 +19,9 @@ import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@features/
 import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { makeSingleton } from '@singletons';
 import { AddonModLtiHelper } from '../lti-helper';
-import { AddonModLtiIndexComponent } from '../../components/index';
 import { CoreModuleHandlerBase } from '@features/course/classes/module-base-handler';
 import { CoreCourse } from '@features/course/services/course';
+import { ADDON_MOD_LTI_PAGE_NAME } from '../../constants';
 
 /**
  * Handler to support LTI modules.
@@ -29,11 +29,9 @@ import { CoreCourse } from '@features/course/services/course';
 @Injectable({ providedIn: 'root' })
 export class AddonModLtiModuleHandlerService extends CoreModuleHandlerBase implements CoreCourseModuleHandler {
 
-    static readonly PAGE_NAME = 'mod_lti';
-
     name = 'AddonModLti';
     modName = 'lti';
-    protected pageName = AddonModLtiModuleHandlerService.PAGE_NAME;
+    protected pageName = ADDON_MOD_LTI_PAGE_NAME;
 
     supportedFeatures = {
         [CoreConstants.FEATURE_GROUPS]: false,
@@ -44,7 +42,7 @@ export class AddonModLtiModuleHandlerService extends CoreModuleHandlerBase imple
         [CoreConstants.FEATURE_GRADE_OUTCOMES]: true,
         [CoreConstants.FEATURE_BACKUP_MOODLE2]: true,
         [CoreConstants.FEATURE_SHOW_DESCRIPTION]: true,
-        [CoreConstants.FEATURE_MOD_PURPOSE]: ModPurpose.MOD_PURPOSE_CONTENT,
+        [CoreConstants.FEATURE_MOD_PURPOSE]: ModPurpose.MOD_PURPOSE_OTHER,
     };
 
     /**
@@ -76,6 +74,8 @@ export class AddonModLtiModuleHandlerService extends CoreModuleHandlerBase imple
      * @inheritdoc
      */
     async getMainComponent(): Promise<Type<unknown>> {
+        const { AddonModLtiIndexComponent } = await import('../../components/index');
+
         return AddonModLtiIndexComponent;
     }
 

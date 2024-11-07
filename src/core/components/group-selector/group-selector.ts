@@ -27,13 +27,14 @@ import { CoreGroupInfo } from '@services/groups';
 @Component({
     selector: 'core-group-selector',
     templateUrl: 'group-selector.html',
+    styleUrl: 'group-selector.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CoreGroupSelectorComponent {
 
     @Input() groupInfo?: CoreGroupInfo;
     @Input() multipleGroupsMessage?: string;
-    @Input() selected!: number;
+    @Input({ required: true }) selected!: number;
     @Input() courseId?: number;
     @Output() selectedChange = new EventEmitter<number>();
 

@@ -1,4 +1,4 @@
-@mod @mod_glossary @app @javascript
+@addon_mod_glossary @app @javascript
 Feature: Test glossary navigation
 
   Background:
@@ -114,7 +114,7 @@ Feature: Test glossary navigation
     Then I should find "Apricots are a fruit" in the app
 
     # By author
-    When I press the back button in the app
+    When I go back in the app
     And I scroll to "Acerola" in the app
     And I press "Browse entries" in the app
     And I press "Group by author" in the app
@@ -143,14 +143,14 @@ Feature: Test glossary navigation
     Then I should find "Banana is a fruit" in the app
 
     # Search
-    When I press the back button in the app
+    When I go back in the app
     And I scroll to "Acerola" in the app
     And I press "Search" in the app
-    And I set the field "Search" to "something" in the app
+    And I set the field "Search query" to "something" in the app
     And I press enter
     Then I should find "No entries were found." in the app
 
-    When I set the field "Search" to "melon" in the app
+    When I set the field "Search query" to "melon" in the app
     And I press enter
     Then I should find "Honeydew Melon" in the app
     And I should find "Watermelon" in the app
@@ -170,7 +170,7 @@ Feature: Test glossary navigation
     Then I should find "Watermelon is a fruit" in the app
 
     # Offline
-    When I press the back button in the app
+    When I go back in the app
     And I press "Clear search" in the app
     And I press "Add a new entry" in the app
     And I switch network connection to offline
@@ -206,12 +206,11 @@ Feature: Test glossary navigation
     And I press "Save" in the app
     Then I should find "Tomato is a fruit" in the app
 
-    When I press the back button in the app
+    When I go back in the app
     Then I should find "Tomato" in the app
     And I should find "Cashew" in the app
     And I should find "Acerola" in the app
 
-  @ci_jenkins_skip
   Scenario: Tablet navigation on glossary
     Given I entered the course "Course 1" as "student1" in the app
     And I change viewport size to "1200x640" in the app
@@ -266,11 +265,11 @@ Feature: Test glossary navigation
 
     # Search
     When I press "Search" in the app
-    And I set the field "Search" to "something" in the app
+    And I set the field "Search query" to "something" in the app
     And I press enter
     Then I should find "No entries were found." in the app
 
-    When I set the field "Search" to "melon" in the app
+    When I set the field "Search query" to "melon" in the app
     And I press enter
     Then I should find "Honeydew Melon" in the app
     And I should find "Watermelon" in the app

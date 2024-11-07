@@ -15,7 +15,7 @@
 import { Component, Optional, OnInit, OnDestroy, Output, EventEmitter } from '@angular/core';
 import { IonContent } from '@ionic/angular';
 
-import { CoreConstants } from '@/core/constants';
+import { DownloadStatus } from '@/core/constants';
 import { CoreSite } from '@classes/sites/site';
 import { CoreCourseModuleMainActivityComponent } from '@features/course/classes/main-activity-component';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
@@ -35,21 +35,24 @@ import {
     AddonModH5PActivity,
     AddonModH5PActivityAccessInfo,
     AddonModH5PActivityData,
-    AddonModH5PActivityProvider,
     AddonModH5PActivityXAPIPostStateData,
     AddonModH5PActivityXAPIStateData,
     AddonModH5PActivityXAPIStatementsData,
-    MOD_H5PACTIVITY_STATE_ID,
 } from '../../services/h5pactivity';
 import {
     AddonModH5PActivitySync,
-    AddonModH5PActivitySyncProvider,
     AddonModH5PActivitySyncResult,
 } from '../../services/h5pactivity-sync';
 import { CoreFileHelper } from '@services/file-helper';
-import { AddonModH5PActivityModuleHandlerService } from '../../services/handlers/module';
-import { CoreTextUtils } from '@services/utils/text';
+import { CoreText } from '@singletons/text';
 import { CoreUtils } from '@services/utils/utils';
+import {
+    ADDON_MOD_H5PACTIVITY_AUTO_SYNCED,
+    ADDON_MOD_H5PACTIVITY_COMPONENT,
+    ADDON_MOD_H5PACTIVITY_PAGE_NAME,
+    ADDON_MOD_H5PACTIVITY_STATE_ID,
+    ADDON_MOD_H5PACTIVITY_TRACK_COMPONENT,
+} from '../../constants';
 
 /**
  * Component that displays an H5P activity entry page.
@@ -62,7 +65,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
 
     @Output() onActivityFinish = new EventEmitter<boolean>();
 
-    component = AddonModH5PActivityProvider.COMPONENT;
+    component = ADDON_MOD_H5PACTIVITY_COMPONENT;
     pluginName = 'h5pactivity';
 
     h5pActivity?: AddonModH5PActivityData; // The H5P activity object.
@@ -90,7 +93,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     contentState?: string;
 
     protected fetchContentDefaultError = 'addon.mod_h5pactivity.errorgetactivity';
-    protected syncEventName = AddonModH5PActivitySyncProvider.AUTO_SYNCED;
+    protected syncEventName = ADDON_MOD_H5PACTIVITY_AUTO_SYNCED;
     protected site: CoreSite;
     protected observer?: CoreEventObserver;
     protected messageListenerFunction: (event: MessageEvent) => Promise<void>;
@@ -147,7 +150,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
 
         await this.loadContentState(); // Loading the state requires the access info.
 
-        this.trackComponent = this.accessInfo?.cansubmit ? AddonModH5PActivityProvider.TRACK_COMPONENT : '';
+        this.trackComponent = this.accessInfo?.cansubmit ? ADDON_MOD_H5PACTIVITY_TRACK_COMPONENT : '';
         this.canViewAllAttempts = !!this.h5pActivity.enabletracking && !!this.accessInfo?.canreviewattempts &&
                 AddonModH5PActivity.canGetUsersAttemptsInSite();
 
@@ -161,12 +164,16 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
             );
         }
 
-        if (!this.siteCanDownload || this.state == CoreConstants.DOWNLOADED) {
+        if (!this.siteCanDownload || this.state === DownloadStatus.DOWNLOADED) {
             // Cannot download the file or already downloaded, play the package directly.
             this.play();
 
-        } else if ((this.state == CoreConstants.NOT_DOWNLOADED || this.state == CoreConstants.OUTDATED) && CoreNetwork.isOnline() &&
-                    this.deployedFile?.filesize && CoreFilepool.shouldDownload(this.deployedFile.filesize)) {
+        } else if (
+            (this.state == DownloadStatus.DOWNLOADABLE_NOT_DOWNLOADED || this.state == DownloadStatus.OUTDATED) &&
+            CoreNetwork.isOnline() &&
+            this.deployedFile?.filesize &&
+            CoreFilepool.shouldDownload(this.deployedFile.filesize)
+        ) {
             // Package is small, download it automatically. Don't block this function for this.
             this.downloadAutomatically();
         }
@@ -237,6 +244,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     protected async loadContentState(): Promise<void> {
         if (!this.h5pActivity || !this.accessInfo || !AddonModH5PActivity.isSaveStateEnabled(this.h5pActivity, this.accessInfo)) {
             this.saveStateEnabled = false;
+            this.contentState = undefined;
 
             return;
         }
@@ -245,21 +253,23 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
         this.saveFreq = this.h5pActivity.savestatefreq;
 
         const contentState = await CoreXAPI.getState(
-            AddonModH5PActivityProvider.TRACK_COMPONENT,
+            ADDON_MOD_H5PACTIVITY_TRACK_COMPONENT,
             this.h5pActivity.context,
-            MOD_H5PACTIVITY_STATE_ID,
+            ADDON_MOD_H5PACTIVITY_STATE_ID,
             {
-                appComponent: AddonModH5PActivityProvider.COMPONENT,
+                appComponent: ADDON_MOD_H5PACTIVITY_COMPONENT,
                 appComponentId: this.h5pActivity.coursemodule,
                 readingStrategy: CoreSitesReadingStrategy.PREFER_NETWORK,
             },
         );
 
         if (contentState === null) {
+            this.contentState = undefined;
+
             return;
         }
 
-        const contentStateObj = CoreTextUtils.parseJSON<{h5p: string}>(contentState, { h5p: '{}' });
+        const contentStateObj = CoreText.parseJSON<{h5p: string}>(contentState, { h5p: '{}' });
 
         // The H5P state doesn't always use JSON, so an h5p property was added to jsonize it.
         this.contentState = contentStateObj.h5p ?? '{}';
@@ -295,13 +305,13 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
      * Displays some data based on the state of the main file.
      */
     protected async showFileState(): Promise<void> {
-        if (this.state == CoreConstants.OUTDATED) {
+        if (this.state === DownloadStatus.OUTDATED) {
             this.stateMessage = 'addon.mod_h5pactivity.filestateoutdated';
             this.needsDownload = true;
-        } else if (this.state == CoreConstants.NOT_DOWNLOADED) {
+        } else if (this.state === DownloadStatus.DOWNLOADABLE_NOT_DOWNLOADED) {
             this.stateMessage = 'addon.mod_h5pactivity.filestatenotdownloaded';
             this.needsDownload = true;
-        } else if (this.state == CoreConstants.DOWNLOADING) {
+        } else if (this.state === DownloadStatus.DOWNLOADING) {
             this.stateMessage = '';
 
             if (!this.downloading) {
@@ -457,7 +467,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
 
         try {
             await CoreNavigator.navigateToSitePath(
-                `${AddonModH5PActivityModuleHandlerService.PAGE_NAME}/${this.courseId}/${this.module.id}/userattempts/${userId}`,
+                `${ADDON_MOD_H5PACTIVITY_PAGE_NAME}/${this.courseId}/${this.module.id}/userattempts/${userId}`,
             );
         } finally {
             this.isOpeningPage = false;
@@ -472,7 +482,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
 
         try {
             await CoreNavigator.navigateToSitePath(
-                `${AddonModH5PActivityModuleHandlerService.PAGE_NAME}/${this.courseId}/${this.module.id}/users`,
+                `${ADDON_MOD_H5PACTIVITY_PAGE_NAME}/${this.courseId}/${this.module.id}/users`,
             );
         } finally {
             this.isOpeningPage = false;
@@ -689,7 +699,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
             return;
         }
 
-        await CoreUtils.ignoreErrors(CoreXAPIOffline.deleteStates(AddonModH5PActivityProvider.TRACK_COMPONENT, {
+        await CoreUtils.ignoreErrors(CoreXAPIOffline.deleteStates(ADDON_MOD_H5PACTIVITY_TRACK_COMPONENT, {
             itemId: this.h5pActivity.context,
         }));
     }

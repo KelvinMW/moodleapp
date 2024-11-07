@@ -20,8 +20,7 @@ import { CoreApp, CoreStoreConfig } from '@services/app';
 import { CoreEvents } from '@singletons/events';
 import { CoreWS } from '@services/ws';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreTextUtils } from '@services/utils/text';
-import { CoreUrlUtils } from '@services/utils/url';
+import { CoreUrl, CoreUrlPartNames } from '@singletons/url';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreConstants } from '@/core/constants';
 import {
@@ -41,9 +40,8 @@ import {
     SiteDBEntry,
     SchemaVersionsDBEntry,
 } from '@services/database/sites';
-import { CoreArray } from '../singletons/array';
 import { CoreNetworkError } from '@classes/errors/network-error';
-import { CoreRedirectPayload } from './navigator';
+import { CoreNavigator, CoreRedirectPayload } from './navigator';
 import { CoreSitesFactory } from './sites-factory';
 import { CoreText } from '@singletons/text';
 import { CoreLoginHelper } from '@features/login/services/login-helper';
@@ -65,6 +63,11 @@ import { CoreAutoLogoutType, CoreAutoLogout } from '@features/autologout/service
 import { CoreCacheManager } from '@services/cache-manager';
 import { CoreSiteInfo, CoreSiteInfoResponse, CoreSitePublicConfigResponse } from '@classes/sites/unauthenticated-site';
 import { CoreSiteWSPreSets } from '@classes/sites/authenticated-site';
+import { firstValueFrom } from 'rxjs';
+import { CoreHTMLClasses } from '@singletons/html-classes';
+import { CoreSiteErrorDebug } from '@classes/errors/siteerror';
+import { CoreErrorHelper } from './error-helper';
+import { CoreQueueRunner } from '@classes/queue-runner';
 
 export const CORE_SITE_SCHEMAS = new InjectionToken<CoreSiteSchema[]>('CORE_SITE_SCHEMAS');
 export const CORE_SITE_CURRENT_SITE_ID_CONFIG = 'current_site_id';
@@ -91,12 +94,17 @@ export class CoreSitesProvider {
     protected siteSchemas: { [name: string]: CoreRegisteredSiteSchema } = {};
     protected pluginsSiteSchemas: { [name: string]: CoreRegisteredSiteSchema } = {};
     protected siteTables: Record<string, Record<string, CorePromisedValue<CoreDatabaseTable>>> = {};
-    protected schemasTables: Record<string, AsyncInstance<CoreDatabaseTable<SchemaVersionsDBEntry, 'name'>>> = {};
+    protected schemasTables: Record<string, AsyncInstance<CoreDatabaseTable<SchemaVersionsDBEntry, 'name', never>>> = {};
     protected sitesTable = asyncInstance<CoreDatabaseTable<SiteDBEntry>>();
+
+    // Variables to run code after login navigation.
+    protected isLoginNavigationFinished = false;
+    protected afterLoginNavigationQueue: CoreSitesAfterLoginNavigationProcess[] = [];
+    protected afterLoginNavigationQueueRunner = new CoreQueueRunner(1, true);
 
     constructor(@Optional() @Inject(CORE_SITE_SCHEMAS) siteSchemas: CoreSiteSchema[][] | null) {
         this.logger = CoreLogger.getInstance('CoreSitesProvider');
-        this.siteSchemas = CoreArray.flatten(siteSchemas ?? []).reduce(
+        this.siteSchemas = (siteSchemas ?? []).flat().reduce(
             (siteSchemas, schema) => {
                 siteSchemas[schema.name] = schema;
 
@@ -107,9 +115,10 @@ export class CoreSitesProvider {
     }
 
     /**
-     * Initialize.
+     * @inheritdoc
      */
     initialize(): void {
+        // Initialize general site events.
         CoreEvents.on(CoreEvents.SITE_DELETED, async ({ siteId }) => {
             if (!siteId || !(siteId in this.siteTables)) {
                 return;
@@ -122,6 +131,67 @@ export class CoreSitesProvider {
             );
 
             delete this.siteTables[siteId];
+        });
+
+        CoreEvents.on(CoreEvents.LOGOUT, async () => {
+            // Unload lang custom strings.
+            CoreLang.clearCustomStrings();
+
+            // Remove version classes from body.
+            CoreHTMLClasses.removeSiteClasses();
+
+            // Go to sites page when user is logged out.
+            await CoreNavigator.navigate('/login/sites', { reset: true });
+
+            if (CoreSitePlugins.hasSitePluginsLoaded) {
+                // Temporary fix. Reload the page to unload all plugins.
+                window.location.reload();
+            }
+        });
+
+        CoreEvents.on(CoreEvents.LOGIN, async (data) => {
+            if (data.siteId) {
+                const site = await CoreSites.getSite(data.siteId);
+                const info = site.getInfo();
+                if (info) {
+                    CoreHTMLClasses.addSiteClasses(info);
+                }
+            }
+
+            CoreLang.loadCustomStringsFromSite();
+        });
+
+        // Site config is checked in login.
+        CoreEvents.on(CoreEvents.LOGIN_SITE_CHECKED, (data) => {
+            CoreHTMLClasses.addSiteUrlClass(data.config.httpswwwroot);
+        });
+
+        // Unload temporary styles when site config is "unchecked" in login.
+        CoreEvents.on(CoreEvents.LOGIN_SITE_UNCHECKED, ({ loginSuccessful }) => {
+            if (loginSuccessful) {
+                // The classes are already added in LOGIN_SITE_CHECKED.
+                return;
+            }
+
+            CoreHTMLClasses.removeSiteClasses();
+        });
+
+        CoreEvents.on(CoreEvents.SITE_UPDATED, async (data) => {
+            if (data.siteId !== CoreSites.getCurrentSiteId()) {
+                return;
+            }
+
+            CoreLang.loadCustomStringsFromSite();
+            CoreHTMLClasses.addSiteClasses(data);
+        });
+
+        CoreEvents.on(CoreEvents.SITE_ADDED, (data) => {
+            if (data.siteId !== CoreSites.getCurrentSiteId()) {
+                return;
+            }
+
+            CoreLang.loadCustomStringsFromSite();
+            CoreHTMLClasses.addSiteClasses(data);
         });
 
         CoreCacheManager.registerInvalidateListener(() => this.invalidateCaches());
@@ -157,7 +227,8 @@ export class CoreSitesProvider {
      */
     async getSiteTable<
         DBRecord extends SQLiteDBRecordValues,
-        PrimaryKeyColumn extends keyof DBRecord
+        PrimaryKeyColumn extends keyof DBRecord,
+        RowIdColumn extends PrimaryKeyColumn,
     >(
         tableName: string,
         options: Partial<{
@@ -165,9 +236,10 @@ export class CoreSitesProvider {
             config: Partial<CoreDatabaseConfiguration>;
             database: SQLiteDB;
             primaryKeyColumns: PrimaryKeyColumn[];
+            rowIdColumn: RowIdColumn | null;
             onDestroy(): void;
         }> = {},
-    ): Promise<CoreDatabaseTable<DBRecord, PrimaryKeyColumn>> {
+    ): Promise<CoreDatabaseTable<DBRecord, PrimaryKeyColumn, RowIdColumn>> {
         const siteId = options.siteId ?? this.getCurrentSiteId();
 
         if (!(siteId in this.siteTables)) {
@@ -177,11 +249,12 @@ export class CoreSitesProvider {
         if (!(tableName in this.siteTables[siteId])) {
             const promisedTable = this.siteTables[siteId][tableName] = new CorePromisedValue();
             const database = options.database ?? await this.getSiteDb(siteId);
-            const table = new CoreDatabaseTableProxy<DBRecord, PrimaryKeyColumn>(
+            const table = new CoreDatabaseTableProxy<DBRecord, PrimaryKeyColumn, RowIdColumn>(
                 options.config ?? {},
                 database,
                 tableName,
                 options.primaryKeyColumns,
+                options.rowIdColumn,
             );
 
             options.onDestroy && table.addListener({ onDestroy: options.onDestroy });
@@ -191,7 +264,7 @@ export class CoreSitesProvider {
             promisedTable.resolve(table as unknown as CoreDatabaseTable);
         }
 
-        return this.siteTables[siteId][tableName] as unknown as Promise<CoreDatabaseTable<DBRecord, PrimaryKeyColumn>>;
+        return this.siteTables[siteId][tableName] as unknown as Promise<CoreDatabaseTable<DBRecord, PrimaryKeyColumn, RowIdColumn>>;
     }
 
     /**
@@ -219,9 +292,9 @@ export class CoreSitesProvider {
      */
     async checkSite(siteUrl: string, protocol: string = 'https://'): Promise<CoreSiteCheckResponse> {
         // The formatURL function adds the protocol if is missing.
-        siteUrl = CoreUrlUtils.formatURL(siteUrl);
+        siteUrl = CoreUrl.formatURL(siteUrl);
 
-        if (!CoreUrlUtils.isHttpURL(siteUrl)) {
+        if (!CoreUrl.isHttpURL(siteUrl)) {
             throw new CoreError(Translate.instant('core.login.invalidsite'));
         }
 
@@ -248,9 +321,9 @@ export class CoreSitesProvider {
                 }
 
                 // Site doesn't exist. Return the error message.
-                if (CoreTextUtils.getErrorMessageFromError(error)) {
+                if (CoreErrorHelper.getErrorMessageFromError(error)) {
                     throw error;
-                } else if (CoreTextUtils.getErrorMessageFromError(secondError)) {
+                } else if (CoreErrorHelper.getErrorMessageFromError(secondError)) {
                     throw secondError;
                 } else {
                     throw new CoreError(Translate.instant('core.sitenotfoundhelp'));
@@ -283,7 +356,7 @@ export class CoreSitesProvider {
             }
 
             // Try to add or remove 'www'.
-            temporarySite.setURL(CoreUrlUtils.addOrRemoveWWW(temporarySite.getURL()));
+            temporarySite.setURL(CoreUrl.addOrRemoveWWW(temporarySite.getURL()));
 
             try {
                 config = await temporarySite.getPublicConfig();
@@ -294,7 +367,7 @@ export class CoreSitesProvider {
                 }
 
                 // App didn't receive a WS response, probably cannot connect. Prioritize first error if it's valid.
-                if (CoreTextUtils.getErrorMessageFromError(error)) {
+                if (CoreErrorHelper.getErrorMessageFromError(error)) {
                     throw error;
                 } else {
                     throw secondError;
@@ -306,18 +379,22 @@ export class CoreSitesProvider {
         if (!config.enablewebservices) {
             throw this.createCannotConnectLoginError(config.httpswwwroot || config.wwwroot, {
                 supportConfig: new CoreUserGuestSupportConfig(temporarySite, config),
-                errorcode: 'webservicesnotenabled',
-                errorDetails: Translate.instant('core.login.webservicesnotenabled'),
                 critical: true,
+                debug: {
+                    code: 'webservicesnotenabled',
+                    details: Translate.instant('core.login.webservicesnotenabled'),
+                },
             });
         }
 
         if (!config.enablemobilewebservice) {
             throw this.createCannotConnectLoginError(config.httpswwwroot || config.wwwroot, {
                 supportConfig: new CoreUserGuestSupportConfig(temporarySite, config),
-                errorcode: 'mobileservicesnotenabled',
-                errorDetails: Translate.instant('core.login.mobileservicesnotenabled'),
                 critical: true,
+                debug: {
+                    code: 'mobileservicesnotenabled',
+                    details: Translate.instant('core.login.mobileservicesnotenabled'),
+                },
             });
         }
 
@@ -365,14 +442,16 @@ export class CoreSitesProvider {
         siteUrl: string,
         error: CoreError | CoreAjaxError | CoreAjaxWSError,
     ): Promise<CoreLoginError> {
-        if (error instanceof CoreAjaxError || !('errorcode' in error)) {
+        if (error instanceof CoreAjaxError || (!('debug' in error) && !('errorcode' in error))) {
             // The WS didn't return data, probably cannot connect.
             return new CoreLoginError({
                 title: Translate.instant('core.cannotconnect'),
                 message: Translate.instant('core.siteunavailablehelp', { site: siteUrl }),
-                errorcode: 'publicconfigfailed',
-                errorDetails: error.message || '',
                 critical: false, // Allow fallback to http if siteUrl uses https.
+                debug: {
+                    code: 'publicconfigfailed',
+                    details: error.message || 'Failed getting public config',
+                },
             });
         }
 
@@ -381,28 +460,31 @@ export class CoreSitesProvider {
             critical: true,
             title: Translate.instant('core.cannotconnect'),
             message: Translate.instant('core.siteunavailablehelp', { site: siteUrl }),
-            errorcode: error.errorcode,
             supportConfig: error.supportConfig,
-            errorDetails: error.errorDetails ?? error.message,
+            debug: error.debug,
         };
 
-        if (error.errorcode === 'codingerror') {
+        if (error.debug?.code === 'codingerror') {
             // This could be caused by a redirect. Check if it's the case.
             const redirect = await CoreUtils.checkRedirect(siteUrl);
 
             options.message = Translate.instant('core.siteunavailablehelp', { site: siteUrl });
 
             if (redirect) {
-                options.errorcode = 'sitehasredirect';
-                options.errorDetails = Translate.instant('core.login.sitehasredirect');
                 options.critical = false; // Keep checking fallback URLs.
+                options.debug = {
+                    code: 'sitehasredirect',
+                    details: Translate.instant('core.login.sitehasredirect'),
+                };
             }
-        } else if (error.errorcode === 'invalidrecord') {
+        } else if (error.debug?.code === 'invalidrecord') {
             // WebService not found, site not supported.
             options.message = Translate.instant('core.siteunavailablehelp', { site: siteUrl });
-            options.errorcode = 'invalidmoodleversion';
-            options.errorDetails = Translate.instant('core.login.invalidmoodleversion', { $a: CoreSite.MINIMUM_MOODLE_VERSION });
-        } else if (error.errorcode === 'redirecterrordetected') {
+            options.debug = {
+                code: 'invalidmoodleversion',
+                details: Translate.instant('core.login.invalidmoodleversion', { $a: CoreSite.MINIMUM_MOODLE_VERSION }),
+            };
+        } else if (error.debug?.code === 'redirecterrordetected') {
             options.critical = false; // Keep checking fallback URLs.
         }
 
@@ -441,21 +523,23 @@ export class CoreSitesProvider {
         let data: CoreSitesLoginTokenResponse;
 
         try {
-            data = await Http.post(loginUrl, params).pipe(timeout(CoreWS.getRequestTimeout())).toPromise();
+            data = await firstValueFrom(Http.post(loginUrl, params).pipe(timeout(CoreWS.getRequestTimeout())));
         } catch (error) {
-            throw new CoreError(
-                this.isLoggedIn()
-                    ? Translate.instant('core.siteunavailablehelp', { site: this.currentSite?.siteUrl })
-                    : Translate.instant('core.sitenotfoundhelp'),
-            );
+            throw this.createCannotConnectLoginError(siteUrl, {
+                debug: {
+                    code: 'logintokenerror',
+                    details: error.message,
+                },
+            });
         }
 
         if (data === undefined) {
-            throw new CoreError(
-                this.isLoggedIn()
-                    ? Translate.instant('core.siteunavailablehelp', { site: this.currentSite?.siteUrl })
-                    : Translate.instant('core.sitenotfoundhelp'),
-            );
+            throw this.createCannotConnectLoginError(siteUrl, {
+                debug: {
+                    code: 'logintokenempty',
+                    details: 'The request to /login/token.php returned an empty response',
+                },
+            });
         }
 
         if (data.token !== undefined) {
@@ -468,7 +552,7 @@ export class CoreSitesProvider {
 
         // We only allow one retry (to avoid loops).
         if (!retry && data.errorcode == 'requirecorrectaccess') {
-            siteUrl = CoreUrlUtils.addOrRemoveWWW(siteUrl);
+            siteUrl = CoreUrl.addOrRemoveWWW(siteUrl);
 
             return this.getUserToken(siteUrl, username, password, service, true);
         }
@@ -480,16 +564,20 @@ export class CoreSitesProvider {
             if (redirect) {
                 throw this.createCannotConnectLoginError(siteUrl, {
                     supportConfig: await CoreUserGuestSupportConfig.forSite(siteUrl),
-                    errorcode: 'sitehasredirect',
-                    errorDetails: Translate.instant('core.login.sitehasredirect'),
+                    debug: {
+                        code: 'sitehasredirect',
+                        details: Translate.instant('core.login.sitehasredirect'),
+                    },
                 });
             }
         }
 
         throw this.createCannotConnectLoginError(siteUrl, {
             supportConfig: await CoreUserGuestSupportConfig.forSite(siteUrl),
-            errorcode: data.errorcode,
-            errorDetails: data.error,
+            debug: {
+                code: data.errorcode ?? 'loginfailed',
+                details: data.error ?? 'Could not get a user token in /login/token.php',
+            },
         });
     }
 
@@ -575,7 +663,7 @@ export class CoreSitesProvider {
                 this.currentSite = site;
                 // Store session.
                 await this.login(siteId);
-            } else if (this.currentSite && this.currentSite.getId() == siteId) {
+            } else if (this.currentSite && this.currentSite.getId() === siteId) {
                 // Current site has just been updated, trigger the event.
                 CoreEvents.trigger(CoreEvents.SITE_UPDATED, info, siteId);
             }
@@ -601,23 +689,33 @@ export class CoreSitesProvider {
      * @returns A promise rejected with the error info.
      */
     protected async treatInvalidAppVersion(result: number, siteId?: string): Promise<never> {
-        let errorCode: string | undefined;
+        let debug: CoreSiteErrorDebug | undefined;
         let errorKey: string | undefined;
         let translateParams = {};
 
         switch (result) {
             case CoreSitesProvider.MOODLE_APP:
                 errorKey = 'core.login.connecttomoodleapp';
-                errorCode = 'connecttomoodleapp';
+                debug = {
+                    code: 'connecttomoodleapp',
+                    details: 'Cannot connect to app',
+                };
                 break;
             case CoreSitesProvider.WORKPLACE_APP:
                 errorKey = 'core.login.connecttoworkplaceapp';
-                errorCode = 'connecttoworkplaceapp';
+                debug = {
+                    code: 'connecttoworkplaceapp',
+                    details: 'Cannot connect to app',
+                };
                 break;
             default:
-                errorCode = 'invalidmoodleversion';
                 errorKey = 'core.login.invalidmoodleversion';
                 translateParams = { $a: CoreSite.MINIMUM_MOODLE_VERSION };
+                debug = {
+                    code: 'invalidmoodleversion',
+                    details: 'Cannot connect to app',
+                };
+                break;
         }
 
         if (siteId) {
@@ -625,8 +723,8 @@ export class CoreSitesProvider {
         }
 
         throw new CoreLoginError({
+            debug,
             message: Translate.instant(errorKey, translateParams),
-            errorcode: errorCode,
             loggedOut: true,
         });
     }
@@ -639,7 +737,7 @@ export class CoreSitesProvider {
      * @returns Site ID.
      */
     createSiteID(siteUrl: string, username: string): string {
-        return <string> Md5.hashAsciiStr(siteUrl + username);
+        return Md5.hashAsciiStr(siteUrl + username);
     }
 
     /**
@@ -1164,8 +1262,8 @@ export class CoreSitesProvider {
      * @returns Site.
      */
     makeSiteFromSiteListEntry(entry: SiteDBEntry): CoreSite {
-        const info = entry.info ? CoreTextUtils.parseJSON<CoreSiteInfo>(entry.info) : undefined;
-        const config = entry.config ? CoreTextUtils.parseJSON<CoreSiteConfig>(entry.config) : undefined;
+        const info = entry.info ? CoreText.parseJSON<CoreSiteInfo>(entry.info) : undefined;
+        const config = entry.config ? CoreText.parseJSON<CoreSiteConfig>(entry.config) : undefined;
 
         const site = CoreSitesFactory.makeSite(
             entry.id,
@@ -1247,7 +1345,7 @@ export class CoreSitesProvider {
 
         await Promise.all(sites.map(async (site) => {
             if (!ids || ids.indexOf(site.id) > -1) {
-                const siteInfo = site.info ? <CoreSiteInfo> CoreTextUtils.parseJSON(site.info) : undefined;
+                const siteInfo = site.info ? <CoreSiteInfo> CoreText.parseJSON(site.info) : undefined;
                 const siteInstance = CoreSitesFactory.makeSite(site.id, site.siteUrl, site.token, { info: siteInfo });
 
                 const siteName = await siteInstance.getSiteName();
@@ -1285,8 +1383,8 @@ export class CoreSitesProvider {
         // Sort sites by site name, url and then fullname.
         sites.sort((a, b) => {
             // First compare by site name.
-            let textA = CoreTextUtils.cleanTags(a.siteName).toLowerCase().trim();
-            let textB = CoreTextUtils.cleanTags(b.siteName).toLowerCase().trim();
+            let textA = CoreText.cleanTags(a.siteName).toLowerCase().trim();
+            let textB = CoreText.cleanTags(b.siteName).toLowerCase().trim();
 
             let compare = textA.localeCompare(textB);
             if (compare !== 0) {
@@ -1351,7 +1449,7 @@ export class CoreSitesProvider {
     async login(siteId: string): Promise<void> {
         await CoreConfig.set(CORE_SITE_CURRENT_SITE_ID_CONFIG, siteId);
 
-        CoreEvents.trigger(CoreEvents.LOGIN, {}, siteId);
+        CoreEvents.trigger(CoreEvents.LOGIN, { siteId }, siteId);
     }
 
     /**
@@ -1370,6 +1468,8 @@ export class CoreSitesProvider {
         const siteId = this.currentSite.getId();
 
         this.currentSite = undefined;
+        this.isLoginNavigationFinished = false;
+        this.afterLoginNavigationQueue = [];
 
         if (options.forceLogout || (siteConfig && siteConfig.tool_mobile_forcelogout == '1')) {
             promises.push(this.setSiteLoggedOut(siteId));
@@ -1605,7 +1705,7 @@ export class CoreSitesProvider {
         // Check if URL has http(s) protocol.
         if (!url.match(/^https?:\/\//i)) {
             // URL doesn't have http(s) protocol. Check if it has any protocol.
-            if (CoreUrlUtils.isAbsoluteURL(url)) {
+            if (CoreUrl.isAbsoluteURL(url)) {
                 // It has some protocol. Return empty array.
                 return [];
             }
@@ -1851,11 +1951,13 @@ export class CoreSitesProvider {
         const site = await this.getSite(siteIds[0]);
 
         const siteUrl = CoreText.removeEndingSlash(
-            CoreUrlUtils.removeProtocolAndWWW(site.getURL()),
+            CoreUrl.removeUrlParts(site.getURL(), [CoreUrlPartNames.Protocol, CoreUrlPartNames.WWWInDomain]),
         );
-        const treatedUrl = CoreText.removeEndingSlash(CoreUrlUtils.removeProtocolAndWWW(url));
+        const treatedUrl = CoreText.removeEndingSlash(
+            CoreUrl.removeUrlParts(url, [CoreUrlPartNames.Protocol, CoreUrlPartNames.WWWInDomain]),
+        );
 
-        if (siteUrl == treatedUrl) {
+        if (siteUrl === treatedUrl) {
             result.site = site;
         }
 
@@ -1979,6 +2081,7 @@ export class CoreSitesProvider {
                 database: site.getDb(),
                 config: { cachingStrategy: CoreDatabaseCachingStrategy.Eager },
                 primaryKeyColumns: ['name'],
+                rowIdColumn: null,
                 onDestroy: () => delete this.schemasTables[siteId],
             }),
         );
@@ -2071,6 +2174,47 @@ export class CoreSitesProvider {
                 .map(site => CoreSitesFactory.makeSite(site.id, site.siteUrl, ''))
                 .map(site => site.invalidateCaches()),
         );
+    }
+
+    /**
+     * Run some code when the login navigation is finished. Login navigation finishes when the proper main menu page
+     * has loaded.
+     * If not logged in or the login navigation is already finished, the callback will run immediately (waiting for currently
+     * running processes to finish).
+     * Otherwise, the process will be added to a queue and will run once the login navigation is finished.
+     *
+     * @param data Process data.
+     */
+    runAfterLoginNavigation(data: CoreSitesAfterLoginNavigationProcess): void {
+        if (!this.isLoggedIn() || this.isLoginNavigationFinished) {
+            this.afterLoginNavigationQueueRunner.run(data.callback, { priority: data.priority });
+
+            return;
+        }
+
+        this.afterLoginNavigationQueue.push(data);
+
+        // Sort the list by priority. The queue runner also uses priority, but the first run is always executed immediately
+        // so it's important to always pass the highest priority process first.
+        this.afterLoginNavigationQueue.sort((a, b) => b.priority - a.priority);
+    }
+
+    /**
+     * Notify that the login navigation is finished. This function should only be used by main menu pages.
+     */
+    loginNavigationFinished(): void {
+        if (this.isLoginNavigationFinished) {
+            // Already finished, nothing else to do.
+            return;
+        }
+
+        this.isLoginNavigationFinished = true;
+
+        // Run the processes in the queue.
+        this.afterLoginNavigationQueue.forEach(data => {
+            this.afterLoginNavigationQueueRunner.run(data.callback, { priority: data.priority });
+        });
+        this.afterLoginNavigationQueue = [];
     }
 
 }
@@ -2296,4 +2440,12 @@ export type CoreSitesLoginTokenResponse = {
 export type CoreSitesLogoutOptions = {
     forceLogout?: boolean; // If true, site will be marked as logged out, no matter the value tool_mobile_forcelogout.
     removeAccount?: boolean; // If true, site will be removed too after logout.
+};
+
+/**
+ * Process to run after login navigation finishes.
+ */
+export type CoreSitesAfterLoginNavigationProcess = {
+    priority: number;
+    callback: () => Promise<void>;
 };

@@ -19,7 +19,7 @@ import { CoreUser } from '@features/user/services/user';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreTextUtils } from '@services/utils/text';
+import { CoreText } from '@singletons/text';
 import { CoreUtils } from '@services/utils/utils';
 import { Translate } from '@singletons';
 import {
@@ -28,13 +28,13 @@ import {
     AddonModLessonAttemptsOverviewsStudentWSData,
     AddonModLessonGetUserAttemptWSResponse,
     AddonModLessonLessonWSData,
-    AddonModLessonProvider,
     AddonModLessonUserAttemptAnswerData,
     AddonModLessonUserAttemptAnswerPageWSData,
 } from '../../services/lesson';
 import { AddonModLessonAnswerData, AddonModLessonHelper } from '../../services/lesson-helper';
 import { CoreTime } from '@singletons/time';
 import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
+import { ADDON_MOD_LESSON_COMPONENT } from '../../constants';
 
 /**
  * Page that displays a retake made by a certain user.
@@ -46,7 +46,7 @@ import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
 })
 export class AddonModLessonUserRetakePage implements OnInit {
 
-    component = AddonModLessonProvider.COMPONENT;
+    component = ADDON_MOD_LESSON_COMPONENT;
     lesson?: AddonModLessonLessonWSData; // The lesson the retake belongs to.
     courseId!: number; // Course ID the lesson belongs to.
     selectedRetake?: number; // The retake to see.
@@ -145,7 +145,7 @@ export class AddonModLessonUserRetakePage implements OnInit {
                 throw new CoreError(Translate.instant('addon.mod_lesson.cannotfindattempt'));
             }
 
-            student.bestgrade = CoreTextUtils.roundToDecimals(student.bestgrade, 2);
+            student.bestgrade = CoreText.roundToDecimals(student.bestgrade, 2);
             student.attempts.forEach((retake) => {
                 if (!this.selectedRetake && this.retakeNumber == retake.try) {
                     // The retake specified as parameter exists. Use it.
@@ -218,30 +218,34 @@ export class AddonModLessonUserRetakePage implements OnInit {
      * @returns Formatted data.
      */
     protected formatRetake(retakeData: AddonModLessonGetUserAttemptWSResponse): RetakeToDisplay {
-        const formattedData = <RetakeToDisplay> retakeData;
+        const formattedData = retakeData;
 
         if (formattedData.userstats.gradeinfo) {
             // Completed.
-            formattedData.userstats.grade = CoreTextUtils.roundToDecimals(formattedData.userstats.grade, 2);
+            formattedData.userstats.grade = CoreText.roundToDecimals(formattedData.userstats.grade, 2);
             this.timeTakenReadable = CoreTime.formatTime(formattedData.userstats.timetotake);
         }
 
         // Format pages data.
         formattedData.answerpages.forEach((page) => {
             if (AddonModLesson.answerPageIsContent(page)) {
-                page.isContent = true;
+                const contentPage = page as AnswerPage;
 
-                if (page.answerdata?.answers) {
-                    page.answerdata.answers.forEach((answer) => {
+                contentPage.isContent = true;
+
+                if (contentPage.answerdata?.answers) {
+                    contentPage.answerdata.answers.forEach((answer) => {
                         // Content pages only have 1 valid field in the answer array.
                         answer[0] = AddonModLessonHelper.getContentPageAnswerDataFromHtml(answer[0]);
                     });
                 }
             } else if (AddonModLesson.answerPageIsQuestion(page)) {
-                page.isQuestion = true;
+                const questionPage = page as AnswerPage;
 
-                if (page.answerdata?.answers) {
-                    page.answerdata.answers.forEach((answer) => {
+                questionPage.isQuestion = true;
+
+                if (questionPage.answerdata?.answers) {
+                    questionPage.answerdata.answers.forEach((answer) => {
                         // Only the first field of the answer array requires to be parsed.
                         answer[0] = AddonModLessonHelper.getQuestionPageAnswerDataFromHtml(answer[0]);
                     });

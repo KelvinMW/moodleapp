@@ -16,7 +16,7 @@ import { Injectable } from '@angular/core';
 
 import { CoreSites, CoreSitesCommonWSOptions } from '@services/sites';
 import { CoreWSExternalWarning } from '@services/ws';
-import { CoreTextUtils } from '@services/utils/text';
+import { CoreText } from '@singletons/text';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreUser, USER_NOREPLY_USER } from '@features/user/services/user';
 import { CoreSite } from '@classes/sites/site';
@@ -119,8 +119,8 @@ export class AddonNotificationsProvider {
             notification.notif = 1;
             notification.read = notification.timeread > 0;
 
-            if (typeof notification.customdata == 'string') {
-                notification.customdata = CoreTextUtils.parseJSON<Record<string, string|number>>(notification.customdata, {});
+            if (typeof notification.customdata === 'string') {
+                notification.customdata = CoreText.parseJSON<Record<string, string|number>>(notification.customdata, {});
             }
 
             // Try to set courseid the notification belongs to.
@@ -142,9 +142,6 @@ export class AddonNotificationsProvider {
                 }
             }
 
-            const imgUrl = notification.customdata?.notificationpictureurl || notification.customdata?.notificationiconurl;
-            notification.imgUrl = imgUrl ? String(imgUrl) : undefined;
-
             if (notification.useridfrom > 0) {
                 // Try to get the profile picture of the user.
                 try {
@@ -154,6 +151,12 @@ export class AddonNotificationsProvider {
                     notification.userfromfullname = user.fullname;
                 } catch {
                     // Error getting user. This can happen if device is offline or the user is deleted.
+                }
+            } else {
+                // Do not assign avatar for newlogin notifications.
+                if (notification.eventtype !== 'newlogin') {
+                    const imgUrl = notification.customdata?.notificationpictureurl || notification.customdata?.notificationiconurl;
+                    notification.imgUrl = imgUrl ? String(imgUrl) : undefined;
                 }
             }
 
@@ -204,72 +207,6 @@ export class AddonNotificationsProvider {
      */
     protected getNotificationsCacheKey(): string {
         return ROOT_CACHE_KEY + 'list';
-    }
-
-    /**
-     * Get some notifications.
-     *
-     * @param notifications Current list of loaded notifications. It's used to calculate the offset.
-     * @param options Other options.
-     * @returns Promise resolved with notifications and if can load more.
-     * @deprecated since 4.1. Use getNotificationsWithStatus instead.
-     */
-    async getNotifications(
-        notifications: AddonNotificationsNotificationMessageFormatted[],
-        options?: AddonNotificationsGetNotificationsOptions,
-    ): Promise<{notifications: AddonNotificationsNotificationMessageFormatted[]; canLoadMore: boolean}> {
-
-        notifications = notifications || [];
-        options = options || {};
-        options.limit = options.limit || AddonNotificationsProvider.LIST_LIMIT;
-        options.siteId = options.siteId || CoreSites.getCurrentSiteId();
-        let newNotifications: AddonNotificationsNotificationMessageFormatted[];
-
-        // Request 1 more notification so we can know if there are more notifications.
-        const originalLimit = options.limit;
-        options.limit = options.limit + 1;
-
-        const site = await CoreSites.getSite(options.siteId);
-
-        if (site.isVersionGreaterEqualThan('4.0')) {
-            // In 4.0 the app can request read and unread at the same time.
-            options.offset = notifications.length;
-            newNotifications = await this.getNotificationsWithStatus(
-                AddonNotificationsGetReadType.BOTH,
-                options,
-            );
-        } else {
-            // We need 2 calls, one for read and the other one for unread.
-            options.offset = notifications.reduce((total, current) => total + (current.read ? 0 : 1), 0);
-
-            const unread = await this.getNotificationsWithStatus(AddonNotificationsGetReadType.UNREAD, options);
-
-            newNotifications = unread;
-
-            if (unread.length < options.limit) {
-                // Limit not reached. Get read notifications until reach the limit.
-                const readOptions = {
-                    ...options,
-                    offset: notifications.length - options.offset,
-                    limit: options.limit - unread.length,
-                };
-
-                try {
-                    const read = await this.getNotificationsWithStatus(AddonNotificationsGetReadType.READ, readOptions);
-
-                    newNotifications = unread.concat(read);
-                } catch (error) {
-                    if (unread.length <= 0) {
-                        throw error;
-                    }
-                }
-            }
-        }
-
-        return {
-            notifications: newNotifications.slice(0, originalLimit),
-            canLoadMore: newNotifications.length > originalLimit,
-        };
     }
 
     /**

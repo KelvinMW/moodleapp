@@ -1,8 +1,11 @@
-@mod @mod_scorm @app @javascript
+@addon_mod_scorm @app @javascript
 Feature: Test appearance options of SCORM activity in app
   In order to play a SCORM while using the mobile app
   As a student
   I need appearance options to be applied properly
+
+  # SCORM iframes no longer work in the browser, hence the commented lines in this file.
+  # This should be reverted once MOBILE-4503 is solved.
 
   Background:
     Given the following "users" exist:
@@ -28,22 +31,20 @@ Feature: Test appearance options of SCORM activity in app
     When I press "Current window SCORM" in the app
     And I press "Enter" in the app
     And I press "Disable fullscreen" in the app
-    Then the UI should match the snapshot
+    # Then the UI should match the snapshot
 
-    When I press the back button in the app
-    And I press the back button in the app
+    When I go back 2 times in the app
     And I press "New window px SCORM" in the app
     And I press "Enter" in the app
     And I press "Disable fullscreen" in the app
-    Then the UI should match the snapshot
+    # Then the UI should match the snapshot
 
     # SCORMs with percentage sizes are displayed with full size in the app. See MOBILE-3426 for details.
-    When I press the back button in the app
-    And I press the back button in the app
+    When I go back 2 times in the app
     And I press "New window perc SCORM" in the app
     And I press "Enter" in the app
     And I press "Disable fullscreen" in the app
-    Then the UI should match the snapshot
+    # Then the UI should match the snapshot
 
   Scenario: Skip SCORM entry page if needed
     Given the following "activities" exist:
@@ -55,28 +56,26 @@ Feature: Test appearance options of SCORM activity in app
     When I press "No skip SCORM" in the app
     Then I should be able to press "Enter" in the app
 
-    When I press the back button in the app
+    When I go back in the app
     And I press "Skip first access SCORM" in the app
     And I press "Disable fullscreen" in the app
     Then I should find "2 / 11" in the app
 
-    When I press the back button in the app
-    And I press the back button in the app
+    When I go back 2 times in the app
     And I press "Skip first access SCORM" in the app
     Then I should be able to press "Enter" in the app
     And I should not be able to press "Disable fullscreen" in the app
     And I should not find "3 / 11" in the app
 
-    When I press the back button in the app
+    When I go back in the app
     And I press "Always skip SCORM" in the app
     And I press "Disable fullscreen" in the app
     Then I should find "2 / 11" in the app
 
-    When I press the back button in the app
-    And I press the back button in the app
+    When I go back 2 times in the app
     And I press "Always skip SCORM" in the app
     And I press "Disable fullscreen" in the app
-    Then I should find "3 / 11" in the app
+    # Then I should find "3 / 11" in the app
 
   Scenario: Disable preview mode
     Given the following "activities" exist:
@@ -87,7 +86,7 @@ Feature: Test appearance options of SCORM activity in app
     When I press "SCORM without preview" in the app
     Then I should not be able to press "Preview" in the app
 
-    When I press the back button in the app
+    When I go back in the app
     And I press "SCORM with preview" in the app
     Then I should be able to press "Preview" in the app
 
@@ -100,7 +99,7 @@ Feature: Test appearance options of SCORM activity in app
     When I press "SCORM without structure" in the app
     Then I should not find "Other Scoring Systems" in the app
 
-    When I press the back button in the app
+    When I go back in the app
     And I press "SCORM with structure" in the app
     Then I should find "Other Scoring Systems" in the app
 
@@ -120,8 +119,7 @@ Feature: Test appearance options of SCORM activity in app
     Then I should find "Other Scoring Systems" in the app
 
     When I press "Close" in the app
-    And I press the back button in the app
-    And I press the back button in the app
+    And I go back 2 times in the app
     And I press "SCORM Hidden" in the app
     And I press "Enter" in the app
     And I press "Disable fullscreen" in the app
@@ -129,8 +127,7 @@ Feature: Test appearance options of SCORM activity in app
     Then I should find "Other Scoring Systems" in the app
 
     When I press "Close" in the app
-    And I press the back button in the app
-    And I press the back button in the app
+    And I go back 2 times in the app
     And I press "SCORM Drop Down" in the app
     And I press "Enter" in the app
     And I press "Disable fullscreen" in the app
@@ -138,8 +135,7 @@ Feature: Test appearance options of SCORM activity in app
     Then I should find "Other Scoring Systems" in the app
 
     When I press "Close" in the app
-    And I press the back button in the app
-    And I press the back button in the app
+    And I go back 2 times in the app
     And I press "SCORM Disabled" in the app
     And I press "Enter" in the app
     And I press "Disable fullscreen" in the app
@@ -157,14 +153,14 @@ Feature: Test appearance options of SCORM activity in app
     When I press "SCORM no attempt status" in the app
     Then I should not find "Number of attempts allowed" in the app
 
-    When I press the back button in the app
+    When I go back in the app
     And I press "SCORM both att status" in the app
     Then I should find "Number of attempts allowed" in the app
 
-    When I press the back button in the app
+    When I go back in the app
     And I press "SCORM dashb att status" in the app
     Then I should find "Number of attempts allowed" in the app
 
-    When I press the back button in the app
+    When I go back in the app
     And I press "SCORM entry att status" in the app
     Then I should find "Number of attempts allowed" in the app

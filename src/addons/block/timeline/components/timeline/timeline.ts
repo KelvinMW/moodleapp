@@ -27,6 +27,9 @@ import { AddonBlockTimelineDateRange, AddonBlockTimelineSection } from '@addons/
 import { FormControl } from '@angular/forms';
 import { formControlValue, resolved } from '@/core/utils/rxjs';
 import { CoreLogger } from '@singletons/logger';
+import { CoreSharedModule } from '@/core/shared.module';
+import { CoreSearchComponentsModule } from '@features/search/components/components.module';
+import { AddonBlockTimelineEventsComponent } from '../events/events';
 
 /**
  * Component to render a timeline block.
@@ -34,15 +37,21 @@ import { CoreLogger } from '@singletons/logger';
 @Component({
     selector: 'addon-block-timeline',
     templateUrl: 'addon-block-timeline.html',
-    styleUrls: ['timeline.scss'],
+    styleUrl: 'timeline.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
+    standalone: true,
+    imports: [
+        CoreSharedModule,
+        CoreSearchComponentsModule,
+        AddonBlockTimelineEventsComponent,
+    ],
 })
 export class AddonBlockTimelineComponent implements OnInit, ICoreBlockComponent {
 
-    sort = new FormControl();
+    sort = new FormControl(AddonBlockTimelineSort.ByDates);
     sort$!: Observable<AddonBlockTimelineSort>;
     sortOptions!: AddonBlockTimelineOption<AddonBlockTimelineSort>[];
-    filter = new FormControl();
+    filter = new FormControl(AddonBlockTimelineFilter.Next30Days);
     filter$!: Observable<AddonBlockTimelineFilter>;
     statusFilterOptions!: AddonBlockTimelineOption<AddonBlockTimelineFilter>[];
     dateFilterOptions!: AddonBlockTimelineOption<AddonBlockTimelineFilter>[];
@@ -256,9 +265,8 @@ export class AddonBlockTimelineComponent implements OnInit, ICoreBlockComponent 
             .filter(
                 course =>
                     !course.hidden &&
-                !CoreCoursesHelper.isPastCourse(course, gracePeriod.after) &&
-                !CoreCoursesHelper.isFutureCourse(course, gracePeriod.after, gracePeriod.before) &&
-                courseEvents[course.id].events.length > 0,
+                    !CoreCoursesHelper.isFutureCourse(course, gracePeriod.after, gracePeriod.before) &&
+                    courseEvents[course.id].events.length > 0,
             )
             .map(course => {
                 const section = new AddonBlockTimelineSection(

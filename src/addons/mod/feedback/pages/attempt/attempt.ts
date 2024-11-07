@@ -13,22 +13,22 @@
 // limitations under the License.
 
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { ActivatedRouteSnapshot } from '@angular/router';
+import { ActivatedRoute, ActivatedRouteSnapshot } from '@angular/router';
 import { CoreRoutedItemsManagerSourcesTracker } from '@classes/items-management/routed-items-manager-sources-tracker';
 import { CoreSwipeNavigationItemsManager } from '@classes/items-management/swipe-navigation-items-manager';
 import { CoreNavigator } from '@services/navigator';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreTextUtils } from '@services/utils/text';
+import { CoreFileHelper } from '@services/file-helper';
 import { AddonModFeedbackAttemptsSource } from '../../classes/feedback-attempts-source';
 import {
     AddonModFeedback,
-    AddonModFeedbackProvider,
     AddonModFeedbackWSAnonAttempt,
     AddonModFeedbackWSFeedback,
 } from '../../services/feedback';
 import { AddonModFeedbackAttempt, AddonModFeedbackFormItem, AddonModFeedbackHelper } from '../../services/feedback-helper';
 import { CoreTime } from '@singletons/time';
 import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
+import { ADDON_MOD_FEEDBACK_COMPONENT } from '../../constants';
 
 /**
  * Page that displays a feedback attempt review.
@@ -46,7 +46,7 @@ export class AddonModFeedbackAttemptPage implements OnInit, OnDestroy {
     attempts: AddonModFeedbackAttemptsSwipeManager;
     anonAttempt?: AddonModFeedbackWSAnonAttempt;
     items: AddonModFeedbackAttemptItem[] = [];
-    component = AddonModFeedbackProvider.COMPONENT;
+    component = ADDON_MOD_FEEDBACK_COMPONENT;
     loaded = false;
 
     protected attemptId: number;
@@ -140,7 +140,7 @@ export class AddonModFeedbackAttemptPage implements OnInit, OnDestroy {
                 const attemptItem = <AddonModFeedbackAttemptItem> formItem;
 
                 if (item.typ == 'label') {
-                    attemptItem.submittedValue = CoreTextUtils.replacePluginfileUrls(item.presentation, item.itemfiles);
+                    attemptItem.submittedValue = CoreFileHelper.replacePluginfileUrls(item.presentation, item.itemfiles);
                 } else {
                     for (const x in attempt.responses) {
                         if (attempt.responses[x].id == item.id) {
@@ -187,8 +187,8 @@ class AddonModFeedbackAttemptsSwipeManager extends CoreSwipeNavigationItemsManag
     /**
      * @inheritdoc
      */
-    protected getSelectedItemPathFromRoute(route: ActivatedRouteSnapshot): string | null {
-        return route.params.attemptId;
+    protected getSelectedItemPathFromRoute(route: ActivatedRouteSnapshot | ActivatedRoute): string | null {
+        return CoreNavigator.getRouteParams(route).attemptId;
     }
 
 }

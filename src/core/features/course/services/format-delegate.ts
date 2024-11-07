@@ -166,7 +166,7 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
     protected handlerNameProperty = 'format';
 
     constructor(protected defaultHandler: CoreCourseFormatDefaultHandler) {
-        super('CoreCoursesCourseFormatDelegate', true);
+        super('CoreCoursesCourseFormatDelegate');
     }
 
     /**
@@ -275,7 +275,7 @@ export class CoreCourseFormatDelegateService extends CoreDelegate<CoreCourseForm
                 [course, sections],
             );
 
-            if (sectionData && 'forceSelected' in sectionData) {
+            if (sectionData && typeof sectionData === 'object' && 'forceSelected' in sectionData) {
                 return sectionData;
             } else if (sectionData) {
                 // Function just returned the section, don't force selecting it.

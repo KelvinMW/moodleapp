@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { CoreConstants, ModPurpose } from '@/core/constants';
+import { CoreConstants, DownloadStatus, ModPurpose } from '@/core/constants';
 import { Injectable, Type } from '@angular/core';
 import { CoreModuleHandlerBase } from '@features/course/classes/module-base-handler';
 import { CoreCourse } from '@features/course/services/course';
@@ -22,10 +22,10 @@ import { CoreCourseModulePrefetchDelegate } from '@features/course/services/modu
 import { CoreFileHelper } from '@services/file-helper';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { makeSingleton, Translate } from '@singletons';
-import { AddonModResourceIndexComponent } from '../../components/index';
 import { AddonModResource } from '../resource';
 import { AddonModResourceHelper } from '../resource-helper';
 import { CoreUtils } from '@services/utils/utils';
+import { ADDON_MOD_RESOURCE_PAGE_NAME } from '../../constants';
 
 /**
  * Handler to support resource modules.
@@ -33,11 +33,9 @@ import { CoreUtils } from '@services/utils/utils';
 @Injectable({ providedIn: 'root' })
 export class AddonModResourceModuleHandlerService extends CoreModuleHandlerBase implements CoreCourseModuleHandler {
 
-    static readonly PAGE_NAME = 'mod_resource';
-
     name = 'AddonModResource';
     modName = 'resource';
-    protected pageName = AddonModResourceModuleHandlerService.PAGE_NAME;
+    protected pageName = ADDON_MOD_RESOURCE_PAGE_NAME;
 
     supportedFeatures = {
         [CoreConstants.FEATURE_MOD_ARCHETYPE]: CoreConstants.MOD_ARCHETYPE_RESOURCE,
@@ -76,7 +74,7 @@ export class AddonModResourceModuleHandlerService extends CoreModuleHandlerBase 
                 return;
             }
 
-            handlerData.button.hidden = status !== CoreConstants.DOWNLOADED ||
+            handlerData.button.hidden = status !== DownloadStatus.DOWNLOADED ||
                 AddonModResourceHelper.isDisplayedInIframe(module);
         };
         handlerData.button = {
@@ -124,7 +122,7 @@ export class AddonModResourceModuleHandlerService extends CoreModuleHandlerBase 
 
         const status = await CoreCourseModulePrefetchDelegate.getModuleStatus(module, module.course);
 
-        return status !== CoreConstants.DOWNLOADED || AddonModResourceHelper.isDisplayedInIframe(module);
+        return status !== DownloadStatus.DOWNLOADED || AddonModResourceHelper.isDisplayedInIframe(module);
     }
 
     /**
@@ -167,6 +165,8 @@ export class AddonModResourceModuleHandlerService extends CoreModuleHandlerBase 
      * @inheritdoc
      */
     async getMainComponent(): Promise<Type<unknown>> {
+        const { AddonModResourceIndexComponent } = await import('../../components/index');
+
         return AddonModResourceIndexComponent;
     }
 

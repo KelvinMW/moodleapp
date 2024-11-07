@@ -1,8 +1,9 @@
-@app @javascript @lms_upto4.1
+@core_grades @app @javascript @lms_upto4.1
 Feature: Grades navigation
 
   Background:
-    Given the following "users" exist:
+    Given the Moodle site is compatible with this feature
+    And the following "users" exist:
       | username  | firstname | lastname |
       | student1  | Student   | first    |
       | student2  | Student   | second    |
@@ -89,7 +90,7 @@ Feature: Grades navigation
     # Course grades
     When I press "Participants" in the app
     And I press "Student first" in the app
-    And I press "Grades" in the app
+    And I press "Grades" near "Details" in the app
     Then I should find "GC C2.1" in the app
     And I should find "Weight" in the app
     And I should find "Contribution to course total" in the app

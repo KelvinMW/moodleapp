@@ -25,6 +25,7 @@ import { CoreAccountsList, CoreLoginHelper } from '@features/login/services/logi
 import { CoreNetwork } from '@services/network';
 import { Subscription } from 'rxjs';
 import { CoreNavigator } from '@services/navigator';
+import { CoreToasts } from '@services/toasts';
 
 /**
  * Page that displays the synchronization settings.
@@ -131,6 +132,11 @@ export class CoreSettingsSynchronizationPage implements OnInit, OnDestroy {
         // Using syncOnlyOnWifi false to force manual sync.
         try {
             await CoreSettingsHelper.synchronizeSite(false, siteId);
+
+            CoreToasts.show({
+                message: 'core.settings.sitesynccompleted',
+                translateMessage: true,
+            });
         } catch (error) {
             if (this.isDestroyed) {
                 return;

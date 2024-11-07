@@ -21,8 +21,9 @@ import { USER_PROFILE_PICTURE_UPDATED, CoreUserBasicData } from '@features/user/
 import { CoreNavigator } from '@services/navigator';
 import { CoreNetwork } from '@services/network';
 import { CoreUserHelper } from '@features/user/services/user-helper';
-import { CoreUrlUtils } from '@services/utils/url';
+import { CoreUrl } from '@singletons/url';
 import { CoreSiteInfo } from '@classes/sites/unauthenticated-site';
+import { toBoolean } from '@/core/transforms/boolean';
 
 /**
  * Component to display a "user avatar".
@@ -40,11 +41,11 @@ export class CoreUserAvatarComponent implements OnInit, OnChanges, OnDestroy {
     @Input() site?: CoreSiteBasicInfo | CoreSiteInfo; // Site info contains user info.
     // The following params will override the ones in user object.
     @Input() profileUrl?: string;
-    @Input() linkProfile = true; // Avoid linking to the profile if wanted.
+    @Input({ transform: toBoolean }) linkProfile = true; // Avoid linking to the profile if wanted.
     @Input() fullname?: string;
     @Input() userId?: number; // If provided or found it will be used to link the image to the profile.
     @Input() courseId?: number;
-    @Input() checkOnline = false; // If want to check and show online status.
+    @Input({ transform: toBoolean }) checkOnline = false; // If want to check and show online status.
     @Input() siteId?: string;
 
     avatarUrl?: string;
@@ -114,7 +115,7 @@ export class CoreUserAvatarComponent implements OnInit, OnChanges, OnDestroy {
     /**
      * Set fields from user.
      */
-    protected setFields(): void {
+    protected async setFields(): Promise<void> {
         const profileUrl = this.profileUrl || (this.user && (this.user.profileimageurl || this.user.userprofileimageurl ||
             this.user.userpictureurl || this.user.profileimageurlsmall || (this.user.urls && this.user.urls.profileimage)));
 
@@ -124,16 +125,20 @@ export class CoreUserAvatarComponent implements OnInit, OnChanges, OnDestroy {
 
         this.fullname = this.fullname || (this.user && (this.user.fullname || this.user.userfullname));
 
-        if (this.user) {
-            this.initials = CoreUserHelper.getUserInitials(this.user);
-        }
-
-        if (this.initials && this.avatarUrl && CoreUrlUtils.isThemeImageUrl(this.avatarUrl)) {
+        if (this.avatarUrl && CoreUrl.isThemeImageUrl(this.avatarUrl)) {
             this.avatarUrl = undefined;
         }
 
         this.userId = this.userId || (this.user && (this.user.userid || this.user.id));
         this.courseId = this.courseId || (this.user && this.user.courseid);
+
+        this.initials =
+            await CoreUserHelper.getUserInitialsFromParts({
+                firstname: this.user?.firstname,
+                lastname: this.user?.lastname,
+                fullname: this.fullname,
+                userId: this.userId,
+        });
     }
 
     /**

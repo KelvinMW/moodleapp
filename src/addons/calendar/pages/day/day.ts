@@ -30,7 +30,6 @@ import { AddonCalendarFilter, AddonCalendarHelper } from '../../services/calenda
 import { AddonCalendarSync, AddonCalendarSyncProvider } from '../../services/calendar-sync';
 import { CoreCategoryData, CoreCourses, CoreEnrolledCourseData } from '@features/courses/services/courses';
 import { CoreCoursesHelper } from '@features/courses/services/courses-helper';
-import { AddonCalendarFilterComponent } from '../../components/filter/filter';
 import moment from 'moment-timezone';
 import { NgZone, Translate } from '@singletons';
 import { CoreNavigator } from '@services/navigator';
@@ -47,8 +46,9 @@ import {
 import { CoreRoutedItemsManagerSourcesTracker } from '@classes/items-management/routed-items-manager-sources-tracker';
 import { AddonCalendarEventsSource } from '@addons/calendar/classes/events-source';
 import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
-import { CoreUrlUtils } from '@services/utils/url';
+import { CoreUrl } from '@singletons/url';
 import { CoreTime } from '@singletons/time';
+import { CoreModals } from '@services/modals';
 
 /**
  * Page that displays the calendar events for a certain day.
@@ -60,20 +60,13 @@ import { CoreTime } from '@singletons/time';
 })
 export class AddonCalendarDayPage implements OnInit, OnDestroy {
 
-    @ViewChild(CoreSwipeSlidesComponent) slides?: CoreSwipeSlidesComponent<PreloadedDay>;
+    @ViewChild(CoreSwipeSlidesComponent) swipeSlidesComponent?: CoreSwipeSlidesComponent<PreloadedDay>;
 
     protected currentSiteId: string;
 
     // Observers.
-    protected newEventObserver: CoreEventObserver;
-    protected discardedObserver: CoreEventObserver;
-    protected editEventObserver: CoreEventObserver;
-    protected deleteEventObserver: CoreEventObserver;
-    protected undeleteEventObserver: CoreEventObserver;
-    protected syncObserver: CoreEventObserver;
-    protected manualSyncObserver: CoreEventObserver;
+    protected eventObservers: CoreEventObserver[] = [];
     protected onlineObserver: Subscription;
-    protected filterChangedObserver: CoreEventObserver;
     protected managerUnsubscribe?: () => void;
     protected logView: () => void;
 
@@ -97,7 +90,7 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
         this.currentSiteId = CoreSites.getCurrentSiteId();
 
         // Listen for events added. When an event is added, reload the data.
-        this.newEventObserver = CoreEvents.on(
+        this.eventObservers.push(CoreEvents.on(
             AddonCalendarProvider.NEW_EVENT_EVENT,
             (data) => {
                 if (data && data.eventId) {
@@ -106,16 +99,16 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
                 }
             },
             this.currentSiteId,
-        );
+        ));
 
         // Listen for new event discarded event. When it does, reload the data.
-        this.discardedObserver = CoreEvents.on(AddonCalendarProvider.NEW_EVENT_DISCARDED_EVENT, () => {
+        this.eventObservers.push(CoreEvents.on(AddonCalendarProvider.NEW_EVENT_DISCARDED_EVENT, () => {
             this.manager?.getSource().markAllItemsUnloaded();
             this.refreshData(true, true);
-        }, this.currentSiteId);
+        }, this.currentSiteId));
 
         // Listen for events edited. When an event is edited, reload the data.
-        this.editEventObserver = CoreEvents.on(
+        this.eventObservers.push(CoreEvents.on(
             AddonCalendarProvider.EDIT_EVENT_EVENT,
             (data) => {
                 if (data && data.eventId) {
@@ -124,25 +117,25 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
                 }
             },
             this.currentSiteId,
-        );
+        ));
 
         // Refresh data if calendar events are synchronized automatically.
-        this.syncObserver = CoreEvents.on(AddonCalendarSyncProvider.AUTO_SYNCED, () => {
+        this.eventObservers.push(CoreEvents.on(AddonCalendarSyncProvider.AUTO_SYNCED, () => {
             this.manager?.getSource().markAllItemsUnloaded();
             this.refreshData(false, true);
-        }, this.currentSiteId);
+        }, this.currentSiteId));
 
         // Refresh data if calendar events are synchronized manually but not by this page.
-        this.manualSyncObserver = CoreEvents.on(AddonCalendarSyncProvider.MANUAL_SYNCED, (data) => {
+        this.eventObservers.push(CoreEvents.on(AddonCalendarSyncProvider.MANUAL_SYNCED, (data) => {
             const selectedDay = this.manager?.getSelectedItem();
             if (data && (data.source != 'day' || !selectedDay || !data.moment || !selectedDay.moment.isSame(data.moment, 'day'))) {
                 this.manager?.getSource().markAllItemsUnloaded();
                 this.refreshData(false, true);
             }
-        }, this.currentSiteId);
+        }, this.currentSiteId));
 
         // Update the events when an event is deleted.
-        this.deleteEventObserver = CoreEvents.on(
+        this.eventObservers.push(CoreEvents.on(
             AddonCalendarProvider.DELETED_EVENT_EVENT,
             (data) => {
                 if (data && !data.sent) {
@@ -154,10 +147,10 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
                 }
             },
             this.currentSiteId,
-        );
+        ));
 
         // Listen for events "undeleted" (offline).
-        this.undeleteEventObserver = CoreEvents.on(
+        this.eventObservers.push(CoreEvents.on(
             AddonCalendarProvider.UNDELETED_EVENT_EVENT,
             (data) => {
                 if (!data || !data.eventId) {
@@ -168,9 +161,9 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
                 this.manager?.getSource().markAsDeleted(data.eventId, false);
             },
             this.currentSiteId,
-        );
+        ));
 
-        this.filterChangedObserver = CoreEvents.on(
+        this.eventObservers.push(CoreEvents.on(
             AddonCalendarProvider.FILTER_CHANGED_EVENT,
             async (data) => {
                 this.filter = data;
@@ -180,7 +173,7 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
 
                 this.manager?.getSource().filterAllDayEvents(this.filter);
             },
-        );
+        ));
 
         // Refresh online status when changes.
         this.onlineObserver = CoreNetwork.onChange().subscribe(() => {
@@ -208,13 +201,13 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
                     ...params,
                     category: 'calendar',
                 },
-                url: CoreUrlUtils.addParamsToUrl('/calendar/view.php?view=day', params),
+                url: CoreUrl.addParamsToUrl('/calendar/view.php?view=day', params),
             });
         });
     }
 
     /**
-     * View loaded.
+     * @inheritdoc
      */
     ngOnInit(): void {
         const types: string[] = [];
@@ -382,7 +375,9 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
      * Show the filter menu.
      */
     async openFilter(): Promise<void> {
-        await CoreDomUtils.openSideModal({
+        const { AddonCalendarFilterComponent } = await import('../../components/filter/filter');
+
+        await CoreModals.openSideModal({
             component: AddonCalendarFilterComponent,
             componentProps: {
                 courses: this.manager?.getSource().courses,
@@ -434,8 +429,7 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
      */
     async goToCurrentDay(): Promise<void> {
         const manager = this.manager;
-        const slides = this.slides;
-        if (!manager || !slides) {
+        if (!manager || !this.swipeSlidesComponent) {
             return;
         }
 
@@ -448,7 +442,7 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
             // Make sure the day is loaded.
             await manager.getSource().loadItem(currentDay);
 
-            slides.slideToItem(currentDay);
+            this.swipeSlidesComponent.slideToItem(currentDay);
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'addon.calendar.errorloadevents', true);
         } finally {
@@ -460,29 +454,22 @@ export class AddonCalendarDayPage implements OnInit, OnDestroy {
      * Load next day.
      */
     async loadNext(): Promise<void> {
-        this.slides?.slideNext();
+        this.swipeSlidesComponent?.slideNext();
     }
 
     /**
      * Load previous day.
      */
     async loadPrevious(): Promise<void> {
-        this.slides?.slidePrev();
+        this.swipeSlidesComponent?.slidePrev();
     }
 
     /**
-     * Page destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
-        this.newEventObserver?.off();
-        this.discardedObserver?.off();
-        this.editEventObserver?.off();
-        this.deleteEventObserver?.off();
-        this.undeleteEventObserver?.off();
-        this.syncObserver?.off();
-        this.manualSyncObserver?.off();
+        this.eventObservers.forEach((observer) => observer.off());
         this.onlineObserver?.unsubscribe();
-        this.filterChangedObserver?.off();
         this.manager?.getSource().forgetRelatedSources();
         this.manager?.destroy();
         this.managerUnsubscribe?.();

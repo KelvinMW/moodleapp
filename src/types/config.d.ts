@@ -18,7 +18,7 @@ import { CoreLoginSiteInfo, CoreSitesDemoSiteData } from '@services/sites';
 import { OpenFileAction } from '@services/utils/utils';
 import { CoreLoginSiteFinderSettings, CoreLoginSiteSelectorListMethod } from '@features/login/services/login-helper';
 import { CoreDatabaseConfiguration } from '@classes/database/database-table';
-import { ToastDuration } from '@services/utils/dom';
+import { ToastDuration } from '@services/toasts';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 
@@ -75,4 +75,6 @@ export interface EnvironmentConfig {
     disableTokenFile: boolean; // Disable the use of tokenpluginfile.php for downloading files (so it fallbacks to pluginfile.php)
     demoMode?: boolean; // Whether to run the app in "demo mode".
     hideInformativeLinks?: boolean; // Whether to hide informative links.
+    iconsPrefixes?: Record<string, Record<string, string[]>>; // Prefixes for custom font icons (located in src/assets/fonts).
+    clearIABSessionWhenAutoLogin?: 'android' | 'ios' | 'all'; // Clear the session every time a new IAB is opened with auto-login.
 }

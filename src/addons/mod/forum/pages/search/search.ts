@@ -27,14 +27,13 @@ import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreUrlUtils } from '@services/utils/url';
+import { CoreUrl } from '@singletons/url';
 import { CoreUtils } from '@services/utils/utils';
 import { Translate } from '@singletons';
 
 @Component({
     selector: 'page-addon-mod-forum-search',
     templateUrl: 'search.html',
-    styleUrls: ['search.scss'],
 })
 export class AddonModForumSearchPage implements OnInit {
 
@@ -117,7 +116,7 @@ export class AddonModForumSearchPage implements OnInit {
                     query,
                     filters: JSON.stringify(this.resultsSource.getFilters()),
                 },
-                url: CoreUrlUtils.addParamsToUrl('/search/index.php', {
+                url: CoreUrl.addParamsToUrl('/search/index.php', {
                     q: query,
                 }),
             });

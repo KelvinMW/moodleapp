@@ -79,7 +79,7 @@ export class CoreGradesCoursePage implements AfterViewInit, OnDestroy {
             this.collapseLabel = Translate.instant('core.collapse');
             this.useLegacyLayout = !CoreSites.getRequiredCurrentSite().isVersionGreaterEqualThan('4.1');
 
-            switch (route.snapshot.data.swipeManagerSource ?? route.snapshot.parent?.data.swipeManagerSource) {
+            switch (route.snapshot?.data.swipeManagerSource ?? route.snapshot?.parent?.data.swipeManagerSource) {
                 case 'courses':
                     this.swipeManager = new CoreGradesCourseCoursesSwipeManager(
                         CoreRoutedItemsManagerSourcesTracker.getOrCreateSource(CoreGradesCoursesSource, []),
@@ -330,8 +330,8 @@ class CoreGradesCourseParticipantsSwipeManager extends CoreSwipeNavigationItemsM
     /**
      * @inheritdoc
      */
-    protected getSelectedItemPathFromRoute(route: ActivatedRouteSnapshot): string | null {
-        return route.params.userId;
+    protected getSelectedItemPathFromRoute(route: ActivatedRouteSnapshot | ActivatedRoute): string | null {
+        return CoreNavigator.getRouteParams(route).userId;
     }
 
 }

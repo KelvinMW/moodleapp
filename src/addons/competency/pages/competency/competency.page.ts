@@ -32,15 +32,15 @@ import {
 import { CoreNavigator } from '@services/navigator';
 import { ContextLevel } from '@/core/constants';
 import { CoreUtils } from '@services/utils/utils';
-import { ADDON_COMPETENCY_SUMMARY_PAGE } from '@addons/competency/competency.module';
+import { ADDON_COMPETENCY_SUMMARY_PAGE } from '@addons/competency/constants';
 import { CoreSwipeNavigationItemsManager } from '@classes/items-management/swipe-navigation-items-manager';
 import { CoreRoutedItemsManagerSourcesTracker } from '@classes/items-management/routed-items-manager-sources-tracker';
 import { AddonCompetencyPlanCompetenciesSource } from '@addons/competency/classes/competency-plan-competencies-source';
-import { ActivatedRouteSnapshot } from '@angular/router';
+import { ActivatedRoute, ActivatedRouteSnapshot } from '@angular/router';
 import { AddonCompetencyCourseCompetenciesSource } from '@addons/competency/classes/competency-course-competencies-source';
 import { CoreTime } from '@singletons/time';
 import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
-import { CoreUrlUtils } from '@services/utils/url';
+import { CoreUrl } from '@singletons/url';
 
 /**
  * Page that displays the competency information.
@@ -58,7 +58,7 @@ export class AddonCompetencyCompetencyPage implements OnInit, OnDestroy {
     user?: CoreUserSummary;
     competency?: AddonCompetencyDataForUserCompetencySummaryWSResponse;
     userCompetency?: AddonCompetencyUserCompetencyPlan | AddonCompetencyUserCompetency | AddonCompetencyUserCompetencyCourse;
-    contextLevel?: string;
+    contextLevel?: ContextLevel;
     contextInstanceId?: number;
 
     protected logView: () => void;
@@ -306,7 +306,7 @@ export class AddonCompetencyCompetencyPage implements OnInit, OnDestroy {
                     planstatus: this.planStatus,
                     userid: userId,
                 },
-                url: CoreUrlUtils.addParamsToUrl('/admin/tool/lp/user_competency_in_plan.php', {
+                url: CoreUrl.addParamsToUrl('/admin/tool/lp/user_competency_in_plan.php', {
                     planid: source.PLAN_ID,
                     userid: userId,
                     competencyid: compId,
@@ -328,7 +328,7 @@ export class AddonCompetencyCompetencyPage implements OnInit, OnDestroy {
                 courseid: source.COURSE_ID,
                 userid: userId,
             },
-            url: CoreUrlUtils.addParamsToUrl('/admin/tool/lp/user_competency_in_course.php', {
+            url: CoreUrl.addParamsToUrl('/admin/tool/lp/user_competency_in_course.php', {
                 courseid: source.COURSE_ID,
                 competencyid: compId,
                 userid: userId,
@@ -350,8 +350,8 @@ class AddonCompetencyCompetenciesSwipeManager
     /**
      * @inheritdoc
      */
-    protected getSelectedItemPathFromRoute(route: ActivatedRouteSnapshot): string | null {
-        return route.params.competencyId;
+    protected getSelectedItemPathFromRoute(route: ActivatedRouteSnapshot | ActivatedRoute): string | null {
+        return CoreNavigator.getRouteParams(route).competencyId;
     }
 
 }

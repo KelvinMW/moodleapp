@@ -1,8 +1,9 @@
-@core @core_user @app @javascript
+@core_user @app @javascript
 Feature: Test basic usage of user features
 
   Background:
-    Given the following "users" exist:
+    Given the Moodle site is compatible with this feature
+    And the following "users" exist:
       | username | firstname | lastname | timezone |
       | student1 | Student   | Student  | 99       |
 
@@ -17,7 +18,7 @@ Feature: Test basic usage of user features
     And I should find "Before you continue, please fill in the required fields in your user profile." in the app
 
     When I press "Complete profile" in the app
-    Then the app should have opened a browser tab with url "webserver"
+    Then the app should have opened a browser tab with url "$WWWROOTPATTERN"
 
     When I close the browser tab opened by the app
     Then I should find "If you didn't complete your profile correctly, you'll be asked to do it again." in the app
@@ -36,7 +37,7 @@ Feature: Test basic usage of user features
     But I should not find "Reconnect" in the app
 
     When I press "Complete profile" in the app
-    Then the app should have opened a browser tab with url "webserver"
+    Then the app should have opened a browser tab with url "$WWWROOTPATTERN"
 
     When I switch to the browser tab opened by the app
     And I set the field "username" to "student1"
@@ -102,8 +103,7 @@ Feature: Test basic usage of user features
     Then I should find "Europe/Madrid" in the app
     And I should not find "Asia/Shanghai" in the app
 
-    When I press the back button in the app
-    And I press the back button in the app
+    When I go back 2 times in the app
     And I press "John Smith" in the app
     And I press "Details" in the app
     Then I should find "Asia/Shanghai" in the app

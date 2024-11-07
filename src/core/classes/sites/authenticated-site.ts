@@ -21,8 +21,8 @@ import {
     CoreWSPreSetsSplitRequest,
     CoreWSTypeExpected,
 } from '@services/ws';
-import { CoreDomUtils, ToastDuration } from '@services/utils/dom';
-import { CoreTextUtils } from '@services/utils/text';
+import { CoreToasts, ToastDuration } from '@services/toasts';
+import { CoreText } from '@singletons/text';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreConstants } from '@/core/constants';
 import { CoreError } from '@classes/errors/error';
@@ -33,16 +33,15 @@ import { CoreLang, CoreLangFormat } from '@services/lang';
 import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
 import { CoreSilentError } from '../errors/silenterror';
 import { CorePromisedValue } from '@classes/promised-value';
-import { Observable, ObservableInput, ObservedValueOf, OperatorFunction, Subject } from 'rxjs';
+import { Observable, ObservableInput, ObservedValueOf, OperatorFunction, Subject, firstValueFrom } from 'rxjs';
 import { finalize, map, mergeMap } from 'rxjs/operators';
-import { firstValueFrom } from '../../utils/rxjs';
 import { CoreSiteError } from '@classes/errors/siteerror';
 import { CoreUserAuthenticatedSupportConfig } from '@features/user/classes/support/authenticated-support-config';
 import { CoreSiteInfo, CoreSiteInfoResponse, CoreSitePublicConfigResponse, CoreUnauthenticatedSite } from './unauthenticated-site';
 import { Md5 } from 'ts-md5';
-import { CoreUrlUtils } from '@services/utils/url';
 import { CoreSiteWSCacheRecord } from '@services/database/sites';
 import { CoreErrorLogs } from '@singletons/error-logs';
+import { CoreWait } from '@singletons/wait';
 
 /**
  * Class that represents a site (combination of site + user) where the user has authenticated but the site hasn't been validated
@@ -73,6 +72,9 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
         '4.1': 2022112800,
         '4.2': 2023042400,
         '4.3': 2023100900,
+        '4.4': 2024042200,
+        '4.5': 2024100700,
+        '5.0': 2024100800, // @todo [5.0] replace with right value when released. Using a tmp value to be able to test new things.
     };
 
     // Possible cache update frequencies.
@@ -212,7 +214,7 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
 
     /**
      * Check if current user is Admin.
-     * Works properly since v3.8. See more in: {@link} https://tracker.moodle.org/browse/MDL-65550
+     * Works properly since v3.8. See more in: {@link https://tracker.moodle.org/browse/MDL-65550}
      *
      * @returns Whether the user is Admin.
      */
@@ -418,9 +420,13 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
             splitRequest: preSets.splitRequest,
         };
 
-        if (wsPreSets.cleanUnicode && CoreTextUtils.hasUnicodeData(data)) {
+        if (wsPreSets.cleanUnicode && CoreText.hasUnicodeData(data)) {
             // Data will be cleaned, notify the user.
-            CoreDomUtils.showToast('core.unicodenotsupported', true, ToastDuration.LONG);
+            CoreToasts.show({
+                message: 'core.unicodenotsupported',
+                translateMessage: true,
+                duration: ToastDuration.LONG,
+            });
         } else {
             // No need to clean data in this call.
             wsPreSets.cleanUnicode = false;
@@ -669,10 +675,10 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
             } else if (error.errorcode === 'sitepolicynotagreed') {
                 // Site policy not agreed, trigger event.
                 this.triggerSiteEvent(CoreEvents.SITE_POLICY_NOT_AGREED, {});
-                error.message = Translate.instant('core.login.sitepolicynotagreederror');
+                error.message = Translate.instant('core.policy.sitepolicynotagreederror');
 
-                throw new CoreWSError(error);
-            } else if (error.errorcode === 'dmlwriteexception' && CoreTextUtils.hasUnicodeData(data)) {
+                throw new CoreSilentError(error);
+            } else if (error.errorcode === 'dmlwriteexception' && CoreText.hasUnicodeData(data)) {
                 if (!this.cleanUnicode) {
                     // Try again cleaning unicode.
                     this.cleanUnicode = true;
@@ -943,8 +949,10 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
                 throw new CoreSiteError({
                     supportConfig: new CoreUserAuthenticatedSupportConfig(this),
                     message: Translate.instant('core.siteunavailablehelp', { site: this.siteUrl }),
-                    errorcode: 'invalidresponse',
-                    errorDetails: Translate.instant('core.errorinvalidresponse', { method: 'tool_mobile_call_external_functions' }),
+                    debug: {
+                        code: 'invalidresponse',
+                        details: Translate.instant('core.errorinvalidresponse', { method: 'tool_mobile_call_external_functions' }),
+                    },
                 });
             }
 
@@ -955,7 +963,7 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
                     // Request not executed, enqueue again.
                     this.enqueueRequest(request);
                 } else if (response.error) {
-                    const rejectReason = CoreTextUtils.parseJSON(response.exception || '') as Error | undefined;
+                    const rejectReason = CoreText.parseJSON(response.exception || '') as Error | undefined;
                     request.deferred.reject(rejectReason);
                     CoreErrorLogs.addErrorLog({
                         method: request.method,
@@ -965,7 +973,7 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
                         data: request.data,
                     });
                 } else {
-                    let responseData = response.data ? CoreTextUtils.parseJSON(response.data) : {};
+                    let responseData = response.data ? CoreText.parseJSON(response.data) : {};
                     // Match the behaviour of CoreWSProvider.call when no response is expected.
                     const responseExpected = wsPresets.responseExpected === undefined || wsPresets.responseExpected;
                     if (!responseExpected && (responseData == null || responseData === '')) {
@@ -1008,7 +1016,7 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     protected getCacheId(method: string, data: any): string {
-        return <string> Md5.hashAsciiStr(method + ':' + CoreUtils.sortAndStringify(data));
+        return Md5.hashAsciiStr(method + ':' + CoreUtils.sortAndStringify(data));
     }
 
     /**
@@ -1091,7 +1099,7 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
             }
 
             return {
-                response: <T> CoreTextUtils.parseJSON(entry.data, {}),
+                response: <T> CoreText.parseJSON(entry.data, {}),
                 expirationIgnored: forceCache,
                 expirationTime,
             };
@@ -1265,11 +1273,33 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
      *
      * @param page Docs page to go to.
      * @returns Promise resolved with the Moodle docs URL.
+     *
+     * @deprecated since 4.5. Not needed anymore.
      */
-    getDocsUrl(page?: string): Promise<string> {
+    async getDocsUrl(page?: string): Promise<string> {
         const release = this.infos?.release ? this.infos.release : undefined;
+        let docsUrl = 'https://docs.moodle.org/en/' + page;
 
-        return CoreUrlUtils.getDocsUrl(release, page);
+        if (release !== undefined) {
+            // Remove this part of the function if this file only uses CoreSites here.
+            const version = CoreSites.getMajorReleaseNumber(release).replace('.', '');
+
+            // Check is a valid number.
+            if (Number(version) >= 24) {
+                // Append release number.
+                docsUrl = docsUrl.replace('https://docs.moodle.org/', 'https://docs.moodle.org/' + version + '/');
+            }
+        }
+
+        try {
+            // Remove this part of the function if this file only uses CoreLang here.
+            let lang = CoreLang.getCurrentLanguageSync(CoreLangFormat.LMS);
+            lang = CoreLang.getParentLanguage() || lang;
+
+            return docsUrl.replace('/en/', '/' + lang + '/');
+        } catch {
+            return docsUrl;
+        }
     }
 
     /**
@@ -1279,7 +1309,7 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
         const ignoreCache = CoreSitesReadingStrategy.ONLY_NETWORK || CoreSitesReadingStrategy.PREFER_NETWORK;
         if (!ignoreCache && this.publicConfig) {
             return this.publicConfig;
-        };
+        }
 
         const method = 'tool_mobile_get_public_config';
         const cacheId = this.getCacheId(method, {});
@@ -1431,7 +1461,7 @@ export class CoreAuthenticatedSite extends CoreUnauthenticatedSite {
                     }
                 }
             }
-        } else if (typeof versions == 'string') {
+        } else if (typeof versions === 'string') {
             // Compare with this version.
             return siteVersion >= this.getVersionNumber(versions);
         }
@@ -1582,7 +1612,7 @@ export function chainRequests<T, O extends ObservableInput<any>>(
                 firstValue = false;
 
                 // Wait to see if the observable is completed (no more values).
-                await CoreUtils.nextTick();
+                await CoreWait.nextTick();
 
                 if (isCompleted) {
                     // Current request only returns cached data. Let chained requests update in background.
@@ -1599,7 +1629,7 @@ export function chainRequests<T, O extends ObservableInput<any>>(
             complete: async () => {
                 isCompleted = true;
 
-                await CoreUtils.nextTick();
+                await CoreWait.nextTick();
 
                 subscriber.complete();
             },

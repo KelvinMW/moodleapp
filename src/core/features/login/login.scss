@@ -18,14 +18,8 @@
 
     ion-button.core-button-as-link {
         --color: var(--core-login-text-color);
-        text-decoration-color: var(--core-login-text-color);
-
-        ion-label {
-            color: var(--core-login-text-color);
-        }
+        text-decoration-color: var(--color);
     }
-
-
 
     .core-login-reconnect-warning {
         margin: 0px 0px 32px 0px;
@@ -72,10 +66,6 @@
     }
 
     .core-login-methods {
-        form .item.item-input {
-            margin-bottom: 16px;
-        }
-
         form .item,
         form .item ion-label {
             --background: var(--core-login-input-background);
@@ -157,7 +147,7 @@
     }
 
     p.core-login-inbrowser {
-        font-size: 12px;
+        font: var(--mdl-typography-body-font-sm);
         margin-top: 8px;
         margin-bottom: 8px;
     }
@@ -171,12 +161,12 @@
     .core-login-sign-up h2 {
         margin-top: 16px;
         margin-bottom: 8px;
-        font-size: 16px;
+        font: var(--mdl-typography-heading6-font);
     }
 
 }
 
-:host-context(html.dark) {
+:host-context(:root.dark) {
     @if ($core-login-button-outline-dark) {
         form ion-button {
             --background: white;

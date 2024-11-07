@@ -208,20 +208,11 @@ export class CoreTimeUtilsProvider {
      * @returns Formatted time.
      */
     toDatetimeFormat(timestamp?: number): string {
-        return moment(timestamp || Date.now()).toISOString();
-    }
+        const isoString = moment(timestamp || Date.now()).toISOString(true);
 
-    /**
-     * Convert a text into user timezone timestamp.
-     *
-     * @param date To convert to timestamp.
-     * @param applyOffset Whether to apply offset to date or not.
-     * @returns Converted timestamp.
-     * @deprecated since 4.1. Use moment(date).unix() instead.
-     */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    convertToTimestamp(date: string, applyOffset?: boolean): number {
-        return moment(date).unix();
+        // Remove milliseconds and timezone for consistency with the values used by ion-datetime.
+        // ion-datetime no longer uses timezone, it always uses UTC.
+        return isoString.substring(0, isoString.indexOf('.'));
     }
 
     /**

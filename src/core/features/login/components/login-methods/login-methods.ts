@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { toBoolean } from '@/core/transforms/boolean';
 import { Component, Input, OnInit } from '@angular/core';
 import { CoreSiteIdentityProvider, CoreSitePublicConfigResponse } from '@classes/sites/unauthenticated-site';
 import { CoreLoginHelper, CoreLoginMethod } from '@features/login/services/login-helper';
@@ -27,10 +28,11 @@ import { CoreDomUtils } from '@services/utils/dom';
 })
 export class CoreLoginMethodsComponent implements OnInit {
 
-    @Input() reconnect = false;
+    @Input({ transform: toBoolean }) reconnect = false;
     @Input() siteUrl = '';
     @Input() siteConfig?: CoreSitePublicConfigResponse;
     @Input() redirectData?: CoreRedirectPayload;
+    @Input() showLoginForm = true;
 
     isBrowserSSO  = false;
     showScanQR  = false;
@@ -92,8 +94,8 @@ export class CoreLoginMethodsComponent implements OnInit {
      *
      * @param provider The provider that was clicked.
      */
-    oauthClicked(provider: CoreSiteIdentityProvider): void {
-        const result = CoreLoginHelper.openBrowserForOAuthLogin(
+    async oauthClicked(provider: CoreSiteIdentityProvider): Promise<void> {
+        const result = await CoreLoginHelper.openBrowserForOAuthLogin(
             this.siteUrl,
             provider,
             this.siteConfig?.launchurl,

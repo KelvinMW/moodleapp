@@ -13,9 +13,11 @@
 // limitations under the License.
 
 import { CoreCancellablePromise } from '@classes/cancellable-promise';
-import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreEventObserver } from '@singletons/events';
+import { CorePlatform } from '@services/platform';
+import { CoreWait } from './wait';
+import { convertTextToHTMLElement } from '../utils/create-html-element';
 
 /**
  * Singleton with helper functions for dom.
@@ -57,6 +59,36 @@ export class CoreDom {
     }
 
     /**
+     * Check if an element has some text or embedded content inside.
+     *
+     * @param element Element or document to check.
+     * @returns Whether has content.
+     */
+    static elementHasContent(element: Element | DocumentFragment): boolean {
+        const textContent = (element.textContent ?? '').trim().replace(/(\r\n|\n|\r)/g, '');
+        if (textContent.length > 0) {
+            return true;
+        }
+
+        return element.querySelectorAll(
+            'img, audio, video, object, iframe, canvas, svg, input, select, textarea, frame, embed',
+        ).length > 0;
+    }
+
+    /**
+     * Given some HTML code, return the HTML code inside <body> tags. If there are no body tags, return the whole HTML.
+     *
+     * @param html HTML text.
+     * @returns Body HTML.
+     */
+    static getHTMLBodyContent(html: string): string {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const bodyContent = doc.body.innerHTML;
+
+        return bodyContent ?? html;
+    }
+
+    /**
      * Retrieve the position of a element relative to another element.
      *
      * @param element Element to get the position.
@@ -73,6 +105,22 @@ export class CoreDom {
             x: elementRectangle.x - parentRectangle.x,
             y: elementRectangle.y - parentRectangle.y,
         };
+    }
+
+    /**
+     * Check if HTML content is blank.
+     *
+     * @param content HTML content.
+     * @returns True if the string does not contain actual content: text, images, etc.
+     */
+    static htmlIsBlank(content: string): boolean {
+        if (!content) {
+            return true;
+        }
+
+        const element = convertTextToHTMLElement(content);
+
+        return !CoreDom.elementHasContent(element);
     }
 
     /**
@@ -196,7 +244,7 @@ export class CoreDom {
      */
     static onWindowResize(resizeFunction: (ev?: Event) => void, debounceDelay = 20): CoreEventObserver {
         const resizeListener = CoreUtils.debounce(async (ev?: Event) => {
-            await CoreDomUtils.waitForResizeDone();
+            await CoreWait.waitForResizeDone();
 
             resizeFunction(ev);
         }, debounceDelay);
@@ -518,29 +566,17 @@ export class CoreDom {
     }
 
     /**
-     * Listen to click and Enter/Space keys in an element.
-     *
-     * @param element Element to listen to events.
-     * @param callback Callback to call when clicked or the key is pressed.
-     * @deprecated since 4.1.1: Use initializeClickableElementA11y instead.
-     */
-    static onActivate(
-        element: HTMLElement & {disabled?: boolean},
-        callback: (event: MouseEvent | KeyboardEvent) => void,
-    ): void {
-        this.initializeClickableElementA11y(element, callback);
-    }
-
-    /**
      * Initializes a clickable element a11y calling the click action when pressed enter or space
      * and adding tabindex and role if needed.
      *
      * @param element Element to listen to events.
      * @param callback Callback to call when clicked or the key is pressed.
+     * @param setTabIndex Whether to set tabindex and role.
      */
     static initializeClickableElementA11y(
         element: HTMLElement & {disabled?: boolean},
         callback: (event: MouseEvent | KeyboardEvent) => void,
+        setTabIndex = true,
     ): void {
         const enabled = () => !CoreUtils.isTrueOrOne(element.dataset.disabledA11yClicks ?? 'false');
 
@@ -563,14 +599,14 @@ export class CoreDom {
             }
 
             if (event.key === ' ' || event.key === 'Enter') {
+                callback(event);
+
                 event.preventDefault();
                 event.stopPropagation();
-
-                callback(event);
             }
         });
 
-        if (element.tagName !== 'BUTTON' && element.tagName !== 'A') {
+        if (setTabIndex && element.tagName !== 'BUTTON' && element.tagName !== 'A') {
             // Set tabindex if not previously set.
             if (element.getAttribute('tabindex') === null) {
                 element.setAttribute('tabindex', element.disabled ? '-1' : '0');
@@ -663,6 +699,44 @@ export class CoreDom {
         });
 
         return element;
+    }
+
+    /**
+     * Prefix CSS rules.
+     *
+     * @param css CSS code.
+     * @param prefix Prefix to add to CSS rules.
+     * @param prefixIfNested Prefix to add to CSS rules if nested. It may happend we need different prefixes.
+     *          Ie: If nested is supported ::ng-deep is not needed.
+     * @returns Prefixed CSS.
+     */
+    static prefixCSS(css: string, prefix: string, prefixIfNested?: string): string {
+        if (!css) {
+            return '';
+        }
+
+        if (!prefix) {
+            return css;
+        }
+
+        // Check if browser supports CSS nesting.
+        const supportsNesting = CorePlatform.supportsCSSNesting();
+        if (supportsNesting) {
+            prefixIfNested = prefixIfNested ?? prefix;
+
+            // Wrap the CSS with the prefix.
+            return `${prefixIfNested} { ${css} }`;
+        }
+
+        // Fallback.
+        // Remove comments first.
+        let regExp = /\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm;
+        css = css.replace(regExp, '');
+
+        // Add prefix.
+        regExp = /([^]*?)({[^]*?}|,)/g;
+
+        return css.replace(regExp, prefix + ' $1 $2');
     }
 
 }

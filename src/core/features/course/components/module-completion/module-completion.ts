@@ -17,14 +17,13 @@ import { Component, Input, OnChanges, OnDestroy, OnInit, SimpleChange } from '@a
 import { CoreCourseModuleCompletionBaseComponent } from '@features/course/classes/module-completion';
 import {
     CoreCourseModuleCompletionStatus,
-    CoreCourseModuleCompletionTracking,
 } from '@features/course/services/course';
-import { CoreDomUtils } from '@services/utils/dom';
-import { CoreCourseModuleCompletionDetailsComponent } from '../module-completion-details/module-completion-details';
+import { CorePopovers } from '@services/popovers';
 import { CoreCourseHelper } from '@features/course/services/course-helper';
 import { CoreUser } from '@features/user/services/user';
 import { Translate } from '@singletons';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
+import { toBoolean } from '@/core/transforms/boolean';
 
 /**
  * Component to handle activity completion. It shows a checkbox with the current status, and allows manually changing
@@ -44,8 +43,8 @@ export class CoreCourseModuleCompletionComponent
     extends CoreCourseModuleCompletionBaseComponent
     implements OnInit, OnChanges, OnDestroy {
 
-    @Input() showCompletionConditions = false; // Whether to show activity completion conditions.
-    @Input() showManualCompletion = false; // Whether to show manual completion.
+    @Input({ transform: toBoolean }) showCompletionConditions = false; // Whether to show activity completion conditions.
+    @Input({ transform: toBoolean }) showManualCompletion = false; // Whether to show manual completion.
 
     completed = false;
     accessibleDescription: string | null = null;
@@ -87,9 +86,7 @@ export class CoreCourseModuleCompletionComponent
             return;
         }
 
-        const completionStatus = this.completion.tracking == CoreCourseModuleCompletionTracking.COMPLETION_TRACKING_NONE
-            ? undefined
-            : this.completion.state;
+        const completionStatus = CoreCourseHelper.getCompletionStatus(this.completion);
 
         this.completed = completionStatus !== CoreCourseModuleCompletionStatus.COMPLETION_INCOMPLETE &&
             completionStatus !== CoreCourseModuleCompletionStatus.COMPLETION_COMPLETE_FAIL;
@@ -134,7 +131,10 @@ export class CoreCourseModuleCompletionComponent
                 target = target.parentElement;
             }
 
-            CoreDomUtils.openPopover({
+            const { CoreCourseModuleCompletionDetailsComponent } =
+                await import('../module-completion-details/module-completion-details');
+
+            CorePopovers.openWithoutResult({
                 component: CoreCourseModuleCompletionDetailsComponent,
                 componentProps: {
                     completion: this.completion,

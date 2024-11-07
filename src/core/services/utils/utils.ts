@@ -13,33 +13,31 @@
 // limitations under the License.
 
 import { Injectable } from '@angular/core';
-import { InAppBrowserObject, InAppBrowserOptions } from '@ionic-native/in-app-browser';
-import { FileEntry } from '@ionic-native/file/ngx';
-import { Subscription } from 'rxjs';
-
+import { InAppBrowserObject, InAppBrowserOptions } from '@awesome-cordova-plugins/in-app-browser';
+import { FileEntry } from '@awesome-cordova-plugins/file/ngx';
 import { CoreEvents } from '@singletons/events';
 import { CoreFile } from '@services/file';
-import { CoreLang } from '@services/lang';
+import { CoreLang, CoreLangFormat } from '@services/lang';
 import { CoreWS } from '@services/ws';
-import { CoreDomUtils } from '@services/utils/dom';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
-import { CoreTextUtils } from '@services/utils/text';
-import { makeSingleton, Clipboard, InAppBrowser, FileOpener, WebIntent, QRScanner, Translate, NgZone } from '@singletons';
+import { makeSingleton, InAppBrowser, FileOpener, WebIntent, Translate, NgZone } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
-import { CoreViewerQRScannerComponent } from '@features/viewer/components/qr-scanner/qr-scanner';
-import { CoreCanceledError } from '@classes/errors/cancelederror';
 import { CoreFileEntry } from '@services/file-helper';
 import { CoreConstants } from '@/core/constants';
 import { CoreWindow } from '@singletons/window';
 import { CoreColors } from '@singletons/colors';
-import { CorePromisedValue } from '@classes/promised-value';
 import { CorePlatform } from '@services/platform';
 import { CoreErrorWithOptions } from '@classes/errors/errorwithoptions';
 import { CoreFilepool } from '@services/filepool';
 import { CoreSites } from '@services/sites';
 import { CoreCancellablePromise } from '@classes/cancellable-promise';
 import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
-import { CoreUrlUtils } from './url';
+import { CoreUrl } from '@singletons/url';
+import { CoreArray } from '@singletons/array';
+import { CoreText } from '@singletons/text';
+import { CoreWait, CoreWaitOptions } from '@singletons/wait';
+import { CoreQRScan } from '@services/qrscan';
+import { CoreErrorHelper } from '@services/error-helper';
 
 export type TreeNode<T> = T & { children: TreeNode<T>[] };
 
@@ -54,8 +52,6 @@ export class CoreUtilsProvider {
     protected logger: CoreLogger;
     protected iabInstance?: InAppBrowserObject;
     protected uniqueIds: {[name: string]: number} = {};
-    protected qrScanData?: {deferred: CorePromisedValue<string>; observable: Subscription};
-    protected initialColorSchemeContent = 'light dark';
 
     constructor() {
         this.logger = CoreLogger.getInstance('CoreUtilsProvider');
@@ -69,7 +65,7 @@ export class CoreUtilsProvider {
      * @returns New error message.
      */
     addDataNotDownloadedError(error: Error | string, defaultError?: string): string {
-        const errorMessage = CoreTextUtils.getErrorMessageFromError(error) || defaultError || '';
+        const errorMessage = CoreErrorHelper.getErrorMessageFromError(error) || defaultError || '';
 
         if (this.isWebServiceError(error)) {
             return errorMessage;
@@ -350,6 +346,7 @@ export class CoreUtilsProvider {
      * @param from Object to copy the properties from.
      * @param to Object where to store the properties.
      * @param clone Whether the properties should be cloned (so they are different instances).
+     * @deprecated since 4.4. Not used anymore.
      */
     copyProperties(from: Record<string, unknown>, to: Record<string, unknown>, clone: boolean = true): void {
         for (const name in from) {
@@ -365,28 +362,19 @@ export class CoreUtilsProvider {
      * Copies a text to clipboard and shows a toast message.
      *
      * @param text Text to be copied
-     * @returns Promise resolved when text is copied.
+     * @returns Promise resolved when the text is copied.
+     *
+     * @deprecated since 4.5 Use CoreText.copyToClipboard instead.
      */
     async copyToClipboard(text: string): Promise<void> {
-        try {
-            await Clipboard.copy(text);
-        } catch {
-            // Use HTML Copy command.
-            const virtualInput = document.createElement('textarea');
-            virtualInput.innerHTML = text;
-            virtualInput.select();
-            virtualInput.setSelectionRange(0, 99999);
-            document.execCommand('copy'); // eslint-disable-line deprecation/deprecation
-        }
-
-        // Show toast using ionicLoading.
-        CoreDomUtils.showToast('core.copiedtoclipboard', true);
+        return CoreText.copyToClipboard(text);
     }
 
     /**
      * Empties an array without losing its reference.
      *
      * @param array Array to empty.
+     * @deprecated since 4.4. Not used anymore.
      */
     emptyArray(array: unknown[]): void {
         array.length = 0; // Empty array without losing its reference.
@@ -396,6 +384,7 @@ export class CoreUtilsProvider {
      * Removes all properties from an object without losing its reference.
      *
      * @param object Object to remove the properties.
+     * @deprecated since 4.4. Not used anymore.
      */
     emptyObject(object: Record<string, unknown>): void {
         for (const key in object) {
@@ -482,17 +471,10 @@ export class CoreUtilsProvider {
      * @param array Array to filter.
      * @param regex RegExp to apply to each string.
      * @returns Filtered array.
+     * @deprecated since 4.4. Use CoreArray.filterByRegexp instead.
      */
     filterByRegexp(array: string[], regex: RegExp): string[] {
-        if (!array || !array.length) {
-            return [];
-        }
-
-        return array.filter((entry) => {
-            const matches = entry.match(regex);
-
-            return matches && matches.length;
-        });
+        return CoreArray.filterByRegexp(array, regex);
     }
 
     /**
@@ -749,16 +731,17 @@ export class CoreUtilsProvider {
     async getMimeTypeFromUrl(url: string): Promise<string> {
         // First check if it can be guessed from the URL.
         const extension = CoreMimetypeUtils.guessExtensionFromUrl(url);
-        let mimetype = extension && CoreMimetypeUtils.getMimeType(extension);
+        const mimetype = extension && CoreMimetypeUtils.getMimeType(extension);
 
-        if (mimetype) {
+        // Ignore PHP extension for now, it could be serving a file.
+        if (mimetype && extension !== 'php') {
             return mimetype;
         }
 
         // Can't be guessed, get the remote mimetype.
-        mimetype = await CoreWS.getRemoteFileMimeType(url);
+        const remoteMimetype = await CoreWS.getRemoteFileMimeType(url);
 
-        return mimetype || '';
+        return remoteMimetype || mimetype || '';
     }
 
     /**
@@ -955,7 +938,7 @@ export class CoreUtilsProvider {
      * @returns Merged array.
      */
     mergeArraysWithoutDuplicates<T>(array1: T[], array2: T[], key?: string): T[] {
-        return this.uniqueArray(array1.concat(array2), key) as T[];
+        return CoreArray.unique(array1.concat(array2), key) as T[];
     }
 
     /**
@@ -1059,7 +1042,7 @@ export class CoreUtilsProvider {
 
     /**
      * Open a URL using InAppBrowser.
-     * Do not use for files, refer to {@link openFile}.
+     * Do not use for files, refer to {@link CoreUtilsProvider.openFile}.
      *
      * @param url The URL to open.
      * @param options Override default options passed to InAppBrowser.
@@ -1078,8 +1061,6 @@ export class CoreUtilsProvider {
         }
 
         this.setInAppBrowserToolbarColors(options);
-
-        this.iabInstance?.close(); // Close window if there is one already open, only allow one.
 
         this.iabInstance = InAppBrowser.create(url, '_blank', options);
 
@@ -1125,7 +1106,7 @@ export class CoreUtilsProvider {
 
         CoreAnalytics.logEvent({
             type: CoreAnalyticsEventType.OPEN_LINK,
-            link: CoreUrlUtils.unfixPluginfileURL(options.originalUrl ?? url),
+            link: CoreUrl.unfixPluginfileURL(options.originalUrl ?? url),
         });
 
         return this.iabInstance;
@@ -1176,28 +1157,30 @@ export class CoreUtilsProvider {
 
     /**
      * Open a URL using a browser.
-     * Do not use for files, refer to {@link openFile}.
+     * Do not use for files, refer to {@link CoreUtilsProvider.openFile}.
      *
      * @param url The URL to open.
      * @param options Options.
      */
     async openInBrowser(url: string, options: CoreUtilsOpenInBrowserOptions = {}): Promise<void> {
         // eslint-disable-next-line deprecation/deprecation
-        const originaUrl = CoreUrlUtils.unfixPluginfileURL(options.originalUrl ?? options.browserWarningUrl ?? url);
+        const originaUrl = CoreUrl.unfixPluginfileURL(options.originalUrl ?? options.browserWarningUrl ?? url);
         if (options.showBrowserWarning || options.showBrowserWarning === undefined) {
             try {
                 await CoreWindow.confirmOpenBrowserIfNeeded(originaUrl);
-            } catch (error) {
+            } catch {
                 return; // Cancelled, stop.
             }
         }
 
-        CoreAnalytics.logEvent({
-            type: CoreAnalyticsEventType.OPEN_LINK,
-            link: originaUrl,
-        });
-
-        window.open(url, '_system');
+        const site = CoreSites.getCurrentSite();
+        CoreAnalytics.logEvent({ type: CoreAnalyticsEventType.OPEN_LINK, link: originaUrl });
+        window.open(
+            site?.containsUrl(url)
+                ? CoreUrl.addParamsToUrl(url, { lang: await CoreLang.getCurrentLanguage(CoreLangFormat.LMS) })
+                : url,
+            '_system',
+        );
     }
 
     /**
@@ -1228,8 +1211,10 @@ export class CoreUtilsProvider {
 
                 CoreAnalytics.logEvent({
                     type: CoreAnalyticsEventType.OPEN_LINK,
-                    link: CoreUrlUtils.unfixPluginfileURL(url),
+                    link: CoreUrl.unfixPluginfileURL(url),
                 });
+
+                return;
             } catch (error) {
                 this.logger.error('Error opening online file ' + url + ' with mimetype ' + mimetype);
                 this.logger.error('Error: ', JSON.stringify(error));
@@ -1405,18 +1390,8 @@ export class CoreUtilsProvider {
      * @param enumeration Enumeration object.
      * @returns Keys of the enumeration.
      */
-    enumKeys<O, K extends keyof O = keyof O>(enumeration: O): K[] {
+    enumKeys<O extends object, K extends keyof O = keyof O>(enumeration: O): K[] {
         return Object.keys(enumeration).filter(k => Number.isNaN(+k)) as K[];
-    }
-
-    /**
-     * Create a deferred promise that can be resolved or rejected explicitly.
-     *
-     * @returns The deferred promise.
-     * @deprecated since 4.1. Use CorePromisedValue instead.
-     */
-    promiseDefer<T>(): CorePromisedValue<T> {
-        return new CorePromisedValue<T>();
     }
 
     /**
@@ -1608,21 +1583,10 @@ export class CoreUtilsProvider {
      * @param array The array to treat.
      * @param [key] Key of the property that must be unique. If not specified, the whole entry.
      * @returns Array without duplicate values.
+     * @deprecated since 4.4. Use CoreArray.unique instead.
      */
     uniqueArray<T>(array: T[], key?: string): T[] {
-        const unique = {}; // Use an object to make it faster to check if it's duplicate.
-
-        return array.filter(entry => {
-            const value = key ? entry[key] : entry;
-
-            if (value in unique) {
-                return false;
-            }
-
-            unique[value] = true;
-
-            return true;
-        });
+        return CoreArray.unique(array, key);
     }
 
     /**
@@ -1673,9 +1637,11 @@ export class CoreUtilsProvider {
      * Check whether the app can scan QR codes.
      *
      * @returns Whether the app can scan QR codes.
+     *
+     * @deprecated since 4.5. Use CoreQRScan.canScanQR instead.
      */
     canScanQR(): boolean {
-        return CorePlatform.isMobile();
+        return CoreQRScan.canScanQR();
     }
 
     /**
@@ -1683,75 +1649,22 @@ export class CoreUtilsProvider {
      *
      * @param title Title of the modal. Defaults to "QR reader".
      * @returns Promise resolved with the captured text or undefined if cancelled or error.
+     *
+     * @deprecated since 4.5. Use CoreQRScan.scanQR instead.
      */
     async scanQR(title?: string): Promise<string | undefined> {
-        return CoreDomUtils.openModal<string>({
-            component: CoreViewerQRScannerComponent,
-            cssClass: 'core-modal-fullscreen',
-            componentProps: {
-                title,
-            },
-        });
+        return CoreQRScan.scanQR(title);
     }
 
     /**
      * Start scanning for a QR code.
      *
      * @returns Promise resolved with the QR string, rejected if error or cancelled.
+     *
+     * @deprecated since 4.5. Use CoreQRScan.startScanQR instead.
      */
     async startScanQR(): Promise<string | undefined> {
-        if (!CorePlatform.isMobile()) {
-            return Promise.reject('QRScanner isn\'t available in browser.');
-        }
-
-        // Ask the user for permission to use the camera.
-        // The scan method also does this, but since it returns an Observable we wouldn't be able to detect if the user denied.
-        try {
-            const status = await QRScanner.prepare();
-
-            if (!status.authorized) {
-                // No access to the camera, reject. In android this shouldn't happen, denying access passes through catch.
-                throw new Error('The user denied camera access.');
-            }
-
-            if (this.qrScanData && this.qrScanData.deferred) {
-                // Already scanning.
-                return this.qrScanData.deferred;
-            }
-
-            // Start scanning.
-            this.qrScanData = {
-                deferred: new CorePromisedValue(),
-
-                // When text is received, stop scanning and return the text.
-                observable: QRScanner.scan().subscribe(text => this.stopScanQR(text, false)),
-            };
-
-            // Show the camera.
-            try {
-                await QRScanner.show();
-
-                document.body.classList.add('core-scanning-qr');
-
-                // Set color-scheme to 'normal', otherwise the camera isn't seen in Android.
-                const colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
-                if (colorSchemeMeta) {
-                    this.initialColorSchemeContent = colorSchemeMeta.getAttribute('content') || this.initialColorSchemeContent;
-                    colorSchemeMeta.setAttribute('content', 'normal');
-                }
-
-                return this.qrScanData.deferred;
-            } catch (e) {
-                this.stopScanQR(e, true);
-
-                throw e;
-            }
-        } catch (error) {
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            error.message = error.message || (error as { _message?: string })._message;
-
-            throw error;
-        }
+        return CoreQRScan.startScanQR();
     }
 
     /**
@@ -1759,33 +1672,11 @@ export class CoreUtilsProvider {
      *
      * @param data If success, the text of the QR code. If error, the error object or message. Undefined for cancelled.
      * @param error True if the data belongs to an error, false otherwise.
+     *
+     * @deprecated since 4.5. Use CoreQRScan.stopScanQR instead.
      */
     stopScanQR(data?: string | Error, error?: boolean): void {
-        if (!this.qrScanData) {
-            // Not scanning.
-            return;
-        }
-
-        // Hide camera preview.
-        document.body.classList.remove('core-scanning-qr');
-
-        // Set color-scheme to the initial value.
-        document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', this.initialColorSchemeContent);
-
-        QRScanner.hide();
-        QRScanner.destroy();
-
-        this.qrScanData.observable.unsubscribe(); // Stop scanning.
-
-        if (error) {
-            this.qrScanData.deferred.reject(typeof data === 'string' ? new Error(data) : data);
-        } else if (data !== undefined) {
-            this.qrScanData.deferred.resolve(data as string);
-        } else {
-            this.qrScanData.deferred.reject(new CoreCanceledError());
-        }
-
-        delete this.qrScanData;
+        CoreQRScan.stopScanQR(data, error);
     }
 
     /**
@@ -1812,10 +1703,10 @@ export class CoreUtilsProvider {
      * Wait some time.
      *
      * @param milliseconds Number of milliseconds to wait.
-     * @returns Promise resolved after the time has passed.
+     * @deprecated since 4.5. Use CoreWait.wait instead.
      */
-    wait(milliseconds: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, milliseconds));
+    async wait(milliseconds: number): Promise<void> {
+        await CoreWait.wait(milliseconds);
     }
 
     /**
@@ -1823,45 +1714,34 @@ export class CoreUtilsProvider {
      *
      * @param condition Condition.
      * @returns Cancellable promise.
+     * @deprecated since 4.5. Use CoreWait.waitFor instead.
      */
-    waitFor(condition: () => boolean, interval: number = 50): CoreCancellablePromise<void> {
-        if (condition()) {
-            return CoreCancellablePromise.resolve();
-        }
+    waitFor(condition: () => boolean): CoreCancellablePromise<void>;
+    waitFor(condition: () => boolean, options: CoreWaitOptions): CoreCancellablePromise<void>;
+    waitFor(condition: () => boolean, interval: number): CoreCancellablePromise<void>;
+    waitFor(condition: () => boolean, optionsOrInterval: CoreWaitOptions | number = {}): CoreCancellablePromise<void> {
+        const options = typeof optionsOrInterval === 'number' ? { interval: optionsOrInterval } : optionsOrInterval;
 
-        let intervalId: number | undefined;
-
-        return new CoreCancellablePromise<void>(
-            async (resolve) => {
-                intervalId = window.setInterval(() => {
-                    if (!condition()) {
-                        return;
-                    }
-
-                    resolve();
-                    window.clearInterval(intervalId);
-                }, interval);
-            },
-            () => window.clearInterval(intervalId),
-        );
+        return CoreWait.waitFor(condition, options);
     }
 
     /**
      * Wait until the next tick.
      *
-     * @returns Promise resolved when tick has been done.
+     * @deprecated since 4.5. Use CoreWait.nextTick instead.
      */
-    nextTick(): Promise<void> {
-        return this.wait(0);
+    async nextTick(): Promise<void> {
+        await CoreWait.nextTick();
     }
 
     /**
      * Wait until several next ticks.
+     *
+     * @param numTicks Number of ticks to wait.
+     * @deprecated since 4.5. Use CoreWait.nextTicks instead.
      */
     async nextTicks(numTicks = 0): Promise<void> {
-        for (let i = 0; i < numTicks; i++) {
-            await this.wait(0);
-        }
+        await CoreWait.nextTicks(numTicks);
     }
 
     /**
@@ -1936,6 +1816,13 @@ export type CoreUtilsOpenInBrowserOptions = {
 export type CoreUtilsOpenInAppOptions = InAppBrowserOptions & {
     originalUrl?: string; // Original URL to open (in case the URL was treated, e.g. to add a token or an auto-login).
 };
+
+/**
+ * Options for waiting.
+ *
+ * @deprecated since 4.5. Use CoreWaitOptions instead.
+ */
+export type CoreUtilsWaitOptions = CoreWaitOptions;
 
 /**
  * Possible default picker actions.
